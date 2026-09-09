@@ -411,9 +411,10 @@ function renderLivePanel() {
     const l = LIVE.live;
     parts.push(`<div class="live-note"><strong>Live data — real tokens from DexScreener.</strong>
       ${esc(LIVE.live_notice || '')}
-      <br><br>Polled <b>${fmtInt(l.polled)}</b> tokens across ${esc((l.chains_requested || []).join(', '))};
-      <b>${fmtInt(l.triggered)}</b> are at or above the trigger and listed below,
-      <b>${fmtInt(l.below_trigger)}</b> are below it and are not.
+      <br><br>Polled <b>${fmtInt(l.polled)}</b> ${l.polled === 1 ? 'token' : 'tokens'} across
+      ${esc((l.chains_requested || []).join(', '))};
+      <b>${fmtInt(l.triggered)}</b> ${l.triggered === 1 ? 'is' : 'are'} at or above the trigger and listed below,
+      <b>${fmtInt(l.below_trigger)}</b> ${l.below_trigger === 1 ? 'is' : 'are'} below it and not listed.
       <br><br>${esc(l.discovery || '')}</div>`);
   } else if (LIVE_ERROR) {
     parts.push(`<div class="live-note"><strong>Live data unavailable.</strong>
