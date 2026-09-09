@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lunarcrush": {
+      "type": "http",
+      "url": "https://mcp.lunarcrush.ai/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LUNARCRUSH_API_KEY}"
+      }
+    }
+  }
+}

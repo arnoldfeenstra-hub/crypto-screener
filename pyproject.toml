@@ -1,0 +1,42 @@
+[project]
+name = "crypto-screener"
+version = "0.1.0"
+description = "Phase 0 collector for a memecoin screener: trigger watcher + snapshot writer."
+requires-python = ">=3.11"
+dependencies = [
+    "duckdb>=1.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+trigger-watcher = "collectors.trigger_watcher:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["collectors", "filters", "scoring", "calibration"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Telegram renders member counts with no-break (U+00A0) and narrow no-break
+# (U+202F) spaces as thousands separators, so both must appear literally in the
+# parsing regexes. They are deliberate, not typos.
+"collectors/social_tg.py" = ["RUF001"]

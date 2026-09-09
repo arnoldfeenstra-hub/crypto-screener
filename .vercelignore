@@ -1,0 +1,17 @@
+# Only web/ needs deploying. Exclude the Python side explicitly so Vercel does not
+# see pyproject.toml and try to build this as a Python project.
+*.py
+pyproject.toml
+collectors/
+filters/
+scoring/
+calibration/
+tests/
+fixtures/
+data/
+.venv/
+.claude/
+prompts/
+BUILD_BRIEF.md
+CLAUDE.md
+README.md

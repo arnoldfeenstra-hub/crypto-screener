@@ -1,0 +1,23 @@
+# Hard rule 5: no secrets in the repo.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Hard rule 1: the dataset is append-only and lives outside git.
+data/
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+.vercel

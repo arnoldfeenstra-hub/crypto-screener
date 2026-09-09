@@ -1,0 +1,431 @@
+{
+  "generated_at": "2026-09-09T18:19:20+00:00",
+  "phase": "0",
+  "paper_mode": true,
+  "prompt_version": 2,
+  "weights_version": "priors-v1",
+  "weights": {
+    "attention_velocity": 0.28,
+    "community_depth": 0.2,
+    "lineage_meta_fit": 0.15,
+    "onchain_structure": 0.22,
+    "asymmetry_timing": 0.15
+  },
+  "weights_are_calibrated": false,
+  "data_sources": [
+    "replay:solana_replay.json"
+  ],
+  "all_rows_synthetic": true,
+  "synthetic_notice": "Every row on this page is synthetic -- replayed from a recorded test fixture, not collected from any chain. The tickers and contract addresses do not refer to real tokens.",
+  "headline_warning": "Phase 0 -- collection only. The scoring weights are uncalibrated priors: guesses. No edge has been measured, so nothing on this page is a prediction or a recommendation.",
+  "progress": {
+    "triggered_tokens": 6,
+    "complete_social_series": 0,
+    "survivors_7d": 0,
+    "dead_7d": 0,
+    "dead_per_survivor": null,
+    "min_triggered_tokens": 300,
+    "min_dead_per_survivor": 20,
+    "exit_criteria_met": false,
+    "snapshots_scored": 6,
+    "outcome_observations": 0,
+    "social_observations": 18,
+    "labelled_snapshots": 0,
+    "excluded_on_evidence": 1,
+    "excluded_as_unmeasured": 5
+  },
+  "calibration": {
+    "verdict": "not_ready",
+    "explanation": "Phase 0 has not finished collecting, so there is nothing to calibrate. triggered=6 complete_social=0/300 dead_per_survivor=n/a (no survivors yet)/20 -> NOT met, keep collecting. Until this is met, every score the screener emits is an uncalibrated prior and must not be read as a prediction.",
+    "base_rate_by_mcap_band": {
+      "<500k": {
+        "n": 0,
+        "positives": 0,
+        "base_rate": null
+      },
+      "500k-2m": {
+        "n": 0,
+        "positives": 0,
+        "base_rate": null
+      },
+      "2m-10m": {
+        "n": 0,
+        "positives": 0,
+        "base_rate": null
+      },
+      ">10m": {
+        "n": 0,
+        "positives": 0,
+        "base_rate": null
+      }
+    },
+    "fit": null
+  },
+  "published_base_rates": {
+    "graduation_rate_range_pct": [
+      0.198,
+      2.7
+    ],
+    "measurements": [
+      {
+        "figure_pct": 0.198,
+        "source": "May-Jun cohort study"
+      },
+      {
+        "figure_pct": 0.26,
+        "source": "mid-June"
+      },
+      {
+        "figure_pct": 2.7,
+        "source": "Aug cohort tracking"
+      },
+      {
+        "figure_pct": 1.4,
+        "source": "all-time Dune"
+      }
+    ],
+    "telegram_declared_pct": 1.485,
+    "telegram_absent_pct": 0.166,
+    "telegram_lift": 8.94,
+    "all_three_socials_pct": 1.919,
+    "no_socials_pct": 0.11,
+    "all_three_lift": 17.4,
+    "concordance_benchmark": 0.858,
+    "note": "Graduation is roughly a $69k market cap, and most graduates still round to zero. The screener's job is to beat a ~2% base rate, not to find winners."
+  },
+  "trigger": {
+    "mcap_usd": 250000,
+    "holder_count": 500,
+    "rule": "Every token is snapshotted once, the first time it crosses $250k market cap or 500 holders. The same rule applies to every token: the sample is lifecycle-matched by construction."
+  },
+  "tokens": [
+    {
+      "snapshot_id": "0ae7422e-2626-4f89-b5e9-ed13165da29e",
+      "ticker": "$EXACT",
+      "chain": "solana",
+      "contract": "EXACT6ccccDDDDeeeeFFFFggggHHHHiiiiJJJJkkkkL",
+      "ts": 1788919200000,
+      "snapshot_date": "2026-09-09",
+      "trigger": "mcap_250k",
+      "trigger_mcap_crossed": true,
+      "trigger_holders_crossed": false,
+      "age_at_trigger_minutes": 40,
+      "regime": "neutral",
+      "source": "replay:solana_replay.json",
+      "mcap_usd": 250000.0,
+      "liquidity_usd": 47000.0,
+      "volume_24h_usd": 780000.0,
+      "holders": 118,
+      "top10_ex_lp_pct": null,
+      "mint_revoked": false,
+      "freeze_active": true,
+      "socials_declared": {
+        "telegram": false,
+        "x": false,
+        "website": false
+      },
+      "data_completeness": 0.35,
+      "fields_present": 14,
+      "fields_expected": 40,
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [
+        "mint_authority",
+        "freeze_authority"
+      ],
+      "indeterminate_on": [
+        "sellability",
+        "liquidity_lock",
+        "concentration",
+        "deployer_history"
+      ],
+      "pillar_scores": {
+        "attention_velocity": null,
+        "community_depth": null,
+        "lineage_meta_fit": 5.0,
+        "onchain_structure": 67.6,
+        "asymmetry_timing": 69.66666666666667
+      },
+      "thesis": null,
+      "bear_case": null,
+      "falsifier": null,
+      "max_multiple_24h": null,
+      "max_multiple_7d": null,
+      "max_drawdown_before_peak_24h": null,
+      "survived_24h": null,
+      "survived_7d": null
+    },
+    {
+      "snapshot_id": "0010a24f-ee5d-4cf8-882e-e41373a06503",
+      "ticker": "$EDGE",
+      "chain": "solana",
+      "contract": "EDGE4ppppQQQQrrrrSSSStttt1111UUUUvvvvWWWWxx",
+      "ts": 1788919200000,
+      "snapshot_date": "2026-09-09",
+      "trigger": "holders_500",
+      "trigger_mcap_crossed": false,
+      "trigger_holders_crossed": true,
+      "age_at_trigger_minutes": 110,
+      "regime": "neutral",
+      "source": "replay:solana_replay.json",
+      "mcap_usd": 249999.99,
+      "liquidity_usd": 52000.0,
+      "volume_24h_usd": 640000.0,
+      "holders": 500,
+      "top10_ex_lp_pct": null,
+      "mint_revoked": true,
+      "freeze_active": false,
+      "socials_declared": {
+        "telegram": false,
+        "x": true,
+        "website": false
+      },
+      "data_completeness": 0.35,
+      "fields_present": 14,
+      "fields_expected": 40,
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [],
+      "indeterminate_on": [
+        "sellability",
+        "liquidity_lock",
+        "concentration",
+        "deployer_history"
+      ],
+      "pillar_scores": {
+        "attention_velocity": null,
+        "community_depth": null,
+        "lineage_meta_fit": 45.0,
+        "onchain_structure": 78.79999795199993,
+        "asymmetry_timing": 69.08333333333333
+      },
+      "thesis": null,
+      "bear_case": null,
+      "falsifier": null,
+      "max_multiple_24h": null,
+      "max_multiple_7d": null,
+      "max_drawdown_before_peak_24h": null,
+      "survived_24h": null,
+      "survived_7d": null
+    },
+    {
+      "snapshot_id": "34e00115-25c9-47f5-b469-63ecb3ddf83b",
+      "ticker": "$LATE",
+      "chain": "solana",
+      "contract": "LATE3xqvT1qkNfPjCtq8xJ2mWq6rZ9dHbKcVnA4uYpS",
+      "ts": 1788915600000,
+      "snapshot_date": "2026-09-09",
+      "trigger": "mcap_250k",
+      "trigger_mcap_crossed": true,
+      "trigger_holders_crossed": true,
+      "age_at_trigger_minutes": 120,
+      "regime": "neutral",
+      "source": "replay:solana_replay.json",
+      "mcap_usd": 402000.0,
+      "liquidity_usd": 96000.0,
+      "volume_24h_usd": 3300000.0,
+      "holders": 903,
+      "top10_ex_lp_pct": null,
+      "mint_revoked": true,
+      "freeze_active": false,
+      "socials_declared": {
+        "telegram": true,
+        "x": true,
+        "website": false
+      },
+      "data_completeness": 0.35,
+      "fields_present": 14,
+      "fields_expected": 40,
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [],
+      "indeterminate_on": [
+        "sellability",
+        "liquidity_lock",
+        "concentration",
+        "deployer_history"
+      ],
+      "pillar_scores": {
+        "attention_velocity": null,
+        "community_depth": null,
+        "lineage_meta_fit": 65.0,
+        "onchain_structure": 50.0,
+        "asymmetry_timing": 77.33333333333333
+      },
+      "thesis": null,
+      "bear_case": null,
+      "falsifier": null,
+      "max_multiple_24h": null,
+      "max_multiple_7d": null,
+      "max_drawdown_before_peak_24h": null,
+      "survived_24h": null,
+      "survived_7d": null
+    },
+    {
+      "snapshot_id": "787eabce-020a-411c-aeb6-2789ded88b6e",
+      "ticker": "$FIRE",
+      "chain": "solana",
+      "contract": "FIRE1kLmNpQrStUvWxYz2AbCdEfGhJkMnPqRsTuVwXy",
+      "ts": 1788912000000,
+      "snapshot_date": "2026-09-09",
+      "trigger": "mcap_250k",
+      "trigger_mcap_crossed": true,
+      "trigger_holders_crossed": false,
+      "age_at_trigger_minutes": 150,
+      "regime": "neutral",
+      "source": "replay:solana_replay.json",
+      "mcap_usd": 251300.0,
+      "liquidity_usd": 68900.0,
+      "volume_24h_usd": 1840000.0,
+      "holders": 310,
+      "top10_ex_lp_pct": null,
+      "mint_revoked": true,
+      "freeze_active": false,
+      "socials_declared": {
+        "telegram": true,
+        "x": true,
+        "website": true
+      },
+      "data_completeness": 0.35,
+      "fields_present": 14,
+      "fields_expected": 40,
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [],
+      "indeterminate_on": [
+        "sellability",
+        "liquidity_lock",
+        "concentration",
+        "deployer_history"
+      ],
+      "pillar_scores": {
+        "attention_velocity": null,
+        "community_depth": null,
+        "lineage_meta_fit": 90.0,
+        "onchain_structure": 50.0,
+        "asymmetry_timing": 68.75
+      },
+      "thesis": null,
+      "bear_case": null,
+      "falsifier": null,
+      "max_multiple_24h": null,
+      "max_multiple_7d": null,
+      "max_drawdown_before_peak_24h": null,
+      "survived_24h": null,
+      "survived_7d": null
+    },
+    {
+      "snapshot_id": "609efcd2-798f-4c48-a7df-4e5281f02ddf",
+      "ticker": "$HOLD",
+      "chain": "solana",
+      "contract": "HOLD2zYxWvUtSrQpOnMlKjIhGfEdCbA9876543210zz",
+      "ts": 1788912000000,
+      "snapshot_date": "2026-09-09",
+      "trigger": "holders_500",
+      "trigger_mcap_crossed": false,
+      "trigger_holders_crossed": true,
+      "age_at_trigger_minutes": 240,
+      "regime": "neutral",
+      "source": "replay:solana_replay.json",
+      "mcap_usd": null,
+      "liquidity_usd": 33000.0,
+      "volume_24h_usd": 220000.0,
+      "holders": 512,
+      "top10_ex_lp_pct": null,
+      "mint_revoked": true,
+      "freeze_active": false,
+      "socials_declared": {
+        "telegram": true,
+        "x": false,
+        "website": false
+      },
+      "data_completeness": 0.3,
+      "fields_present": 12,
+      "fields_expected": 40,
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [],
+      "indeterminate_on": [
+        "sellability",
+        "liquidity_lock",
+        "concentration",
+        "deployer_history",
+        "liquidity_depth"
+      ],
+      "pillar_scores": {
+        "attention_velocity": null,
+        "community_depth": null,
+        "lineage_meta_fit": 45.0,
+        "onchain_structure": null,
+        "asymmetry_timing": 57.0
+      },
+      "thesis": null,
+      "bear_case": null,
+      "falsifier": null,
+      "max_multiple_24h": null,
+      "max_multiple_7d": null,
+      "max_drawdown_before_peak_24h": null,
+      "survived_24h": null,
+      "survived_7d": null
+    },
+    {
+      "snapshot_id": "021aa828-e1aa-4b65-9f85-76d016f97eff",
+      "ticker": "$BOTH",
+      "chain": "solana",
+      "contract": "FIRE5mmmmNNNNooooPPPPqqqqRRRRssssTTTTuuuuVV",
+      "ts": 1788912000000,
+      "snapshot_date": "2026-09-09",
+      "trigger": "mcap_250k",
+      "trigger_mcap_crossed": true,
+      "trigger_holders_crossed": true,
+      "age_at_trigger_minutes": 360,
+      "regime": "neutral",
+      "source": "replay:solana_replay.json",
+      "mcap_usd": 260000.0,
+      "liquidity_usd": 74000.0,
+      "volume_24h_usd": 2100000.0,
+      "holders": 640,
+      "top10_ex_lp_pct": null,
+      "mint_revoked": true,
+      "freeze_active": false,
+      "socials_declared": {
+        "telegram": true,
+        "x": true,
+        "website": true
+      },
+      "data_completeness": 0.35,
+      "fields_present": 14,
+      "fields_expected": 40,
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [],
+      "indeterminate_on": [
+        "sellability",
+        "liquidity_lock",
+        "concentration",
+        "deployer_history"
+      ],
+      "pillar_scores": {
+        "attention_velocity": null,
+        "community_depth": null,
+        "lineage_meta_fit": 90.0,
+        "onchain_structure": 50.0,
+        "asymmetry_timing": 67.0
+      },
+      "thesis": null,
+      "bear_case": null,
+      "falsifier": null,
+      "max_multiple_24h": null,
+      "max_multiple_7d": null,
+      "max_drawdown_before_peak_24h": null,
+      "survived_24h": null,
+      "survived_7d": null
+    }
+  ]
+}

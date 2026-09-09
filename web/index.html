@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Memecoin Screener — Phase 0 Collector</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --ink: #1d1c1a;
+    --muted: #6b6862;
+    --line: #e4e1dc;
+    --accent: #3a5f8a;
+    --warn-bg: #fdf3e3;
+    --warn-line: #e0b978;
+    --warn-ink: #6b4a12;
+    --bad: #a33b32;
+    --ok: #2f6b4f;
+    --dim: #8c8880;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16161a;
+      --panel: #1e1e23;
+      --ink: #e8e6e1;
+      --muted: #a09c94;
+      --line: #32323a;
+      --accent: #8fb3d9;
+      --warn-bg: #33280f;
+      --warn-line: #7a5f22;
+      --warn-ink: #f0d9a8;
+      --bad: #e08a80;
+      --ok: #7fc0a0;
+      --dim: #77736c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; }
+  header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  header p.sub { margin: 0 0 24px; color: var(--muted); }
+  .warn {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    color: var(--warn-ink);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 24px;
+  }
+  .warn strong { display: block; margin-bottom: 4px; }
+  .synthetic {
+    background: var(--bad);
+    color: #fff;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: -2px 0 14px;
+  }
+  .synthetic strong { display: block; margin-bottom: 3px; letter-spacing: .01em; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .card .label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .card .value { font-size: 26px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .card .note { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  section { margin-top: 34px; }
+  section > h2 { font-size: 17px; margin: 0 0 12px; }
+  .bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  .pill {
+    display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px;
+    border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  }
+  .pill.bad { color: var(--bad); border-color: currentColor; }
+  .pill.unk { color: var(--dim); }
+  .null { color: var(--dim); font-style: italic; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+  select, input[type=search] {
+    font: inherit; padding: 6px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  .facts { columns: 2; column-gap: 28px; font-size: 13.5px; }
+  .facts p { margin: 0 0 9px; break-inside: avoid; color: var(--muted); }
+  .facts b { color: var(--ink); }
+  @media (max-width: 720px) { .facts { columns: 1; } }
+  footer { margin-top: 44px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; }
+  code { font-family: var(--mono); font-size: 12px; background: var(--panel); padding: 1px 5px; border-radius: 5px; border: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Memecoin Screener</h1>
+    <p class="sub">Phase 0 collector — Solana. <span id="generated"></span></p>
+  </header>
+
+  <div class="warn" id="warning">
+    <strong>Loading…</strong>
+  </div>
+
+  <section>
+    <h2>Phase 0 progress</h2>
+    <div class="grid" id="progress"></div>
+    <div class="card" style="margin-top:14px">
+      <div class="label">Exit criteria</div>
+      <div id="exit-text" class="note" style="margin-top:6px"></div>
+      <div class="bar"><i id="exit-bar" style="width:0%"></i></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Calibration</h2>
+    <div class="card">
+      <div class="label">Verdict</div>
+      <div class="value" id="verdict-code" style="font-size:19px"></div>
+      <div class="note" id="verdict-text" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Snapshots</h2>
+    <div class="controls">
+      <input type="search" id="q" placeholder="Filter by ticker or contract…">
+      <select id="trigger-filter">
+        <option value="">All triggers</option>
+        <option value="mcap_250k">mcap_250k</option>
+        <option value="holders_500">holders_500</option>
+      </select>
+      <select id="status-filter">
+        <option value="">All rows</option>
+        <option value="scored">Scored</option>
+        <option value="evidence">Excluded on evidence</option>
+        <option value="unmeasured">Excluded as unmeasured</option>
+      </select>
+      <span class="note" id="count"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Trigger</th>
+            <th class="num">Mcap</th>
+            <th class="num">Liquidity</th>
+            <th class="num">Holders</th>
+            <th class="num">Age</th>
+            <th>Socials</th>
+            <th class="num">Complete</th>
+            <th class="num">Score</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>The numbers this has to beat</h2>
+    <div class="facts" id="facts"></div>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+const fmtUsd = n => n == null ? null :
+  n >= 1e9 ? '$' + (n/1e9).toFixed(2) + 'b' :
+  n >= 1e6 ? '$' + (n/1e6).toFixed(2) + 'm' :
+  n >= 1e3 ? '$' + (n/1e3).toFixed(1) + 'k' : '$' + n.toFixed(2);
+const fmtInt = n => n == null ? null : n.toLocaleString('en-US');
+const fmtAge = m => m == null ? null : m < 60 ? m + 'm' : m < 1440 ? (m/60).toFixed(1) + 'h' : (m/1440).toFixed(1) + 'd';
+const cell = v => v == null ? '<span class="null">null</span>' : v;
+
+let DATA = null;
+
+function renderProgress(d) {
+  const p = d.progress;
+  const cards = [
+    ['Triggered tokens', fmtInt(p.triggered_tokens), `target ${fmtInt(p.min_triggered_tokens)}`],
+    ['Complete social series', fmtInt(p.complete_social_series), `target ${fmtInt(p.min_triggered_tokens)}`],
+    ['Dead per survivor', p.dead_per_survivor == null ? '—' : p.dead_per_survivor.toFixed(1), `target ${p.min_dead_per_survivor}`],
+    ['Snapshots scored', fmtInt(p.snapshots_scored), 'paper mode only'],
+    ['Excluded on evidence', fmtInt(p.excluded_on_evidence), 'failed a hard filter'],
+    ['Excluded as unmeasured', fmtInt(p.excluded_as_unmeasured), 'the check was never run'],
+  ];
+  document.getElementById('progress').innerHTML = cards.map(([l, v, n]) =>
+    `<div class="card"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`
+  ).join('');
+
+  const pct = Math.min(100, 100 * (p.complete_social_series / p.min_triggered_tokens));
+  document.getElementById('exit-bar').style.width = pct.toFixed(1) + '%';
+  document.getElementById('exit-text').textContent = p.exit_criteria_met
+    ? 'Met. Phase 2 calibration can run.'
+    : `Not met — ${fmtInt(p.complete_social_series)} of ${fmtInt(p.min_triggered_tokens)} tokens with a complete social series, and ${p.dead_per_survivor == null ? 'no resolved outcomes' : p.dead_per_survivor.toFixed(1) + ' dead per survivor'} against a target of ${p.min_dead_per_survivor}. Until this is met there is nothing to calibrate.`;
+}
+
+function renderVerdict(d) {
+  const c = d.calibration;
+  const label = {
+    not_ready: 'Not ready — nothing measured yet',
+    no_measured_edge: 'No measured edge',
+    measured_edge: 'Measured edge',
+  }[c.verdict] || c.verdict;
+  document.getElementById('verdict-code').textContent = label;
+  document.getElementById('verdict-text').textContent = c.explanation;
+}
+
+function socialPills(s) {
+  return ['telegram', 'x', 'website'].map(k => {
+    const v = s[k];
+    const cls = v === true ? '' : v === false ? 'bad' : 'unk';
+    const mark = v === true ? '✓' : v === false ? '✕' : '?';
+    return `<span class="pill ${cls}">${k[0].toUpperCase()}${mark}</span>`;
+  }).join(' ');
+}
+
+function statusCell(t) {
+  if (!t.excluded && t.score != null) return '<span class="pill">scored</span>';
+  if (t.rejected_by && t.rejected_by.length) {
+    return t.rejected_by.map(r => `<span class="pill bad">${r}</span>`).join(' ');
+  }
+  if (t.indeterminate_on && t.indeterminate_on.length) {
+    return `<span class="pill unk">unmeasured: ${t.indeterminate_on.join(', ')}</span>`;
+  }
+  return '<span class="pill unk">not scored</span>';
+}
+
+function renderRows() {
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const trig = document.getElementById('trigger-filter').value;
+  const status = document.getElementById('status-filter').value;
+
+  const rows = DATA.tokens.filter(t => {
+    if (q && !((t.ticker || '') + ' ' + (t.contract || '')).toLowerCase().includes(q)) return false;
+    if (trig && t.trigger !== trig) return false;
+    if (status === 'scored' && (t.excluded || t.score == null)) return false;
+    if (status === 'evidence' && !(t.excluded && t.rejected_by.length)) return false;
+    if (status === 'unmeasured' && !(t.excluded && !t.rejected_by.length)) return false;
+    return true;
+  });
+
+  document.getElementById('count').textContent =
+    `${rows.length} of ${DATA.tokens.length} rows`;
+
+  document.getElementById('rows').innerHTML = rows.map(t => `
+    <tr>
+      <td><b>${t.ticker || '<span class="null">null</span>'}</b><br><span class="mono">${(t.contract || '').slice(0, 12)}…</span></td>
+      <td><span class="pill">${t.trigger}</span>${t.trigger_mcap_crossed && t.trigger_holders_crossed ? ' <span class="pill">both</span>' : ''}</td>
+      <td class="num">${cell(fmtUsd(t.mcap_usd))}</td>
+      <td class="num">${cell(fmtUsd(t.liquidity_usd))}</td>
+      <td class="num">${cell(fmtInt(t.holders))}</td>
+      <td class="num">${cell(fmtAge(t.age_at_trigger_minutes))}</td>
+      <td>${socialPills(t.socials_declared)}</td>
+      <td class="num">${(t.data_completeness * 100).toFixed(0)}%</td>
+      <td class="num">${t.score == null ? '<span class="null">null</span>' : t.score.toFixed(1)}</td>
+      <td>${statusCell(t)}</td>
+    </tr>`).join('');
+}
+
+function renderFacts(d) {
+  const b = d.published_base_rates;
+  document.getElementById('facts').innerHTML = `
+    <p>Pump.fun graduation rate sits between <b>${b.graduation_rate_range_pct[0]}%</b> and <b>${b.graduation_rate_range_pct[1]}%</b> depending on how it is measured. Method changes the number by 4–10x.</p>
+    <p>A declared Telegram at launch graduates at <b>${b.telegram_declared_pct}%</b> versus <b>${b.telegram_absent_pct}%</b> without — a <b>${b.telegram_lift}x</b> lift.</p>
+    <p>All three socials declared: <b>${b.all_three_socials_pct}%</b> versus <b>${b.no_socials_pct}%</b> — a <b>${b.all_three_lift}x</b> lift. The best-evidenced feature available, and free at launch.</p>
+    <p>A published Cox model on 832,941 launches reached concordance <b>${b.concordance_benchmark}</b>. That is the bar. Below it, nothing has been built.</p>
+    <p>${b.note}</p>
+    <p>Even the strongest known social signal moves you from ~0.1% to ~1.9%. The job is to beat a ~2% base rate, not to find winners.</p>`;
+}
+
+fetch('screener-data.json', { cache: 'no-store' })
+  .then(r => r.json())
+  .then(d => {
+    DATA = d;
+    document.getElementById('generated').textContent =
+      `Data generated ${d.generated_at}.`;
+    // The synthetic notice leads, because "these tokens are not real" is a bigger
+    // claim than "the weights are not calibrated", and the page has to make it
+    // before a reader starts reading the table as a screener.
+    const synthetic = d.synthetic_notice
+      ? `<div class="synthetic"><strong>Demo data — not real tokens.</strong>${d.synthetic_notice}</div>`
+      : '';
+    document.getElementById('warning').innerHTML =
+      `${synthetic}<strong>Phase 0 — collection only. Not a signal.</strong>${d.headline_warning}
+       <br><br>Weights version <code>${d.weights_version}</code>, prompt version <code>${d.prompt_version}</code>.
+       Trigger: ${d.trigger.rule}`;
+    if (d.synthetic_notice) document.title = 'DEMO DATA — Memecoin Screener (Phase 0)';
+    renderProgress(d);
+    renderVerdict(d);
+    renderFacts(d);
+    renderRows();
+    document.getElementById('footer').innerHTML =
+      `Every token is snapshotted once, at the same trigger, and no row is ever edited or deleted —
+       the dead tokens are the dataset. Scores are computed from uncalibrated priors and are logged,
+       never acted on; this repo holds no exchange keys and can place no orders.
+       ${d.tokens.length} rows shown.`;
+    for (const id of ['q', 'trigger-filter', 'status-filter']) {
+      document.getElementById(id).addEventListener('input', renderRows);
+    }
+  })
+  .catch(e => {
+    document.getElementById('warning').innerHTML =
+      `<strong>Could not load screener-data.json</strong>${e}`;
+  });
+</script>
+</body>
+</html>

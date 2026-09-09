@@ -1,0 +1,168 @@
+{
+  "_comment": [
+    "Response shapes for the three Bitquery queries in collectors/bitquery.py, used by",
+    "tests/test_bitquery_parsers.py.",
+    "",
+    "These are hand-built to the documented EAP schema shape, not captured from a live",
+    "endpoint -- nobody here has a key yet. So they prove the parsers are total and",
+    "correct FOR THIS SHAPE; they do not prove the shape is right. Re-record them from",
+    "`python -m collectors.bitquery --probe` on the first run with a real token, and if",
+    "the shape differs, these tests are what will tell you which parser to change.",
+    "",
+    "Deliberate nastiness: numbers arrive as strings, one pool has no BaseCurrency, one",
+    "token has a null MintAuthority (revoked) and another a present one, one entry is",
+    "missing from the metrics response entirely, and one holder count is unparseable."
+  ],
+  "new_pools": {
+    "Solana": {
+      "DEXPools": [
+        {
+          "Block": { "Time": "2026-09-09T09:14:22Z" },
+          "Pool": {
+            "Dex": { "ProtocolName": "pump", "ProtocolFamily": "Pump" },
+            "Market": {
+              "MarketAddress": "Mkt1111111111111111111111111111111111111111",
+              "BaseCurrency": {
+                "MintAddress": "AAAA1111111111111111111111111111111111111111",
+                "Symbol": "$AAA",
+                "Name": "Alpha Coin",
+                "Uri": "https://ipfs.io/ipfs/meta1?telegram=t.me/alpha&twitter=twitter.com/alpha"
+              },
+              "QuoteCurrency": {
+                "MintAddress": "So11111111111111111111111111111111111111112",
+                "Symbol": "SOL"
+              }
+            },
+            "Base": { "PostAmount": "1000000000" },
+            "Quote": { "PostAmount": "412.5", "PostAmountInUSD": "68900.25" }
+          }
+        },
+        {
+          "Block": { "Time": "2026-09-09T09:15:01Z" },
+          "Pool": {
+            "Dex": { "ProtocolName": "raydium", "ProtocolFamily": "Raydium" },
+            "Market": {
+              "MarketAddress": "Mkt2222222222222222222222222222222222222222",
+              "BaseCurrency": {
+                "MintAddress": "BBBB2222222222222222222222222222222222222222",
+                "Symbol": "$BBB",
+                "Name": "Beta Coin",
+                "Uri": null
+              },
+              "QuoteCurrency": {
+                "MintAddress": "So11111111111111111111111111111111111111112",
+                "Symbol": "SOL"
+              }
+            },
+            "Base": { "PostAmount": "500000000" },
+            "Quote": { "PostAmount": "180.0", "PostAmountInUSD": null }
+          }
+        },
+        {
+          "Block": { "Time": "2026-09-09T09:15:44Z" },
+          "Pool": {
+            "Dex": { "ProtocolName": "raydium", "ProtocolFamily": "Raydium" },
+            "Market": {
+              "MarketAddress": "Mkt3333333333333333333333333333333333333333",
+              "QuoteCurrency": {
+                "MintAddress": "So11111111111111111111111111111111111111112",
+                "Symbol": "SOL"
+              }
+            },
+            "Base": { "PostAmount": "1" },
+            "Quote": { "PostAmount": "0.1", "PostAmountInUSD": "17.0" }
+          }
+        }
+      ]
+    }
+  },
+  "token_metrics": {
+    "Solana": {
+      "DEXTradeByTokens": [
+        {
+          "Trade": {
+            "Currency": {
+              "MintAddress": "AAAA1111111111111111111111111111111111111111",
+              "Symbol": "$AAA",
+              "Name": "Alpha Coin",
+              "Decimals": 6
+            },
+            "PriceInUSD": "0.000251"
+          },
+          "volume_24h_usd": "1840000.5",
+          "trades": 9120
+        },
+        {
+          "Trade": {
+            "Currency": {
+              "MintAddress": "BBBB2222222222222222222222222222222222222222",
+              "Symbol": "$BBB",
+              "Name": "Beta Coin",
+              "Decimals": 6
+            },
+            "PriceInUSD": "0.000018",
+            "volume_24h_usd": null
+          },
+          "volume_24h_usd": "not-a-number",
+          "trades": 44
+        }
+      ],
+      "TokenSupplyUpdates": [
+        {
+          "TokenSupplyUpdate": {
+            "Marketcap": "251300.75",
+            "PostBalanceInUSD": "251300.75",
+            "Currency": {
+              "MintAddress": "AAAA1111111111111111111111111111111111111111",
+              "Symbol": "$AAA",
+              "Name": "Alpha Coin",
+              "MintAuthority": null,
+              "FreezeAuthority": null,
+              "Uri": "https://ipfs.io/ipfs/meta1?telegram=t.me/alpha&twitter=twitter.com/alpha"
+            }
+          }
+        },
+        {
+          "TokenSupplyUpdate": {
+            "Marketcap": "18000.0",
+            "PostBalanceInUSD": "18000.0",
+            "Currency": {
+              "MintAddress": "BBBB2222222222222222222222222222222222222222",
+              "Symbol": "$BBB",
+              "Name": "Beta Coin",
+              "MintAuthority": "Auth9999999999999999999999999999999999999999",
+              "FreezeAuthority": "Auth9999999999999999999999999999999999999999",
+              "Uri": null
+            }
+          }
+        }
+      ]
+    }
+  },
+  "holder_counts": {
+    "Solana": {
+      "BalanceUpdates": [
+        {
+          "BalanceUpdate": {
+            "Currency": { "MintAddress": "AAAA1111111111111111111111111111111111111111" }
+          },
+          "holders": "512"
+        },
+        {
+          "BalanceUpdate": {
+            "Currency": { "MintAddress": "BBBB2222222222222222222222222222222222222222" }
+          },
+          "holders": 61
+        },
+        {
+          "BalanceUpdate": {
+            "Currency": { "MintAddress": "CCCC3333333333333333333333333333333333333333" }
+          },
+          "holders": "unavailable"
+        }
+      ]
+    }
+  },
+  "empty": { "Solana": { "DEXPools": [], "DEXTradeByTokens": [], "BalanceUpdates": [] } },
+  "garbage": { "Solana": null }
+}
