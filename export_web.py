@@ -29,9 +29,12 @@ from calibration.fit import (
     PUBLISHED_CONCORDANCE_BENCHMARK,
 )
 from calibration.report import render as render_calibration
+from collectors import chains as chain_registry
 from collectors.config import load_config
+from collectors.mindshare import COMPONENT_WEIGHTS as MINDSHARE_COMPONENT_WEIGHTS
+from collectors.mindshare import METHOD_VERSION as MINDSHARE_METHOD_VERSION
 from collectors.store import Store
-from scoring.pillars import WEIGHTS
+from scoring.pillars import MINDSHARE_PRIOR_WEIGHT, WEIGHTS, composite
 from scoring.runner import WEIGHTS_VERSION, prompt_version
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -84,6 +87,7 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
     for snap in snapshots:
         score_row = scores.get(snap["snapshot_id"], {})
         labels = store.latest_labels(snap["snapshot_id"]) or {}
+        pillar_scores = _json_field(score_row.get("pillar_scores"), {})
         tokens.append(
             {
                 "snapshot_id": snap["snapshot_id"],
@@ -98,7 +102,9 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                 "age_at_trigger_minutes": snap["age_at_trigger_minutes"],
                 "regime": snap["regime"],
                 "source": snap["source"],
+                "chain_label": chain_registry.label(snap["chain"]),
                 "mcap_usd": snap["market_mcap_usd"],
+                "fdv_usd": snap["market_fdv_usd"],
                 "liquidity_usd": snap["market_liquidity_usd"],
                 "volume_24h_usd": snap["market_volume_24h_usd"],
                 "holders": snap["holders_count"],
@@ -110,6 +116,26 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                     "x": snap["socials_declared_x"],
                     "website": snap["socials_declared_website"],
                 },
+                # Mindshare (collectors/mindshare.py). The raw components and the
+                # universe totals ship alongside the derived share so the page can
+                # show what the share was computed from, and so a reader can see
+                # that a 12% share of a universe of 40 is not a 12% share of the
+                # market.
+                "mindshare": {
+                    "share_pct": snap["mindshare_share_pct"],
+                    "rank": snap["mindshare_rank"],
+                    "percentile": snap["mindshare_percentile"],
+                    "universe_size": snap["mindshare_universe_size"],
+                    "txns_24h": snap["mindshare_txns_24h"],
+                    "txns_6h": snap["mindshare_txns_6h"],
+                    "boost_amount": snap["mindshare_boost_amount"],
+                    "boost_total": snap["mindshare_boost_total"],
+                    "boosts_active": snap["mindshare_boosts_active"],
+                    "pair_count": snap["mindshare_pair_count"],
+                    "universe_txns_24h": snap["mindshare_universe_txns_24h"],
+                    "universe_volume_24h_usd": snap["mindshare_universe_volume_24h_usd"],
+                    "universe_boost_total": snap["mindshare_universe_boost_total"],
+                },
                 "data_completeness": snap["data_completeness"],
                 "fields_present": snap["fields_present"],
                 "fields_expected": snap["fields_expected"],
@@ -119,7 +145,15 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                 "excluded": score_row.get("excluded"),
                 "rejected_by": _json_field(score_row.get("rejected_by"), []),
                 "indeterminate_on": _json_field(score_row.get("indeterminate_on"), []),
-                "pillar_scores": _json_field(score_row.get("pillar_scores"), {}),
+                "pillar_scores": pillar_scores,
+                # The weighted mean over the pillars that resolved, kept separate
+                # from `score` and reported for excluded rows too. `score` stays
+                # null when a hard filter excluded the row -- that discipline does
+                # not bend. This is the arithmetic underneath it, which is a fact
+                # about the row whatever the filters said, and without it a page of
+                # real Phase 0 data is a column of nulls that tells a reader
+                # nothing about what was actually measured.
+                "pillar_composite": composite(pillar_scores)[0],
                 "thesis": score_row.get("thesis"),
                 "bear_case": score_row.get("bear_case"),
                 "falsifier": score_row.get("falsifier"),
@@ -148,15 +182,44 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
     synthetic_sources = {s for s in sources if s.startswith(("replay", "fixture", "test"))}
     all_synthetic = bool(sources) and synthetic_sources == sources
 
+    chain_counts = store.chain_breakdown()
+
     return {
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "phase": "0",
+        "mode": "collected",
         "paper_mode": True,
         "prompt_version": prompt_version(),
         "weights_version": WEIGHTS_VERSION,
         "weights": WEIGHTS,
         "weights_are_calibrated": False,
         "data_sources": sorted(sources),
+        "chains": [
+            {
+                "name": name,
+                "label": chain_registry.label(name) or name,
+                "count": count,
+            }
+            for name, count in chain_counts.items()
+        ],
+        "mindshare": {
+            "method_version": MINDSHARE_METHOD_VERSION,
+            "component_weights": MINDSHARE_COMPONENT_WEIGHTS,
+            "prior_weight_in_composite": MINDSHARE_PRIOR_WEIGHT,
+            "definition": (
+                "Share of the attention observed across one measurement universe: "
+                "24h transactions, 24h volume and DexScreener boost spend, each as a "
+                "share of the universe total, averaged over the components that "
+                "resolved. It is on-chain and paid attention, not social mentions."
+            ),
+            "caveat": (
+                "The universe is whatever the collector polled -- tokens reach it by "
+                "being boosted or profiled on DexScreener -- so it is a biased sample "
+                "and shares from different universes are not comparable. Weighted 0.00 "
+                "in the composite: it is collected and scored, but no prior was "
+                "invented for it, and Phase 2 has not fitted one."
+            ),
+        },
         "all_rows_synthetic": all_synthetic,
         "synthetic_notice": (
             "Every row on this page is synthetic -- replayed from a recorded test "

@@ -4,11 +4,24 @@
   "outputDirectory": "web",
   "installCommand": "",
   "buildCommand": "",
+  "functions": {
+    "api/screener.py": {
+      "memory": 512,
+      "maxDuration": 30,
+      "includeFiles": "{collectors,filters,scoring,prompts}/**"
+    }
+  },
   "headers": [
     {
       "source": "/screener-data.json",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/api/screener",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, s-maxage=45, stale-while-revalidate=300" }
       ]
     }
   ]

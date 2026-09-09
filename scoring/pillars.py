@@ -26,6 +26,24 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# Mindshare's prior weight, and why it is zero.
+#
+# .claude/rules/stats.md forbids putting anything but fitted coefficients into the
+# weight vector. Mindshare is a new feature with no outcome data behind it, so any
+# nonzero number here would be a guess dressed as a prior -- and unlike the five
+# original weights, which at least came from the brief, this one would have been
+# invented in the same commit that invented the feature.
+#
+# So it is collected, scored, stored, displayed and handed to calibration as a
+# feature, and it contributes nothing to the composite until Phase 2 fits it. A
+# zero weight is a no-op in the renormalised sum below, which
+# tests/test_mindshare.py asserts directly: the composite is identical with the
+# pillar present and absent.
+#
+# Raising this is a deliberate decision for whoever has the fitted number, not a
+# side effect of adding a column.
+MINDSHARE_PRIOR_WEIGHT = 0.0
+
 # prompts/score.md step 2. Uncalibrated priors -- replace with fitted coefficients.
 WEIGHTS: dict[str, float] = {
     "attention_velocity": 0.28,
@@ -33,7 +51,14 @@ WEIGHTS: dict[str, float] = {
     "lineage_meta_fit": 0.15,
     "onchain_structure": 0.22,
     "asymmetry_timing": 0.15,
+    "mindshare": MINDSHARE_PRIOR_WEIGHT,
 }
+
+# Bumped whenever WEIGHTS changes -- in value or in shape. Stored on every scored
+# row so a score can be traced to the numbers that produced it. It lives here,
+# beside the vector it names, so the two cannot be edited apart. v2 added the
+# `mindshare` key at weight 0.0; the five original weights are untouched.
+WEIGHTS_VERSION = "priors-v2"
 
 REGIME_MULTIPLIERS = {"hot": 1.0, "neutral": 1.0, "cold": 1.0}
 # In a cold tape, compress toward the midpoint rather than scaling: score.md says
@@ -48,6 +73,10 @@ COORDINATED_PILLAR_CAP = 40.0
 # Unique daily speakers over members. Below this is a dead room with a big number.
 SPEAKER_RATIO_FLOOR = 0.02
 
+# Boost share over trade share. Above this, more of the token's visibility was
+# bought than traded -- the mindshare is manufactured, and the pillar says so.
+PAID_TILT_FLAG = 2.0
+
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
     return max(low, min(high, value))
@@ -60,6 +89,17 @@ def _scale(value: float | None, low: float, high: float) -> float | None:
     if high == low:
         return None
     return _clamp((value - low) / (high - low) * 100.0)
+
+
+def _ratio(value: Any, total: Any) -> float | None:
+    """``value / total``, or ``None`` when either is missing or the total is empty."""
+    if value is None or total is None:
+        return None
+    try:
+        value, total = float(value), float(total)
+    except (TypeError, ValueError):
+        return None
+    return value / total if total > 0 else None
 
 
 def _mean(parts: list[float | None]) -> float | None:
@@ -302,13 +342,93 @@ def asymmetry_timing(candidate: dict[str, Any]) -> PillarScore:
     )
 
 
+def mindshare(candidate: dict[str, Any]) -> PillarScore:
+    """Share of the attention observed around the token (collectors/mindshare.py).
+
+    Weighted at zero into the composite -- see :data:`MINDSHARE_PRIOR_WEIGHT`. It is
+    computed and stored anyway, because Phase 2 cannot fit a feature nobody
+    collected, and social history is the one thing that cannot be backfilled later.
+
+    The interesting component is the last one. Mindshare that is bought and
+    mindshare that is traded look identical in a share number and are opposite
+    signals, so the ratio between them is separated out rather than blended in.
+    """
+    m = candidate.get("mindshare") or {}
+    notes: list[str] = []
+
+    # Percentile is already a 0-100 position within the measured universe, which
+    # is exactly the shape a pillar wants. Share_pct is not: it is dominated by a
+    # handful of tokens, so it is scaled rather than used raw.
+    percentile = m.get("percentile")
+    rank_score = None if percentile is None else _clamp(float(percentile))
+    share_level = _scale(m.get("share_pct"), 0.0, 5.0)
+    breadth = _scale(m.get("pair_count"), 1.0, 6.0)
+
+    boost_share = _ratio(m.get("boost_total"), m.get("universe_boost_total"))
+    trade_share = _ratio(m.get("txns_24h"), m.get("universe_txns_24h"))
+    organic = None
+    if boost_share is not None and trade_share is not None and trade_share > 0:
+        tilt = boost_share / trade_share
+        # At or below parity the attention is at least as traded as it is bought.
+        organic = 100.0 if tilt <= 1.0 else _clamp(100.0 - (tilt - 1.0) * 50.0)
+        if tilt >= PAID_TILT_FLAG:
+            notes.append(
+                f"boost share is {tilt:.1f}x trade share -- this mindshare is bought"
+            )
+    elif boost_share is not None and boost_share > 0 and trade_share is None:
+        notes.append("paid boosts present but trade counts unknown -- tilt unmeasurable")
+
+    return PillarScore(
+        "mindshare",
+        _mean([rank_score, share_level, breadth, organic]),
+        {
+            "universe_percentile": rank_score,
+            "share_level": share_level,
+            "venue_breadth": breadth,
+            "organic_tilt": organic,
+        },
+        tuple(notes),
+    )
+
+
 PILLARS = (
     attention_velocity,
     community_depth,
     lineage_meta_fit,
     onchain_structure,
     asymmetry_timing,
+    mindshare,
 )
+
+
+def composite(
+    pillar_scores: dict[str, float | None], weights: dict[str, float] | None = None
+) -> tuple[float | None, float]:
+    """``(renormalised weighted mean, weight that resolved)`` over the pillars given.
+
+    Renormalising over the pillars that resolved makes the number read as "of what
+    can be seen"; how little that is comes back through the completeness multiplier
+    rather than being buried here. A resolved set whose weights sum to zero -- which
+    happens when mindshare is the only pillar that resolved, since its prior weight
+    is 0.0 -- has no composite at all. That is not a score of zero.
+
+    Exposed separately from :func:`score_candidate` so a caller holding only stored
+    pillar scores can re-derive the same number instead of writing a second version
+    of this arithmetic.
+    """
+    weights = weights or WEIGHTS
+    resolved = {
+        name: score
+        for name, score in pillar_scores.items()
+        if score is not None and name in weights
+    }
+    resolved_weight = sum(weights[name] for name in resolved)
+    if not resolved or resolved_weight <= 0:
+        return None, resolved_weight
+    return (
+        sum(weights[name] * score for name, score in resolved.items()) / resolved_weight,
+        resolved_weight,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,17 +469,7 @@ def score_candidate(
     """Weighted composite for one candidate, with the step-2 modifiers applied."""
     pillars = tuple(fn(candidate) for fn in PILLARS)
     by_name = {p.name: p.score for p in pillars}
-
-    resolved = {name: s for name, s in by_name.items() if s is not None}
-    resolved_weight = sum(WEIGHTS[name] for name in resolved)
-
-    if not resolved:
-        raw = None
-    else:
-        # Renormalised over the pillars that resolved, so the composite reads as
-        # "of what can be seen". How little that is comes back through the
-        # completeness multiplier below rather than being buried here.
-        raw = sum(WEIGHTS[name] * s for name, s in resolved.items()) / resolved_weight
+    raw, resolved_weight = composite(by_name)
 
     modifiers: list[str] = []
     score = raw

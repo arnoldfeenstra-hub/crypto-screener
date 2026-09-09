@@ -1,20 +1,40 @@
 {
-  "generated_at": "2026-09-09T18:19:20+00:00",
+  "generated_at": "2026-09-09T19:09:38+00:00",
   "phase": "0",
+  "mode": "collected",
   "paper_mode": true,
-  "prompt_version": 2,
-  "weights_version": "priors-v1",
+  "prompt_version": 3,
+  "weights_version": "priors-v2",
   "weights": {
     "attention_velocity": 0.28,
     "community_depth": 0.2,
     "lineage_meta_fit": 0.15,
     "onchain_structure": 0.22,
-    "asymmetry_timing": 0.15
+    "asymmetry_timing": 0.15,
+    "mindshare": 0.0
   },
   "weights_are_calibrated": false,
   "data_sources": [
     "replay:solana_replay.json"
   ],
+  "chains": [
+    {
+      "name": "solana",
+      "label": "Solana",
+      "count": 6
+    }
+  ],
+  "mindshare": {
+    "method_version": "mindshare-v1",
+    "component_weights": {
+      "txns_24h": 1.0,
+      "volume_24h_usd": 1.0,
+      "boost_total": 1.0
+    },
+    "prior_weight_in_composite": 0.0,
+    "definition": "Share of the attention observed across one measurement universe: 24h transactions, 24h volume and DexScreener boost spend, each as a share of the universe total, averaged over the components that resolved. It is on-chain and paid attention, not social mentions.",
+    "caveat": "The universe is whatever the collector polled -- tokens reach it by being boosted or profiled on DexScreener -- so it is a biased sample and shares from different universes are not comparable. Weighted 0.00 in the composite: it is collected and scored, but no prior was invented for it, and Phase 2 has not fitted one."
+  },
   "all_rows_synthetic": true,
   "synthetic_notice": "Every row on this page is synthetic -- replayed from a recorded test fixture, not collected from any chain. The tickers and contract addresses do not refer to real tokens.",
   "headline_warning": "Phase 0 -- collection only. The scoring weights are uncalibrated priors: guesses. No edge has been measured, so nothing on this page is a prediction or a recommendation.",
@@ -29,7 +49,7 @@
     "exit_criteria_met": false,
     "snapshots_scored": 6,
     "outcome_observations": 0,
-    "social_observations": 18,
+    "social_observations": 0,
     "labelled_snapshots": 0,
     "excluded_on_evidence": 1,
     "excluded_as_unmeasured": 5
@@ -100,7 +120,7 @@
   },
   "tokens": [
     {
-      "snapshot_id": "0ae7422e-2626-4f89-b5e9-ed13165da29e",
+      "snapshot_id": "0f32345c-003c-442e-be75-6497822b71ce",
       "ticker": "$EXACT",
       "chain": "solana",
       "contract": "EXACT6ccccDDDDeeeeFFFFggggHHHHiiiiJJJJkkkkL",
@@ -112,7 +132,9 @@
       "age_at_trigger_minutes": 40,
       "regime": "neutral",
       "source": "replay:solana_replay.json",
+      "chain_label": "Solana",
       "mcap_usd": 250000.0,
+      "fdv_usd": null,
       "liquidity_usd": 47000.0,
       "volume_24h_usd": 780000.0,
       "holders": 118,
@@ -124,9 +146,24 @@
         "x": false,
         "website": false
       },
-      "data_completeness": 0.35,
-      "fields_present": 14,
-      "fields_expected": 40,
+      "mindshare": {
+        "share_pct": 54.929577464788736,
+        "rank": 1,
+        "percentile": 100.0,
+        "universe_size": 2,
+        "txns_24h": null,
+        "txns_6h": null,
+        "boost_amount": null,
+        "boost_total": null,
+        "boosts_active": null,
+        "pair_count": null,
+        "universe_txns_24h": null,
+        "universe_volume_24h_usd": 1420000.0,
+        "universe_boost_total": null
+      },
+      "data_completeness": 0.35185185185185186,
+      "fields_present": 19,
+      "fields_expected": 54,
       "score": null,
       "rank": null,
       "excluded": true,
@@ -145,8 +182,10 @@
         "community_depth": null,
         "lineage_meta_fit": 5.0,
         "onchain_structure": 67.6,
-        "asymmetry_timing": 69.66666666666667
+        "asymmetry_timing": 69.66666666666667,
+        "mindshare": 100.0
       },
+      "pillar_composite": 50.138461538461534,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -157,7 +196,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "0010a24f-ee5d-4cf8-882e-e41373a06503",
+      "snapshot_id": "3b92b327-d7e3-406b-bfb1-f8649453a0fd",
       "ticker": "$EDGE",
       "chain": "solana",
       "contract": "EDGE4ppppQQQQrrrrSSSStttt1111UUUUvvvvWWWWxx",
@@ -169,7 +208,9 @@
       "age_at_trigger_minutes": 110,
       "regime": "neutral",
       "source": "replay:solana_replay.json",
+      "chain_label": "Solana",
       "mcap_usd": 249999.99,
+      "fdv_usd": null,
       "liquidity_usd": 52000.0,
       "volume_24h_usd": 640000.0,
       "holders": 500,
@@ -181,9 +222,24 @@
         "x": true,
         "website": false
       },
-      "data_completeness": 0.35,
-      "fields_present": 14,
-      "fields_expected": 40,
+      "mindshare": {
+        "share_pct": 45.07042253521127,
+        "rank": 2,
+        "percentile": 50.0,
+        "universe_size": 2,
+        "txns_24h": null,
+        "txns_6h": null,
+        "boost_amount": null,
+        "boost_total": null,
+        "boosts_active": null,
+        "pair_count": null,
+        "universe_txns_24h": null,
+        "universe_volume_24h_usd": 1420000.0,
+        "universe_boost_total": null
+      },
+      "data_completeness": 0.35185185185185186,
+      "fields_present": 19,
+      "fields_expected": 54,
       "score": null,
       "rank": null,
       "excluded": true,
@@ -199,8 +255,10 @@
         "community_depth": null,
         "lineage_meta_fit": 45.0,
         "onchain_structure": 78.79999795199993,
-        "asymmetry_timing": 69.08333333333333
+        "asymmetry_timing": 69.08333333333333,
+        "mindshare": 75.0
       },
+      "pillar_composite": 66.24711451815381,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -211,7 +269,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "34e00115-25c9-47f5-b469-63ecb3ddf83b",
+      "snapshot_id": "a8db338d-3a09-4c24-a503-308ebd5af236",
       "ticker": "$LATE",
       "chain": "solana",
       "contract": "LATE3xqvT1qkNfPjCtq8xJ2mWq6rZ9dHbKcVnA4uYpS",
@@ -223,7 +281,9 @@
       "age_at_trigger_minutes": 120,
       "regime": "neutral",
       "source": "replay:solana_replay.json",
+      "chain_label": "Solana",
       "mcap_usd": 402000.0,
+      "fdv_usd": null,
       "liquidity_usd": 96000.0,
       "volume_24h_usd": 3300000.0,
       "holders": 903,
@@ -235,9 +295,24 @@
         "x": true,
         "website": false
       },
-      "data_completeness": 0.35,
-      "fields_present": 14,
-      "fields_expected": 40,
+      "mindshare": {
+        "share_pct": 25.279607783055003,
+        "rank": 2,
+        "percentile": 75.0,
+        "universe_size": 4,
+        "txns_24h": null,
+        "txns_6h": null,
+        "boost_amount": null,
+        "boost_total": null,
+        "boosts_active": null,
+        "pair_count": null,
+        "universe_txns_24h": null,
+        "universe_volume_24h_usd": 13054000.0,
+        "universe_boost_total": null
+      },
+      "data_completeness": 0.35185185185185186,
+      "fields_present": 19,
+      "fields_expected": 54,
       "score": null,
       "rank": null,
       "excluded": true,
@@ -253,8 +328,10 @@
         "community_depth": null,
         "lineage_meta_fit": 65.0,
         "onchain_structure": 50.0,
-        "asymmetry_timing": 77.33333333333333
+        "asymmetry_timing": 77.33333333333333,
+        "mindshare": 87.5
       },
+      "pillar_composite": 62.21153846153846,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -265,7 +342,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "787eabce-020a-411c-aeb6-2789ded88b6e",
+      "snapshot_id": "a345dd28-8909-4338-a582-d5018cc6ca87",
       "ticker": "$FIRE",
       "chain": "solana",
       "contract": "FIRE1kLmNpQrStUvWxYz2AbCdEfGhJkMnPqRsTuVwXy",
@@ -277,7 +354,9 @@
       "age_at_trigger_minutes": 150,
       "regime": "neutral",
       "source": "replay:solana_replay.json",
+      "chain_label": "Solana",
       "mcap_usd": 251300.0,
+      "fdv_usd": null,
       "liquidity_usd": 68900.0,
       "volume_24h_usd": 1840000.0,
       "holders": 310,
@@ -289,9 +368,24 @@
         "x": true,
         "website": true
       },
-      "data_completeness": 0.35,
-      "fields_present": 14,
-      "fields_expected": 40,
+      "mindshare": {
+        "share_pct": 39.38356164383562,
+        "rank": 2,
+        "percentile": 75.0,
+        "universe_size": 5,
+        "txns_24h": null,
+        "txns_6h": null,
+        "boost_amount": null,
+        "boost_total": null,
+        "boosts_active": null,
+        "pair_count": null,
+        "universe_txns_24h": null,
+        "universe_volume_24h_usd": 4672000.0,
+        "universe_boost_total": null
+      },
+      "data_completeness": 0.35185185185185186,
+      "fields_present": 19,
+      "fields_expected": 54,
       "score": null,
       "rank": null,
       "excluded": true,
@@ -307,8 +401,10 @@
         "community_depth": null,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 50.0,
-        "asymmetry_timing": 68.75
+        "asymmetry_timing": 68.75,
+        "mindshare": 87.5
       },
+      "pillar_composite": 66.94711538461539,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -319,7 +415,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "609efcd2-798f-4c48-a7df-4e5281f02ddf",
+      "snapshot_id": "0a12709f-a727-4e74-b7d5-1951fa8e8118",
       "ticker": "$HOLD",
       "chain": "solana",
       "contract": "HOLD2zYxWvUtSrQpOnMlKjIhGfEdCbA9876543210zz",
@@ -331,7 +427,9 @@
       "age_at_trigger_minutes": 240,
       "regime": "neutral",
       "source": "replay:solana_replay.json",
+      "chain_label": "Solana",
       "mcap_usd": null,
+      "fdv_usd": null,
       "liquidity_usd": 33000.0,
       "volume_24h_usd": 220000.0,
       "holders": 512,
@@ -343,9 +441,24 @@
         "x": false,
         "website": false
       },
-      "data_completeness": 0.3,
-      "fields_present": 12,
-      "fields_expected": 40,
+      "mindshare": {
+        "share_pct": 4.708904109589041,
+        "rank": 4,
+        "percentile": 25.0,
+        "universe_size": 5,
+        "txns_24h": null,
+        "txns_6h": null,
+        "boost_amount": null,
+        "boost_total": null,
+        "boosts_active": null,
+        "pair_count": null,
+        "universe_txns_24h": null,
+        "universe_volume_24h_usd": 4672000.0,
+        "universe_boost_total": null
+      },
+      "data_completeness": 0.3148148148148148,
+      "fields_present": 17,
+      "fields_expected": 54,
       "score": null,
       "rank": null,
       "excluded": true,
@@ -362,8 +475,10 @@
         "community_depth": null,
         "lineage_meta_fit": 45.0,
         "onchain_structure": null,
-        "asymmetry_timing": 57.0
+        "asymmetry_timing": 57.0,
+        "mindshare": 59.589041095890416
       },
+      "pillar_composite": 51.0,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -374,7 +489,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "021aa828-e1aa-4b65-9f85-76d016f97eff",
+      "snapshot_id": "1ccad183-7332-4ba2-9fcf-28da150a97c0",
       "ticker": "$BOTH",
       "chain": "solana",
       "contract": "FIRE5mmmmNNNNooooPPPPqqqqRRRRssssTTTTuuuuVV",
@@ -386,7 +501,9 @@
       "age_at_trigger_minutes": 360,
       "regime": "neutral",
       "source": "replay:solana_replay.json",
+      "chain_label": "Solana",
       "mcap_usd": 260000.0,
+      "fdv_usd": null,
       "liquidity_usd": 74000.0,
       "volume_24h_usd": 2100000.0,
       "holders": 640,
@@ -398,9 +515,24 @@
         "x": true,
         "website": true
       },
-      "data_completeness": 0.35,
-      "fields_present": 14,
-      "fields_expected": 40,
+      "mindshare": {
+        "share_pct": 44.9486301369863,
+        "rank": 1,
+        "percentile": 100.0,
+        "universe_size": 5,
+        "txns_24h": null,
+        "txns_6h": null,
+        "boost_amount": null,
+        "boost_total": null,
+        "boosts_active": null,
+        "pair_count": null,
+        "universe_txns_24h": null,
+        "universe_volume_24h_usd": 4672000.0,
+        "universe_boost_total": null
+      },
+      "data_completeness": 0.35185185185185186,
+      "fields_present": 19,
+      "fields_expected": 54,
       "score": null,
       "rank": null,
       "excluded": true,
@@ -416,8 +548,10 @@
         "community_depth": null,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 50.0,
-        "asymmetry_timing": 67.0
+        "asymmetry_timing": 67.0,
+        "mindshare": 100.0
       },
+      "pillar_composite": 66.44230769230768,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,

@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from collectors import chains
+
 if TYPE_CHECKING:
     from collectors.schema import Snapshot
 
@@ -132,6 +134,10 @@ class FilterInput:
             "top10_ex_lp_pct": snapshot.holders.top10_ex_lp_pct,
             "liquidity_usd": snapshot.market.liquidity_usd,
             "mcap_usd": snapshot.market.mcap_usd,
+            # DexScreener reports FDV, and check_liquidity_depth prefers it over
+            # market cap. On a fresh launch most of the supply is unvested, so the
+            # two differ by a lot and the filter's verdict differs with them.
+            "fdv_usd": snapshot.market.fdv_usd,
             "deployer_prior_rugs": snapshot.deployer.prior_rugs,
         }
         base.update({k: v for k, v in safety.items() if k in cls.__dataclass_fields__})
@@ -297,14 +303,23 @@ def check_liquidity_depth(data: FilterInput) -> FilterResult:
 def check_proxy_risk(data: FilterInput) -> FilterResult:
     """Upgradeable contract whose admin has not been renounced.
 
-    Solana's program model has no proxy in the EVM sense, so a Solana token with no
-    upgradeable flag reported passes rather than hanging as unknown. Every other
-    chain must answer.
+    Proxies are an EVM construct, so the question is decided by whether the chain
+    has an EVM at all -- ``collectors/chains.py`` answers that -- rather than by a
+    literal match on "solana". The distinction started mattering the moment the
+    watcher could hold more than one chain: Sui and TON would otherwise have hung
+    as unknown forever, and a future non-EVM chain would have too.
+
+    A chain the registry has never seen returns ``None`` from ``is_evm`` and comes
+    back unknown. That is the conservative direction and the deliberate one: an
+    unrecognised chain must not inherit Solana's free pass.
     """
     name = "proxy_risk"
     if data.upgradeable is None:
-        if data.chain == "solana":
-            return _ok(name, "not applicable on solana")
+        evm = chains.is_evm(data.chain)
+        if evm is False:
+            return _ok(name, f"proxies are not a construct on {data.chain}")
+        if evm is None:
+            return _unknown(name, f"whether {data.chain} has EVM proxies")
         return _unknown(name, "upgradeability")
     if not data.upgradeable:
         return _ok(name, "contract is not upgradeable")

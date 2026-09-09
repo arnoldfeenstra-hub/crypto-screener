@@ -127,9 +127,27 @@ class TestWatcherCli:
         monkeypatch.setattr(
             "collectors.config.load_dotenv", lambda *a, **k: {}, raising=False
         )
-        code = watcher_main(["--chain", "solana", "--once", "--db", str(tmp_path / "x.duckdb")])
+        code = watcher_main(
+            ["--source", "bitquery", "--chain", "solana", "--once",
+             "--db", str(tmp_path / "x.duckdb")]
+        )
         assert code == 2
         assert "BITQUERY_TOKEN" in capsys.readouterr().err
+
+    def test_an_unsourced_chain_is_refused_rather_than_silently_skipped(
+        self, tmp_path, capsys
+    ):
+        """--chains solana,robinhood collecting only Solana would read as a quiet day.
+
+        Robinhood Chain is a named target in BUILD_BRIEF.md section 4 with no
+        DexScreener coverage. Half-honouring the request would put a chain-shaped
+        hole in the sample that nothing downstream could see.
+        """
+        code = watcher_main(
+            ["--chains", "solana,robinhood", "--once", "--db", str(tmp_path / "y.duckdb")]
+        )
+        assert code == 2
+        assert "robinhood" in capsys.readouterr().err
 
 
 class TestSnapshotCli:
@@ -153,7 +171,19 @@ class TestSnapshotCli:
             "liquidity_usd",
             "volume_24h_usd",
             "price_usd",
+            "fdv_usd",
         }
+        # The mindshare group ships in the section 4 shape too. The replay fixture
+        # reports volume but no transaction counts and no boosts, so the share
+        # resolves from the one component that exists rather than being dragged
+        # down by treating the other two as zero -- and the universe totals are on
+        # the row, so it can be recomputed once the missing components arrive.
+        mindshare = rows[0]["mindshare"]
+        assert mindshare["share_pct"] is not None
+        assert mindshare["universe_size"] >= 1
+        assert mindshare["universe_volume_24h_usd"] is not None
+        assert mindshare["universe_txns_24h"] is None
+        assert mindshare["universe_boost_total"] is None
 
     def test_a_missing_database_is_an_error_not_an_empty_result(self, tmp_path, capsys):
         assert snapshot_main(["--db", str(tmp_path / "nope.duckdb")]) == 2

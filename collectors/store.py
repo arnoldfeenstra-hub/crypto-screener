@@ -36,6 +36,7 @@ import duckdb
 from collectors.schema import (
     LABEL_COLUMNS,
     OUTCOME_OBSERVATION_COLUMNS,
+    SCHEMA_VERSION,
     SCORE_COLUMNS,
     SNAPSHOT_COLUMNS,
     SOCIAL_OBSERVATION_COLUMNS,
@@ -47,6 +48,17 @@ from collectors.schema import (
 
 class AppendOnlyViolation(RuntimeError):
     """Raised when a write would change or duplicate an existing row."""
+
+
+class SchemaMismatch(RuntimeError):
+    """The file on disk was written by an older schema than this code expects.
+
+    Raised on open rather than on the first insert, so the failure names the cause
+    instead of surfacing as a column error halfway through a poll. Nothing is
+    migrated in place: this module has no statement that can change a table, by
+    design, so a widened schema means a new file. The old file keeps every row it
+    had -- the graveyard is the dataset, and it is still there.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +170,27 @@ class Store:
         self._con = duckdb.connect(self.db_path, read_only=read_only)
         if not read_only:
             self._migrate()
+        self._verify_schema()
+
+    def _verify_schema(self) -> None:
+        """Fail loudly if an existing file predates a column this code writes."""
+        existing = {
+            str(row[0])
+            for row in self._con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'snapshots'"
+            ).fetchall()
+        }
+        if not existing:
+            return  # read-only handle on an empty file; nothing to check yet
+        missing = [name for name, _ in SNAPSHOT_COLUMNS if name not in existing]
+        if missing:
+            raise SchemaMismatch(
+                f"{self.db_path} was written under an older schema and has no "
+                f"{', '.join(missing)} column(s). This module never rewrites a table, "
+                f"so point --db at a new file (schema version {SCHEMA_VERSION}); the "
+                "existing file keeps all of its rows."
+            )
 
     def _migrate(self) -> None:
         for statement in (
@@ -531,6 +564,14 @@ class Store:
             "SELECT DISTINCT snapshot_date FROM snapshots ORDER BY snapshot_date"
         ).fetchall()
         return [row[0].isoformat() for row in rows]
+
+    def chain_breakdown(self) -> dict[str, int]:
+        """Snapshots per chain, most first. Feeds the web page's chain filter."""
+        rows = self._con.execute(
+            "SELECT chain, count(*) AS n FROM snapshots GROUP BY chain "
+            "ORDER BY n DESC, chain"
+        ).fetchall()
+        return {row[0]: int(row[1]) for row in rows}
 
     def trigger_breakdown(self) -> dict[str, int]:
         rows = self._con.execute(

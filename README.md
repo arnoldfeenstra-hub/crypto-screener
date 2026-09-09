@@ -2,33 +2,54 @@
 
 Memecoin screener built to [CLAUDE.md](CLAUDE.md) and [BUILD_BRIEF.md](BUILD_BRIEF.md).
 
-**What this is: a data collector with a scorer attached.** It watches new Solana pools,
-snapshots each token once at a fixed trigger, tracks forward outcomes, filters for safety,
-and scores what survives. Per CLAUDE.md the scoring weights are **uncalibrated priors —
-guesses** — until Phase 2 replaces them with fitted coefficients, and Phase 2 needs weeks of
-forward collection that has not happened. Nothing it emits is a prediction, and there is no
-code path that can place an order.
+**What this is: a data collector with a scorer attached.** It watches new pools across
+Solana, BNB Chain, Base and Ethereum, snapshots each token once at a fixed trigger, tracks
+forward outcomes, filters for safety, and scores what survives. Per CLAUDE.md the scoring
+weights are **uncalibrated priors — guesses** — until Phase 2 replaces them with fitted
+coefficients, and Phase 2 needs weeks of forward collection that has not happened. Nothing
+it emits is a prediction, and there is no code path that can place an order.
+
+Data comes from **DexScreener**, which needs no API key. The deployed page also carries a
+live endpoint (`api/screener.py`) that fetches DexScreener at request time, so it shows real
+tokens whether or not a collector has ever run.
 
 ## Status
 
 | Phase | Status |
 |---|---|
+| 0.0 live source (DexScreener, keyless, multi-chain) | Built |
 | 0.1 trigger watcher | Built |
 | 0.2 snapshot writer | Built |
 | 0.3 social collectors (X + Telegram) | Built |
 | 0.4 outcome tracker | Built |
 | 0.5 on-chain backfill | Built |
+| 0.6 mindshare (share-of-attention variable) | Built, weight 0.00 in the composite |
 | 1 hard filters | Built, 8/8 filters |
 | 1 scoring runner | Built, paper mode only |
 | 2 calibration (fit + report) | Built, gated on Phase 0 exit criteria |
 | 3 live ranking | **Not built, and should not be** — gated on Phase 2 measuring an edge |
-| Web viewer | Built, `web/`, ready for Vercel |
+| Web viewer | Built, `web/` + `api/screener.py`, chain and mindshare filters |
 
-336 tests, no network, ~6s. `ruff` clean.
+467 tests, no network, ~6s. `ruff` clean.
+
+## Run it against real data
+
+No API key, no signup. DexScreener is keyless:
+
+```bash
+python -m collectors.dexscreener --probe --chains solana,bnb          # see what comes back
+python -m collectors.trigger_watcher --chains solana,bnb,base --once --db data/screener.duckdb --regime neutral
+python -m scoring.runner --db data/screener.duckdb --regime neutral
+python -m export_web --db data/screener.duckdb
+```
+
+Leave the watcher running (drop `--once`) and it polls forever, firing one snapshot per
+token at first crossing. `python -m collectors.outcomes --reprice --refresh-labels` on a
+schedule fills the forward labels.
 
 ## Try the whole pipeline offline
 
-No API key needed — a recorded fixture drives it end to end:
+A recorded fixture drives it end to end, no network at all:
 
 ```bash
 python -m collectors.trigger_watcher --replay fixtures/solana_replay.json --cycles 3 --poll-seconds 0 --db data/demo.duckdb --regime neutral
@@ -45,50 +66,99 @@ python -m http.server 8899 --directory web
 
 ## Deploying to Vercel
 
-`vercel.json` and `.vercelignore` follow the same pattern as your zittingsrooster project:
-static `web/`, no install step, no build step.
+The deployment is two halves, both from the **repo root** (not from `web/`):
 
-Node 24 and Vercel CLI 59 are installed (winget, user scope). **The remaining step needs
-your account** — I can't authenticate as you:
+- `web/` — the static page, served as-is. No build step.
+- `api/screener.py` — one Python serverless function that polls DexScreener at request time
+  and returns a live, scored ranking. **Stdlib only**, so there is no `requirements.txt` and
+  nothing is installed at deploy time; `.vercelignore` deliberately hides `pyproject.toml`
+  so the builder does not try.
+
+If the repo is connected to a Vercel project, pushing to the branch deploys it. Otherwise:
 
 ```bash
-vercel login
+vercel login          # authenticates as you, in a browser; cannot be automated
+./deploy.sh --prod    # macOS/Linux
+.\deploy.ps1 -Production   # Windows
 ```
 
-Then:
+Both scripts re-export `web/screener-data.json` from the database first, check auth, and
+stop with instructions rather than failing halfway.
+
+**If the function ever causes trouble**, deleting `api/` and the `functions` block from
+`vercel.json` leaves a working static deploy — the page falls back to the exported dataset
+on its own and says on the page that the live view is unavailable.
+
+## The other collectors
 
 ```bash
-./deploy.ps1 -Production
-```
-
-`deploy.ps1` re-exports the JSON from the database and deploys `web/`. It checks auth first
-and stops with instructions rather than failing halfway.
-
-The alternative, matching zittingsrooster exactly, is to push this repo to GitHub and connect
-it in the Vercel dashboard — Vercel then rebuilds on every push. That needs a `gh auth login`
-first; `gh` is installed but not logged in.
-
-## Running against live data
-
-```bash
-cp .env.example .env      # then fill in BITQUERY_TOKEN
-python -m collectors.bitquery --probe          # verify the queries against the live schema
-python -m collectors.trigger_watcher --chain solana --regime neutral
-python -m collectors.outcomes --refresh-labels  # on a schedule
 python -m collectors.social_tg                  # no key needed (public t.me previews)
 python -m collectors.social_x                   # needs X_BEARER_TOKEN
+cp .env.example .env                            # BITQUERY_TOKEN, for the Bitquery source
+python -m collectors.bitquery --probe           # verify its queries against the live schema
+python -m collectors.trigger_watcher --source bitquery --chain solana
 ```
 
-**Probe first.** The three GraphQL queries in `collectors/bitquery.py` are written against
-Bitquery's documented Solana EAP schema but have never run against it. The parsers are tested
-and total; the query text is the unverified part. `--probe` runs each once and reports what
-came back; re-record `fixtures/bitquery_responses.json` from its output if a shape differs,
-and the parser tests will point at exactly what to change.
+Bitquery is still wired up and is the only source that can answer holder counts, but it needs
+a paid key and its three GraphQL queries have never run against the live endpoint. DexScreener
+is the default source because it needs neither.
+
+## Mindshare
+
+A token's **share of the attention observed across the tokens polled with it**, from three
+raw components — 24h transaction count, 24h volume, and DexScreener boost spend — each taken
+as a share of the universe total and averaged over the ones that resolved.
+
+- It is on-chain and paid attention, **not** social mentions. It is not a substitute for the
+  X collector and must not be read as one.
+- **It carries weight 0.00 in the composite score.** `.claude/rules/stats.md` allows only
+  fitted coefficients into the weight vector, and mindshare has no outcome data behind it
+  yet. So it is collected, scored, displayed, filtered on and handed to calibration — and it
+  changes no score until Phase 2 fits it. `tests/test_mindshare.py` asserts that the
+  composite is numerically identical with the pillar present and absent.
+- The **raw components and the universe totals they were divided by** are both stored, so the
+  share can be recomputed when the formula changes rather than being stranded
+  (`collectors.mindshare.recompute_share`).
+- **The universe is a biased sample**: a token enters it by being boosted or profiled on
+  DexScreener. That is stated on the page and recorded on every row as `universe_size`.
+
+The most informative part is the **organic tilt**: boost spend share divided by trade-count
+share. Above 1, more of the token's visibility was bought than traded. Bought mindshare and
+earned mindshare are identical in a share number and are opposite signals.
+
+## Chains
+
+`collectors/chains.py` is the single registry. DexScreener calls BNB Chain `bsc` and
+BUILD_BRIEF.md section 4 calls it `bnb`; every source normalises through `canonical()` on the
+way in, so one chain is never two rows in a `GROUP BY` or two entries in the page's chain
+filter. Covered today: Solana, BNB Chain, Ethereum, Base, Arbitrum, Polygon, Avalanche,
+Optimism, Blast, Sui, TON, Tron. Robinhood Chain is registered as a named target with no
+source — `--chains robinhood` fails by name rather than collecting nothing, because a silent
+skip and a quiet day look identical in the counts afterwards.
+
+The trigger never sees the chain, so tokens from every chain enter the sample on identical
+terms. `filters/hard_filters.py` asks the registry whether a chain is EVM rather than
+matching the literal string `"solana"`, so the proxy check is right on Sui and TON too — and
+returns *unknown* for a chain the registry has never met, rather than handing it Solana's
+free pass.
 
 ## Honest limitations
 
-- **The Bitquery queries are unverified.** See above. Everything downstream is tested; this
-  is the seam where reality gets in.
+- **The DexScreener response shapes are unverified against the live API.** The parsers are
+  tested and total, but `fixtures/dexscreener_responses.json` was written to the documented
+  schema, not recorded off the wire — the session that wrote the module had no egress to
+  `api.dexscreener.com`. Run `python -m collectors.dexscreener --probe` first; if a shape
+  differs, re-record the fixture and the parser tests will point at exactly what to change.
+  Because the parsers are total, a shape change degrades to nulls rather than crashing.
+- **DexScreener reports no holder counts.** So only the `mcap_250k` half of the trigger can
+  fire from it — a missing holder count never crosses 500 — and pillar D loses its holder
+  growth component. Visible in `trigger_breakdown`.
+- **Discovery is boosted and profiled tokens, not every new pool.** There is no keyless
+  new-pool firehose. A token reaches the sample because someone paid to boost it or filled in
+  its profile, which is a real selection effect on the population *and* the denominator of
+  every mindshare figure. Stated on the page rather than hidden.
+- **The Bitquery queries are unverified.** Everything downstream is tested; this is the other
+  seam where reality gets in.
 - **Telegram message rates and unique speakers are not collected.** The public t.me preview
   gives member and online counts without any credential, which is why the collector runs
   today — but pillar B cares most about *speaker ratio*, and that needs a real Telegram
@@ -103,8 +173,11 @@ and the parser tests will point at exactly what to change.
   proxy admin come from a safety source (RugCheck / GoPlus / Honeypot.is) that isn't wired
   up. Unknown never passes a filter, so the exclusion is correct — it just isn't evidence.
   The page shows both counts separately.
-- **Only Solana has a source.** BNB is "same shape" per §1 but a separate query set;
-  `BitqueryFeed.poll()` raises rather than silently collecting nothing.
+- **Only Solana has a Bitquery source.** DexScreener covers the other chains;
+  `BitqueryFeed.poll()` still raises for a non-Solana chain rather than silently collecting
+  nothing.
+- **The live endpoint stores nothing.** It is a view. Rows shown there are not dataset rows,
+  and the page says so; only the collector writes.
 
 ## Layout
 
@@ -113,7 +186,11 @@ Follows BUILD_BRIEF.md §5. Extra modules inside `collectors/` (`config`, `schem
 
 ```
 collectors/
-  trigger_watcher.py   0.1 — the trigger rule, and the poll loop around it
+  chains.py            canonical chain names, EVM flags, DexScreener id mapping
+  dexscreener.py       the live source: keyless client, pure parsers, multi-chain feed
+  mindshare.py         share-of-observed-attention, with the denominators kept
+  trigger_rule.py      the trigger rule alone, importable without DuckDB
+  trigger_watcher.py   0.1 — the poll loop around it
   snapshot.py          0.2 — §4 schema mapping + read-only inspection CLI
   social_x.py          0.3 — X API v2 recent search, raw counts only
   social_tg.py         0.3 — public t.me previews, no credentials
@@ -124,13 +201,23 @@ collectors/
   schema.py store.py metrics.py config.py
 filters/hard_filters.py    Phase 1 — the eight checks, three-way outcomes
 scoring/pillars.py         Phase 1 — deterministic pillar maths (what Phase 2 fits)
+scoring/candidate.py       Phase 1 — snapshot row → candidate packet, no store needed
+scoring/prompt_meta.py     Phase 1 — prompt_version and the SYSTEM block
 scoring/runner.py          Phase 1 — filters → pillars → narrative → stored row
 calibration/fit.py         Phase 2 — time split, logistic fit, AUC/lift/intervals
 calibration/report.py      Phase 2 — the verdict, with two ways to say "no"
 export_web.py              DuckDB → web/screener-data.json
-web/                       static viewer (Vercel)
-tests/                     336 tests, no network
+api/screener.py            Vercel function: live DexScreener → scored ranking (stdlib only)
+web/                       static viewer (Vercel), chain + mindshare filters
+tests/                     467 tests, no network
 ```
+
+Four modules were split out so `api/screener.py` can share the repo's real logic instead of
+reimplementing it on the serverless side: `collectors/trigger_rule.py`,
+`scoring/candidate.py`, `scoring/prompt_meta.py`, and the DuckDB import inside
+`collectors/snapshot.py` made lazy. Every original import site still works — the old modules
+re-export the moved names, and `tests/test_chains_and_live.py` asserts the endpoint holds the
+*same function objects* the collector does, so the live and stored rankings cannot drift.
 
 ## The invariants the tests defend
 

@@ -6,22 +6,14 @@ BUILD_BRIEF.md section 3:
     first crosses the trigger: *either* $250k mcap *or* 500 holders, whichever
     first. Record which trigger fired. Same rule for every token, no exceptions.
 
-"Same rule for every token, no exceptions" is the load-bearing sentence, because
-the whole calibration design rests on a lifecycle-matched sample: every token
-captured at the same point in its life. A per-token exception, a manual override, a
-"this one looks interesting so grab it early" -- any of those silently turns the
-dataset into the thing CLAUDE.md warns about, a comparison of winners at peak
-against losers at launch.
+The rule itself lives in ``collectors/trigger_rule.py`` and is imported, not
+restated -- one function object, shared by the watcher, the backfill and the
+serverless live endpoint, so the three cannot drift apart. This module is the loop
+around it: polling a feed, deciding what is new, and writing what fires.
 
-So the rule is a pure function of exactly two numbers:
-
-    evaluate(mcap_usd, holder_count) -> TriggerDecision
-
-It cannot see the ticker, the chain, the deployer, the social profile, or the
-clock, because it is not given them. There is no allowlist, no skiplist, and no
-threshold parameter anywhere in this module. Changing a threshold means editing a
-module constant and bumping the schema, which is a visible commit, not a runtime
-flag someone can pass on a Tuesday.
+The watcher can hold several chains at once. That changes nothing about the rule,
+which never sees the chain; it only means one process fills the cross-chain sample
+instead of one process per chain.
 """
 
 from __future__ import annotations
@@ -29,90 +21,46 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import math
 import sys
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Protocol
 
+from collectors import chains
+from collectors import mindshare as mindshare_mod
 from collectors.config import load_config
 from collectors.metrics import Observation, TokenMetrics
 from collectors.snapshot import build_snapshot
 from collectors.store import AppendOnlyViolation, Store, TriggerEvent
 
+# Re-exported so every existing import site keeps working and keeps getting the
+# *same* function object. tests/test_social_and_backfill.py asserts that identity.
+from collectors.trigger_rule import (
+    TRIGGER_HOLDER_COUNT,
+    TRIGGER_HOLDERS,
+    TRIGGER_MCAP,
+    TRIGGER_MCAP_USD,
+    TriggerDecision,
+    evaluate,
+)
+
+__all__ = [
+    "TRIGGER_HOLDERS",
+    "TRIGGER_HOLDER_COUNT",
+    "TRIGGER_MCAP",
+    "TRIGGER_MCAP_USD",
+    "TriggerDecision",
+    "TriggerWatcher",
+    "WatchStats",
+    "evaluate",
+    "evaluate_metrics",
+    "evaluate_observation",
+    "main",
+]
+
 log = logging.getLogger("trigger_watcher")
-
-# The trigger. One threshold pair, applied to every token on every chain.
-TRIGGER_MCAP_USD: Final[float] = 250_000.0
-TRIGGER_HOLDER_COUNT: Final[int] = 500
-
-# The two members of the section 4 `trigger` enum.
-TRIGGER_MCAP: Final[str] = "mcap_250k"
-TRIGGER_HOLDERS: Final[str] = "holders_500"
-
-
-@dataclass(frozen=True, slots=True)
-class TriggerDecision:
-    """Whether a token crossed, and on which condition."""
-
-    fired: bool
-    trigger: str | None
-    mcap_crossed: bool
-    holders_crossed: bool
-
-    @property
-    def both_crossed(self) -> bool:
-        return self.mcap_crossed and self.holders_crossed
-
-
-def _crossed(value: float | int | None, threshold: float) -> bool:
-    """A threshold test that treats missing data as missing, never as zero.
-
-    ``None`` does not cross. NaN and infinity do not cross either: they are what a
-    broken upstream response looks like, not measurements. This is hard rule 3 at
-    the one place where imputing a zero would quietly change which tokens enter
-    the dataset.
-    """
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return False
-    number = float(value)
-    if not math.isfinite(number):
-        return False
-    return number >= threshold
-
-
-def evaluate(mcap_usd: float | None, holder_count: int | None) -> TriggerDecision:
-    """The trigger rule. A pure function of two numbers, identical for every token.
-
-    Fires on ``mcap_usd >= 250_000`` or ``holder_count >= 500``, whichever the
-    watcher sees first.
-
-    When a single observation shows both conditions already met -- which happens
-    when a token crosses between two polls, or when a backfill hands us a token
-    long past both thresholds -- "whichever first" is unanswerable from the data,
-    so ``trigger`` is set to ``mcap_250k`` by a fixed tie-break and both crossing
-    flags are recorded on the row. The tie-break is arbitrary but constant; what
-    matters is that it is not per-token, and that ``trigger_holders_crossed``
-    preserves what actually happened.
-    """
-    mcap_crossed = _crossed(mcap_usd, TRIGGER_MCAP_USD)
-    holders_crossed = _crossed(holder_count, TRIGGER_HOLDER_COUNT)
-    if mcap_crossed:
-        trigger = TRIGGER_MCAP
-    elif holders_crossed:
-        trigger = TRIGGER_HOLDERS
-    else:
-        trigger = None
-    return TriggerDecision(
-        fired=trigger is not None,
-        trigger=trigger,
-        mcap_crossed=mcap_crossed,
-        holders_crossed=holders_crossed,
-    )
 
 
 def evaluate_observation(observation: Observation) -> TriggerDecision:
@@ -177,8 +125,13 @@ class TriggerWatcher:
         # mistaken for a new one.
         self._fired: set[tuple[str, str]] = set()
 
-    def offer(self, metrics: TokenMetrics):
-        """Consider one observation. Returns the written Snapshot, or ``None``."""
+    def offer(self, metrics: TokenMetrics, mindshare=None):
+        """Consider one observation. Returns the written Snapshot, or ``None``.
+
+        ``mindshare`` is supplied by :meth:`process`, which holds the whole batch
+        and can therefore compute a share. It is never derived here from one token,
+        because a share of a universe of one is 100% and means nothing.
+        """
         self.stats.observed += 1
         key = (metrics.chain, metrics.contract)
 
@@ -191,7 +144,13 @@ class TriggerWatcher:
         if not decision.fired:
             return None
 
-        snapshot = build_snapshot(metrics, decision, source=self.source, regime=self.regime)
+        snapshot = build_snapshot(
+            metrics,
+            decision,
+            source=self.source,
+            regime=self.regime,
+            mindshare=mindshare,
+        )
         event = TriggerEvent(
             chain=metrics.chain,
             contract=metrics.contract,
@@ -242,7 +201,20 @@ class TriggerWatcher:
         return snapshot
 
     def process(self, batch: Iterable[TokenMetrics]) -> list:
-        return [snap for m in batch if (snap := self.offer(m)) is not None]
+        """Offer a whole poll to the trigger, with mindshare measured across it.
+
+        The batch is the measurement universe. It is computed over *every* token
+        polled, not only the ones that fire: a share whose denominator was the
+        already-filtered set would be a share of the survivors, which is the
+        selection effect prompts/score.md step 5 exists to warn about.
+        """
+        tokens = list(batch)
+        shares = mindshare_mod.compute(tokens) if tokens else {}
+        return [
+            snap
+            for m in tokens
+            if (snap := self.offer(m, shares.get((m.chain, m.contract)))) is not None
+        ]
 
     def run(
         self,
@@ -272,16 +244,33 @@ class TriggerWatcher:
 
 
 def _build_feed(args: argparse.Namespace, config) -> Feed:
+    """Pick the source. DexScreener is the default because it needs no credential.
+
+    ``--replay`` is a recorded fixture and produces synthetic rows; the export
+    marks them so nobody reads a replay as a collection run.
+    """
+    requested = [c.strip() for c in args.chains.split(",") if c.strip()]
+
     if args.replay:
         from collectors.bitquery import ReplayFeed
 
-        return ReplayFeed.from_path(Path(args.replay), chain=args.chain)
-    from collectors.bitquery import BitqueryClient, BitqueryFeed
+        return ReplayFeed.from_path(Path(args.replay), chain=requested[0])
 
-    client = BitqueryClient(
-        token=config.require_bitquery(), endpoint=config.bitquery_endpoint
+    if args.source == "bitquery":
+        from collectors.bitquery import BitqueryClient, BitqueryFeed
+
+        client = BitqueryClient(
+            token=config.require_bitquery(), endpoint=config.bitquery_endpoint
+        )
+        return BitqueryFeed(
+            client, chain=requested[0], lookback_minutes=args.lookback_minutes
+        )
+
+    from collectors.dexscreener import DexScreenerFeed
+
+    return DexScreenerFeed.for_chains(
+        requested, max_tokens_per_poll=args.max_tokens_per_poll
     )
-    return BitqueryFeed(client, chain=args.chain, lookback_minutes=args.lookback_minutes)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -292,7 +281,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             "time it crosses $250k mcap or 500 holders."
         ),
     )
-    parser.add_argument("--chain", default="solana", help="chain to watch (default: solana)")
+    parser.add_argument(
+        "--chains",
+        default=",".join(chains.DEFAULT_CHAINS),
+        help=(
+            "comma-separated chains to watch (default: "
+            f"{','.join(chains.DEFAULT_CHAINS)}). Supported by the DexScreener "
+            f"source: {', '.join(chains.supported_names())}"
+        ),
+    )
+    parser.add_argument(
+        "--chain",
+        dest="chains",
+        help="single chain; alias for --chains, kept for older invocations",
+    )
+    parser.add_argument(
+        "--source",
+        choices=["dexscreener", "bitquery"],
+        default="dexscreener",
+        help="live source (default: dexscreener -- real data, no API key)",
+    )
+    parser.add_argument(
+        "--max-tokens-per-poll",
+        type=int,
+        default=120,
+        help="cap on tokens looked up per poll (DexScreener source)",
+    )
     parser.add_argument("--db", help="DuckDB path (default: SCREENER_DB_PATH)")
     parser.add_argument("--poll-seconds", type=int, help="override WATCHER_POLL_SECONDS")
     parser.add_argument(
@@ -334,7 +348,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         feed = _build_feed(args, config)
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -348,9 +362,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         stats = watcher.run(feed, poll_seconds=poll_seconds, max_cycles=cycles)
         summary = {
             "db": db_path,
-            "chain": args.chain,
+            "chains": list(
+                getattr(feed, "chain_names", None)
+                or [c.strip() for c in args.chains.split(",") if c.strip()]
+            ),
+            "source": getattr(feed, "source_name", "unknown"),
             "snapshots_total": 0 if args.dry_run else store.snapshot_count(),
             "trigger_breakdown": {} if args.dry_run else store.trigger_breakdown(),
+            "chain_breakdown": {} if args.dry_run else store.chain_breakdown(),
             **stats.as_dict(),
         }
         if args.export_parquet and not args.dry_run:

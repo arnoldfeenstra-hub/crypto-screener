@@ -342,6 +342,11 @@ class BitqueryFeed:
     pool_limit: int = 500
     source_name: str = "bitquery"
 
+    @property
+    def chain_names(self) -> tuple[str, ...]:
+        """What this feed actually covers. One chain; the watcher reports it as-is."""
+        return (self.chain,)
+
     def poll(self) -> list[TokenMetrics]:
         if self.chain != "solana":
             raise NotImplementedError(
@@ -385,6 +390,7 @@ class ReplayFeed:
 
     batches: list[list[TokenMetrics]]
     source_name: str = "replay"
+    chain_names: tuple[str, ...] = ("solana",)
     _cursor: int = 0
 
     @classmethod
@@ -396,7 +402,13 @@ class ReplayFeed:
         batches = [
             [_metrics_from_dict(item, chain) for item in batch] for batch in raw_batches
         ]
-        return cls(batches=batches, source_name=f"replay:{Path(path).name}")
+        # The fixture is replayed onto one chain, so the watcher's summary reports
+        # that one rather than whatever --chains happened to say.
+        return cls(
+            batches=batches,
+            source_name=f"replay:{Path(path).name}",
+            chain_names=(chain,),
+        )
 
     def poll(self) -> list[TokenMetrics]:
         if self._cursor >= len(self.batches):

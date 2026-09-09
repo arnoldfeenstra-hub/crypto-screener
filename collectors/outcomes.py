@@ -33,6 +33,12 @@ is the only reference a backtest starting at the snapshot can use.
 
 **Dead tokens are kept.** Survival is a label, not a filter (hard rule 1). A token
 that went to zero produces a complete, valuable row.
+
+**A token the price source cannot find is not a token at zero.** ``reprice_due``
+counts it as missing and writes nothing. DexScreener returning no pool means the
+pool is gone *or* the request failed, and only the first is a total loss; the gap
+in the price path keeps both recoverable, while a written zero would erase the
+difference permanently.
 """
 
 from __future__ import annotations
@@ -265,6 +271,45 @@ class OutcomeTracker:
             ]
         )
 
+    def reprice_due(self, price_source: Any, *, as_of_ms: int | None = None) -> dict[str, int]:
+        """Re-price every token that is due, from a live source.
+
+        ``price_source`` is anything with ``fetch([(chain, contract), ...])``
+        returning ``{(chain, contract): TokenMetrics}``;
+        :class:`collectors.dexscreener.DexScreenerPriceSource` is the one wired to
+        the CLI. Tokens the source did not return are counted as ``missing``, not
+        written as zero: a token DexScreener has no pool for might be dead or might
+        be an outage, and only one of those is a total loss. The distinction is
+        recoverable later from the gap in the price path; a fabricated zero is not.
+        """
+        due = self.due(as_of_ms=as_of_ms)
+        if not due:
+            return {"due": 0, "repriced": 0, "missing": 0}
+
+        by_key = {(row["chain"], row["contract"]): row["snapshot_id"] for row in due}
+        found = price_source.fetch(list(by_key))
+
+        observations = [
+            PriceObservation(
+                snapshot_id=snapshot_id,
+                ts=metrics.observed_at_ms,
+                mcap_usd=metrics.mcap_usd,
+                price_usd=metrics.price_usd,
+                liquidity_usd=metrics.liquidity_usd,
+                volume_24h_usd=metrics.volume_24h_usd,
+                holder_count=metrics.holder_count,
+                source=metrics.source,
+            )
+            for key, snapshot_id in by_key.items()
+            if (metrics := found.get(key)) is not None
+        ]
+        written = self.record(observations) if observations else 0
+        return {
+            "due": len(due),
+            "repriced": written,
+            "missing": len(by_key) - len(observations),
+        }
+
     def refresh_labels(self, *, as_of_ms: int | None = None) -> list[Labels]:
         """Recompute and append labels for every snapshot with a price path."""
         as_of = as_of_ms if as_of_ms is not None else now_ms()
@@ -313,6 +358,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="recompute labels from the stored price paths and append them",
     )
     parser.add_argument("--due", action="store_true", help="list tokens due a re-price")
+    parser.add_argument(
+        "--reprice",
+        action="store_true",
+        help="fetch live prices for due tokens from DexScreener (no API key needed)",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
 
@@ -330,11 +380,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             due = tracker.due()
             payload["due_for_repricing"] = len(due)
             payload["contracts"] = [d["contract"] for d in due[:20]]
+        if args.reprice:
+            from collectors.dexscreener import DexScreenerClient, DexScreenerPriceSource
+
+            payload["reprice"] = tracker.reprice_due(
+                DexScreenerPriceSource(DexScreenerClient())
+            )
         if args.refresh_labels:
             written = tracker.refresh_labels()
             payload["labels_written"] = len(written)
             payload["complete_7d"] = sum(1 for label in written if label.complete)
-        if not args.due and not args.refresh_labels:
+        if not args.due and not args.refresh_labels and not args.reprice:
             payload["labelled_snapshots"] = store.labelled_snapshot_count()
     print(json.dumps(payload, indent=2, default=str))
     return 0

@@ -1,0 +1,184 @@
+{
+  "_comment": [
+    "Response shapes for collectors/dexscreener.py, used by tests/test_dexscreener.py.",
+    "",
+    "PROVENANCE, stated plainly: these are hand-built to DexScreener's documented",
+    "response schema. They were NOT recorded from the live API -- the session that",
+    "wrote this module had no egress to api.dexscreener.com. So the parsers are",
+    "verified against this file and the field names come from the documentation, but",
+    "the shapes have the same status as the Bitquery query text in collectors/",
+    "bitquery.py: written against a published schema, unconfirmed against the wire.",
+    "",
+    "Confirm and re-record on first run:",
+    "    python -m collectors.dexscreener --probe --chains solana,bnb",
+    "If a shape differs, replace the block below with the real response and the",
+    "parser tests will point at exactly what has to change. The parsers are total --",
+    "every field may be absent -- so a shape change degrades to nulls rather than",
+    "crashing, which is the failure mode you want while this is unverified.",
+    "",
+    "The cases below are chosen to exercise the edges the parsers actually have to",
+    "survive: numbers sent as strings, a token with two pools, a missing info block,",
+    "a measured zero next to an absent field, a chain the registry does not know, and",
+    "a pair whose baseToken has no address."
+  ],
+  "token_boosts_top": [
+    {
+      "url": "https://dexscreener.com/solana/AAA",
+      "chainId": "solana",
+      "tokenAddress": "AAA1111111111111111111111111111111111111111",
+      "amount": 500,
+      "totalAmount": 1500,
+      "icon": "https://example.invalid/icon.png",
+      "description": "boosted, all three socials declared",
+      "links": [
+        { "type": "twitter", "url": "https://x.com/example" },
+        { "type": "telegram", "url": "https://t.me/example" },
+        { "label": "Website", "url": "https://example.invalid" }
+      ]
+    },
+    {
+      "url": "https://dexscreener.com/bsc/0xBBB",
+      "chainId": "bsc",
+      "tokenAddress": "0xBBB0000000000000000000000000000000000002",
+      "amount": 0,
+      "totalAmount": 0,
+      "description": "a measured zero: boosted once, spend expired",
+      "links": [{ "type": "twitter", "url": "https://twitter.com/example2" }]
+    },
+    {
+      "chainId": "hyperliquid",
+      "tokenAddress": "0xZZZ0000000000000000000000000000000000009",
+      "amount": 100,
+      "totalAmount": 100,
+      "description": "a chain the registry has never heard of; kept, not renamed"
+    },
+    {
+      "chainId": "solana",
+      "description": "no tokenAddress at all -- skipped rather than guessed"
+    }
+  ],
+  "token_profiles_latest": [
+    {
+      "url": "https://dexscreener.com/base/0xCCC",
+      "chainId": "base",
+      "tokenAddress": "0xCCC0000000000000000000000000000000000003",
+      "description": "profiled, no boosts, no link list at all"
+    },
+    {
+      "url": "https://dexscreener.com/solana/AAA",
+      "chainId": "solana",
+      "tokenAddress": "AAA1111111111111111111111111111111111111111",
+      "description": "same token as the boost list; merged, not duplicated",
+      "links": [{ "label": "Website", "url": "https://example.invalid" }]
+    }
+  ],
+  "pairs_response": {
+    "schemaVersion": "1.0.0",
+    "pairs": [
+      {
+        "chainId": "solana",
+        "dexId": "raydium",
+        "url": "https://dexscreener.com/solana/pair1",
+        "pairAddress": "PAIR1",
+        "baseToken": {
+          "address": "AAA1111111111111111111111111111111111111111",
+          "name": "Alpha Example",
+          "symbol": "ALPHA"
+        },
+        "quoteToken": { "address": "So11111111111111111111111111111111111111112", "symbol": "SOL" },
+        "priceNative": "0.00000412",
+        "priceUsd": "0.0008241",
+        "txns": {
+          "m5": { "buys": 12, "sells": 9 },
+          "h1": { "buys": 140, "sells": 96 },
+          "h6": { "buys": 800, "sells": 610 },
+          "h24": { "buys": 2400, "sells": 1900 }
+        },
+        "volume": { "h24": 1850000.5, "h6": 620000.0, "h1": 90000.0, "m5": 8000.0 },
+        "priceChange": { "m5": 1.2, "h1": -3.4, "h6": 12.5, "h24": 48.9 },
+        "liquidity": { "usd": 128000.25, "base": 92000000, "quote": 410.5 },
+        "fdv": 924000,
+        "marketCap": 806000,
+        "pairCreatedAt": 1788905000000,
+        "info": {
+          "imageUrl": "https://example.invalid/alpha.png",
+          "websites": [{ "label": "Website", "url": "https://alpha.invalid" }],
+          "socials": [
+            { "type": "twitter", "url": "https://x.com/alpha" },
+            { "type": "telegram", "url": "https://t.me/alpha" }
+          ]
+        },
+        "boosts": { "active": 500 }
+      },
+      {
+        "chainId": "solana",
+        "dexId": "meteora",
+        "pairAddress": "PAIR2",
+        "baseToken": {
+          "address": "AAA1111111111111111111111111111111111111111",
+          "name": "Alpha Example",
+          "symbol": "ALPHA"
+        },
+        "quoteToken": { "address": "So11111111111111111111111111111111111111112", "symbol": "SOL" },
+        "priceUsd": "0.0008180",
+        "txns": { "h24": { "buys": 300, "sells": 250 }, "h6": { "buys": 90, "sells": 70 } },
+        "volume": { "h24": 210000.0, "h6": 70000.0 },
+        "liquidity": { "usd": 31000.0 },
+        "fdv": 921000,
+        "marketCap": 804000,
+        "pairCreatedAt": 1788909000000
+      },
+      {
+        "chainId": "bsc",
+        "dexId": "pancakeswap",
+        "pairAddress": "PAIR3",
+        "baseToken": {
+          "address": "0xBBB0000000000000000000000000000000000002",
+          "name": "Beta Example",
+          "symbol": "BETA"
+        },
+        "quoteToken": { "address": "0xWBNB", "symbol": "WBNB" },
+        "priceUsd": "0.0421",
+        "txns": { "h24": { "buys": 410, "sells": 388 } },
+        "volume": { "h24": 305000.0 },
+        "liquidity": { "usd": 42000.0 },
+        "fdv": 318000,
+        "marketCap": 312000,
+        "pairCreatedAt": 1788820000000,
+        "info": { "socials": [{ "type": "twitter", "url": "https://x.com/beta" }] }
+      },
+      {
+        "chainId": "base",
+        "dexId": "uniswap",
+        "pairAddress": "PAIR4",
+        "baseToken": {
+          "address": "0xCCC0000000000000000000000000000000000003",
+          "name": "Gamma Example",
+          "symbol": "GAMMA"
+        },
+        "priceUsd": "0.00012",
+        "txns": { "h24": { "buys": 20, "sells": 14 } },
+        "volume": { "h24": 9000.0 },
+        "liquidity": { "usd": 6100.0 },
+        "marketCap": 41000,
+        "pairCreatedAt": 1788911000000
+      },
+      {
+        "chainId": "solana",
+        "dexId": "orca",
+        "pairAddress": "PAIR5",
+        "baseToken": { "name": "No Address", "symbol": "NOPE" },
+        "volume": { "h24": 1000.0 },
+        "liquidity": { "usd": 500.0 }
+      }
+    ]
+  },
+  "malformed_responses": [
+    null,
+    [],
+    {},
+    { "pairs": null },
+    { "pairs": [{ "chainId": "solana" }] },
+    { "pairs": ["not an object"] }
+  ]
+}

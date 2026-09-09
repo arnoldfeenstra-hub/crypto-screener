@@ -38,30 +38,44 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from collectors.config import load_config
-from collectors.schema import FEATURE_GROUPS, now_ms
+from collectors.schema import now_ms
 from collectors.store import Store
-from filters.hard_filters import FilterInput, Verdict, apply
-from scoring.pillars import WEIGHTS, PillarResult, score_candidate
+from filters.hard_filters import Verdict, apply
+from scoring.candidate import candidate_from_row, filter_input_from_candidate
+from scoring.pillars import WEIGHTS, WEIGHTS_VERSION, PillarResult, score_candidate
+from scoring.prompt_meta import PROMPT_PATH, prompt_version, system_prompt
 
 log = logging.getLogger("scoring")
 
 PHASE = "1"
 PAPER_MODE_ONLY = True
 DEFAULT_MODEL = "claude-opus-5"
-# Bumped whenever scoring/pillars.py WEIGHTS change. Stored on every row so a score
-# can be traced to the numbers that produced it.
-WEIGHTS_VERSION = "priors-v1"
 NO_EDGE_THRESHOLD = 55.0
 
-PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "score.md"
+# WEIGHTS_VERSION, PROMPT_PATH, prompt_version and system_prompt are imported above
+# and re-exported here. They moved to scoring/pillars.py and scoring/prompt_meta.py
+# so api/screener.py can stamp the same versions on a live row without importing
+# DuckDB through the store; this module was their home, and every existing import
+# site still works.
+__all__ = [
+    "PROMPT_PATH",
+    "WEIGHTS_VERSION",
+    "Narrative",
+    "NarrativeClient",
+    "ScoredBatch",
+    "ScoringRunner",
+    "candidate_from_row",
+    "filter_input_from_candidate",
+    "main",
+    "prompt_version",
+    "system_prompt",
+]
 
 # prompts/score.md step 3.
 OUTPUT_SCHEMA: dict[str, Any] = {
@@ -76,94 +90,6 @@ OUTPUT_SCHEMA: dict[str, Any] = {
     "required": ["thesis", "bear_case", "falsifier", "confidence", "data_gaps"],
     "additionalProperties": False,
 }
-
-
-def prompt_version() -> int:
-    """Read ``prompt_version`` out of prompts/score.md.
-
-    Read from the file rather than held as a constant, so the recorded version
-    cannot drift away from the prompt actually used.
-    """
-    text = PROMPT_PATH.read_text(encoding="utf-8")
-    match = re.search(r"prompt_version:\s*(\d+)", text)
-    if not match:
-        raise ValueError(f"no prompt_version found in {PROMPT_PATH}")
-    return int(match.group(1))
-
-
-def system_prompt() -> str:
-    """Extract the SYSTEM block from prompts/score.md.
-
-    The file is the single source of truth: editing the prompt changes behaviour
-    without touching this module, which is the point of versioning it.
-    """
-    text = PROMPT_PATH.read_text(encoding="utf-8")
-    start = text.find("## SYSTEM")
-    if start == -1:
-        raise ValueError("no '## SYSTEM' block in prompts/score.md")
-    return text[start:].strip()
-
-
-def candidate_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Build the prompts/score.md step 4 input packet from a stored snapshot row."""
-    grouped: dict[str, Any] = {}
-    for group in FEATURE_GROUPS:
-        prefix = f"{group}_"
-        grouped[group] = {
-            key[len(prefix) :]: value
-            for key, value in row.items()
-            if key.startswith(prefix)
-        }
-    for key in ("net_flow_by_cohort",):
-        raw = grouped.get("flows", {}).get(key)
-        if isinstance(raw, str):
-            grouped["flows"][key] = json.loads(raw)
-
-    listings = row.get("listings")
-    age_minutes = row.get("age_at_trigger_minutes")
-    return {
-        "snapshot_id": row["snapshot_id"],
-        "ticker": row.get("ticker"),
-        "chain": row.get("chain"),
-        "contract": row.get("contract"),
-        "age_hours": None if age_minutes is None else age_minutes / 60.0,
-        "market_cap_usd": grouped["market"].get("mcap_usd"),
-        "liquidity_usd": grouped["market"].get("liquidity_usd"),
-        "volume_24h_usd": grouped["market"].get("volume_24h_usd"),
-        "holders": grouped["holders"],
-        "authorities": grouped["authorities"],
-        "deployer": grouped["deployer"],
-        "launch": grouped["launch"],
-        "flows": grouped["flows"],
-        "social_x": grouped["social_x"],
-        "social_tg": grouped["social_tg"],
-        "socials_declared": grouped["socials_declared"],
-        "trends": grouped["trends"],
-        "lineage": grouped["lineage"],
-        "listings": json.loads(listings) if isinstance(listings, str) else listings,
-        "data_completeness": row.get("data_completeness"),
-    }
-
-
-def filter_input_from_candidate(candidate: dict[str, Any], **safety: Any) -> FilterInput:
-    authorities = candidate.get("authorities") or {}
-    holders = candidate.get("holders") or {}
-    deployer = candidate.get("deployer") or {}
-    base: dict[str, Any] = {
-        "chain": candidate.get("chain") or "solana",
-        "ticker": candidate.get("ticker"),
-        "contract": candidate.get("contract"),
-        "evaluated_at_ms": candidate.get("evaluated_at_ms") or now_ms(),
-        "mint_revoked": authorities.get("mint_revoked"),
-        "freeze_active": authorities.get("freeze_active"),
-        "lp_locked_until_ms": authorities.get("lp_locked_until"),
-        "top10_ex_lp_pct": holders.get("top10_ex_lp_pct"),
-        "liquidity_usd": candidate.get("liquidity_usd"),
-        "mcap_usd": candidate.get("market_cap_usd"),
-        "deployer_prior_rugs": deployer.get("prior_rugs"),
-    }
-    base.update({k: v for k, v in safety.items() if k in FilterInput.__dataclass_fields__})
-    return FilterInput(**base)
 
 
 @dataclass(frozen=True, slots=True)
