@@ -132,7 +132,36 @@ The deployment is two halves, both from the **repo root** (not from `web/`):
   nothing is installed at deploy time; `.vercelignore` deliberately hides `pyproject.toml`
   so the builder does not try.
 
-If the repo is connected to a Vercel project, pushing to the branch deploys it. Otherwise:
+### Push to GitHub, deploy to Vercel
+
+Two ways. **Pick one** — with both switched on, every push deploys twice.
+
+**A. `.github/workflows/deploy.yml` (in the repo).** Add three repository secrets under
+*Settings → Secrets and variables → Actions*:
+
+| Secret | Where it comes from |
+|---|---|
+| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens → Create |
+| `VERCEL_ORG_ID` | `.vercel/project.json` after one `vercel link`, or Project → Settings |
+| `VERCEL_PROJECT_ID` | same place |
+
+Then every push deploys: production on the default branch, a preview URL on any other
+branch. Until those secrets exist the job succeeds with a notice saying what to set,
+rather than putting a red cross on every push.
+
+It also runs daily at 06:20 UTC. That is not redundant: the collector commits with
+`GITHUB_TOKEN`, and a push made with that token never starts another workflow, so without
+the schedule the dataset it accumulates would sit in the repo and never reach the page.
+Before deploying, it re-imports `api/screener.py` with `duckdb`, `requests`, `numpy` and
+`pandas` blocked — that function runs on Vercel with nothing installed, and an accidental
+import of one of them is the failure that builds fine and then 500s on every request.
+
+**B. Vercel's own Git integration.** One click in the Vercel dashboard, no secrets. Simpler,
+but it deploys on *every* push — including the collector's data commit every 30 minutes,
+roughly 48 a day against a Hobby limit of 100. Put `[skip ci]` in `collect.yml`'s commit
+message if you want to suppress those.
+
+### Deploying by hand
 
 ```bash
 vercel login          # authenticates as you, in a browser; cannot be automated
@@ -291,7 +320,7 @@ export_web.py              DuckDB → web/screener-data.json
 api/screener.py            Vercel function: live DexScreener → scored ranking (stdlib only)
 web/                       static viewer (Vercel), chain + mindshare + safety
 state/                     the dataset, as an append-only JSONL journal (tracked in git)
-.github/workflows/         the scheduled collector
+.github/workflows/         collect.yml (the schedule) and deploy.yml (push -> Vercel)
 tests/                     554 tests, network access blocked by conftest
 ```
 

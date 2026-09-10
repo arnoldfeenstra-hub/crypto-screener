@@ -617,6 +617,56 @@ class TestTheDeployedPage:
         for package in ("collectors", "filters", "scoring", "prompts"):
             assert package in include
 
+    def test_the_function_imports_on_stdlib_alone(self):
+        """The one deploy failure that builds fine and then 500s on every request.
+
+        api/screener.py runs on Vercel with no requirements.txt and nothing
+        installed. Importing duckdb or requests is easy to do by accident -- the
+        collector uses both, and half this module's imports come from the same
+        packages -- and would not fail here, because both are installed locally.
+        So the import is re-run with them blocked.
+
+        .github/workflows/deploy.yml runs the same check before deploying.
+        """
+        import importlib.util
+        import sys
+
+        class Blocker:
+            def find_module(self, name, path=None):
+                if name.split(".")[0] in {"duckdb", "requests", "numpy", "pandas"}:
+                    raise ImportError(f"api/screener.py imports {name}")
+                return None
+
+        blocker = Blocker()
+        sys.meta_path.insert(0, blocker)
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "screener_api_isolated", REPO_ROOT / "api" / "screener.py"
+            )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+        finally:
+            sys.meta_path.remove(blocker)
+
+        assert hasattr(module, "handler"), "no `handler` class for the Vercel runtime"
+        assert hasattr(module, "build_live_payload")
+
+    def test_a_workflow_deploys_what_github_receives(self):
+        """"Push to GitHub, deploy to Vercel" is a file in the repo, not a memory."""
+        import yaml
+
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+        )
+        # PyYAML reads the bare `on:` key as the boolean True.
+        triggers = workflow.get("on", workflow.get(True))
+        assert "push" in triggers
+        assert "workflow_dispatch" in triggers
+        # The collector commits with GITHUB_TOKEN, and such a push never starts
+        # another workflow, so without a schedule the exported dataset would never
+        # reach the deployed page.
+        assert "schedule" in triggers
+
     def test_the_deploy_excludes_the_dependency_manifest(self):
         """The function is stdlib-only; an install step could only add failure modes."""
         ignored = (REPO_ROOT / ".vercelignore").read_text(encoding="utf-8").split("\n")
