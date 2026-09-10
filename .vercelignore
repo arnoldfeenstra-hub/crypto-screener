@@ -20,7 +20,10 @@ data/
 .claude/
 .github/
 export_web.py
+collect.py
+state/
 deploy.ps1
+deploy.sh
 BUILD_BRIEF.md
 CLAUDE.md
 README.md
