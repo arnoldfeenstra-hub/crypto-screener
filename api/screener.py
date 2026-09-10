@@ -28,6 +28,12 @@ keeps no history. Tokens below the trigger are counted but not listed, because a
 table mixing lifecycle points is the exact comparison CLAUDE.md's cohort design
 exists to prevent.
 
+Safety is part of it. ``collectors/safety.py`` runs for the tokens that cleared the
+trigger, so the live table shows real filter verdicts rather than a column of
+"unmeasured". A safety lookup that fails leaves those filters unknown, and unknown
+excludes -- the view degrades toward showing fewer scores, never toward showing
+unearned ones.
+
 The scores here carry the same warning as everywhere else: uncalibrated priors,
 Phase 0, no measured edge, nothing predictive. This endpoint reads. It holds no
 credential, and there is no code path from here to an order (hard rule 4).
@@ -58,6 +64,7 @@ from collectors.dexscreener import (  # noqa: E402
     DexScreenerError,
     DexScreenerFeed,
 )
+from collectors.safety import SafetySource  # noqa: E402
 from collectors.snapshot import build_snapshot  # noqa: E402
 from collectors.trigger_rule import (  # noqa: E402
     TRIGGER_HOLDER_COUNT,
@@ -71,6 +78,13 @@ from scoring.prompt_meta import prompt_version  # noqa: E402
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 250
+# Both caps exist for the same reason: keyless GoPlus is 30 requests a minute, and
+# this function has a request budget measured in seconds. Token security batches --
+# a few requests covers everything. The other two are one request each, so they are
+# capped and spent on the rows a reader will actually reach. The collector, which
+# has no such budget, runs them uncapped.
+SAFETY_RUGCHECK_LIMIT = 6
+SAFETY_DEPLOYER_LIMIT = 10
 # Edge-cached for this long. DexScreener's keyless endpoints are a shared resource
 # and this page could be opened by many people at once; one upstream poll per
 # window is the polite shape, and 45s is well inside the freshness a human reading
@@ -96,6 +110,8 @@ def build_live_payload(
     limit: int = DEFAULT_LIMIT,
     feed: Any = None,
     regime: str | None = None,
+    safety_source: Any = None,
+    with_safety: bool = True,
 ) -> dict[str, Any]:
     """Poll, score and rank. Pure enough to test with a stub feed."""
     resolved = chain_registry.resolve_requested(chain_names)
@@ -107,13 +123,27 @@ def build_live_payload(
     # survivors -- the selection effect prompts/score.md step 5 warns about.
     shares = mindshare_mod.compute(universe) if universe else {}
 
+    triggered = [m for m in universe if evaluate(m.mcap_usd, m.holder_count).fired]
+    below_trigger = len(universe) - len(triggered)
+
+    # Safety is looked up only for the tokens that actually cleared the trigger --
+    # it is the expensive call, and a token below the trigger is not going to be
+    # listed whatever it says. A failure leaves every filter unknown, which
+    # excludes, so a degraded lookup makes this view more conservative, not less.
+    reports: dict[tuple[str, str], Any] = {}
+    safety_error: str | None = None
+    if with_safety and triggered:
+        source = safety_source or SafetySource(
+            rugcheck_limit=SAFETY_RUGCHECK_LIMIT, deployer_limit=SAFETY_DEPLOYER_LIMIT
+        )
+        try:
+            reports = source.fetch([(m.chain, m.contract) for m in triggered[:limit]])
+        except Exception as exc:
+            safety_error = f"{type(exc).__name__}: {exc}"
+
     tokens: list[dict[str, Any]] = []
-    below_trigger = 0
-    for metrics in universe:
+    for metrics in triggered:
         decision = evaluate(metrics.mcap_usd, metrics.holder_count)
-        if not decision.fired:
-            below_trigger += 1
-            continue
 
         snapshot = build_snapshot(
             metrics,
@@ -125,7 +155,11 @@ def build_live_payload(
         row = snapshot.to_row()
         candidate = candidate_from_row(row)
 
-        verdict = apply_filters(filter_input_from_candidate(candidate))
+        report = reports.get((metrics.chain, metrics.contract))
+        safety_fields = report.to_filter_fields() if report is not None else {}
+        if safety_fields:
+            candidate = {**candidate, "safety": safety_fields}
+        verdict = apply_filters(filter_input_from_candidate(candidate, **safety_fields))
         pillars = score_candidate(candidate, regime=regime)
         excluded = verdict.excluded
         mindshare_group = candidate.get("mindshare") or {}
@@ -159,6 +193,20 @@ def build_live_payload(
                     "website": snapshot.socials_declared.website,
                 },
                 "mindshare": mindshare_group,
+                "safety": (
+                    {
+                        "source": report.source,
+                        "measured_fields": report.measured_fields,
+                        "lp_locked_pct": report.lp_locked_pct,
+                        "holder_count": report.holder_count,
+                        "rugged": report.rugged,
+                        "deployer_address": report.deployer_address,
+                        "risk_labels": list(report.risk_labels),
+                        **safety_fields,
+                    }
+                    if report is not None
+                    else None
+                ),
                 "data_completeness": row["data_completeness"],
                 "fields_present": row["fields_present"],
                 "fields_expected": row["fields_expected"],
@@ -220,6 +268,9 @@ def build_live_payload(
             "below_trigger": below_trigger,
             "universe_size": len(universe),
             "cache_seconds": CACHE_SECONDS,
+            "safety_measured": len(reports),
+            "safety_error": safety_error,
+            "safety_sources": "GoPlus + RugCheck (keyless)" if with_safety else None,
             "discovery": (
                 "DexScreener's boosted and profiled token lists. There is no keyless "
                 "new-pool firehose, so a token enters this universe because someone "
@@ -267,7 +318,7 @@ def build_live_payload(
     }
 
 
-def _parse_query(raw: str) -> tuple[list[str], int]:
+def _parse_query(raw: str) -> tuple[list[str], int, bool]:
     params = urllib.parse.parse_qs(raw or "")
     requested = params.get("chains", [",".join(chain_registry.DEFAULT_CHAINS)])[0]
     chain_names = [c.strip() for c in requested.split(",") if c.strip()]
@@ -275,7 +326,11 @@ def _parse_query(raw: str) -> tuple[list[str], int]:
         limit = int(params.get("limit", [str(DEFAULT_LIMIT)])[0])
     except ValueError:
         limit = DEFAULT_LIMIT
-    return chain_names, max(1, min(limit, MAX_LIMIT))
+    # ?safety=0 skips the safety lookup. Useful when GoPlus is having a bad minute
+    # and a market view is still wanted -- every filter then reads unknown, which
+    # excludes, so nothing is silently passed.
+    with_safety = params.get("safety", ["1"])[0].strip().lower() not in ("0", "false", "no")
+    return chain_names, max(1, min(limit, MAX_LIMIT)), with_safety
 
 
 class handler(BaseHTTPRequestHandler):
@@ -283,9 +338,9 @@ class handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         query = urllib.parse.urlparse(self.path).query
-        chain_names, limit = _parse_query(query)
+        chain_names, limit, with_safety = _parse_query(query)
         try:
-            payload = build_live_payload(chain_names, limit=limit)
+            payload = build_live_payload(chain_names, limit=limit, with_safety=with_safety)
             status = 200
         except ValueError as exc:
             # An unsupported chain. The caller asked for something specific and got

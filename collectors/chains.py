@@ -8,6 +8,13 @@ Three vocabularies have to line up and did not before this module existed:
 * **The filters'.** ``filters/hard_filters.py`` needs to know whether a chain has
   EVM proxies at all, which is a property of the chain, not of its name.
 
+A chain's DexScreener id can also be supplied at runtime through
+``SCREENER_CHAIN_IDS`` (``"robinhood=someid,foo=bar"``). That exists for the case
+this module cannot otherwise handle honestly: a chain that is real and named in the
+brief, but whose id nobody here has observed. Configuration is an assertion by the
+operator; a hardcoded guess would be an assertion by this file, and this file does
+not know.
+
 Writing whichever string the source happened to return into the ``chain`` column
 would make the column unusable as a filter -- ``bnb`` and ``bsc`` rows would be two
 different chains to every ``GROUP BY`` and every dropdown. So every source
@@ -22,8 +29,9 @@ the same class of mistake as imputing a missing field.
 
 from __future__ import annotations
 
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 
@@ -50,9 +58,25 @@ class Chain:
 # costs one row each -- and because a screener that can only see one chain cannot
 # answer "is this meta running everywhere or just here".
 #
-# Robinhood Chain is the brief's third target and has no DexScreener id yet, so it
-# is registered with `dexscreener_id=None`: a named chain with no source is an
-# honest gap, and `--chains robinhood` fails loudly rather than collecting nothing.
+# Robinhood Chain is the brief's third target. It is an Arbitrum Orbit rollup, so
+# `evm=True` is a property of the chain and is safe to assert; what is NOT safe to
+# assert is its DexScreener `chainId`, because nobody here has seen DexScreener
+# return one. Guessing a string would produce the worst outcome available: a
+# request that quietly matches nothing, indistinguishable from a quiet day on the
+# chain.
+#
+# So it ships with `dexscreener_id=None` and two ways to switch it on the moment
+# the id is known, neither of which needs a code change:
+#
+#   1. `python -m collectors.dexscreener --discover-chains` prints every chainId
+#      the live discovery endpoints actually return, flagged known/unknown. That
+#      is how you find the id.
+#   2. `SCREENER_CHAIN_IDS="robinhood=<that id>"` binds it. `--chains robinhood`
+#      then collects exactly like any other chain -- same trigger, same filters,
+#      same mindshare universe.
+#
+# Until then `--chains robinhood` fails by name. That is the deliberate choice:
+# a silent skip and a quiet chain look identical in the counts afterwards.
 CHAINS: Final[tuple[Chain, ...]] = (
     Chain("solana", "Solana", evm=False, dexscreener_id="solana", native_symbol="SOL"),
     Chain("bnb", "BNB Chain", evm=True, dexscreener_id="bsc", native_symbol="BNB"),
@@ -69,11 +93,48 @@ CHAINS: Final[tuple[Chain, ...]] = (
     Chain("robinhood", "Robinhood Chain", evm=True, dexscreener_id=None),
 )
 
+# Env override, read once at import: "name=dexscreener_id,name=dexscreener_id".
+# Exists so a chain whose id was unknown when this file was written -- Robinhood
+# Chain today -- can be switched on by configuration rather than by a release.
+CHAIN_ID_ENV = "SCREENER_CHAIN_IDS"
+
 DEFAULT_CHAINS: Final[tuple[str, ...]] = ("solana", "bnb", "base", "ethereum")
 
-_BY_NAME: Final[dict[str, Chain]] = {c.name: c for c in CHAINS}
+def _overrides(raw: str | None = None) -> dict[str, str]:
+    """Parse ``SCREENER_CHAIN_IDS``. A malformed entry is skipped, not guessed at."""
+    text = raw if raw is not None else os.environ.get(CHAIN_ID_ENV, "")
+    out: dict[str, str] = {}
+    for pair in text.split(","):
+        name, _, chain_id = pair.partition("=")
+        name, chain_id = name.strip().lower(), chain_id.strip()
+        if name and chain_id:
+            out[name] = chain_id
+    return out
+
+
+def _apply_overrides(chains: tuple[Chain, ...], overrides: dict[str, str]) -> tuple[Chain, ...]:
+    if not overrides:
+        return chains
+    known = {c.name for c in chains}
+    updated = tuple(
+        replace(c, dexscreener_id=overrides[c.name]) if c.name in overrides else c
+        for c in chains
+    )
+    # A name the registry has never seen is still honoured: it is configuration,
+    # explicitly supplied, not a value inferred from a response.
+    extra = tuple(
+        Chain(name, name, evm=False, dexscreener_id=chain_id, known=False)
+        for name, chain_id in overrides.items()
+        if name not in known
+    )
+    return updated + extra
+
+
+_ACTIVE: tuple[Chain, ...] = _apply_overrides(CHAINS, _overrides())
+
+_BY_NAME: Final[dict[str, Chain]] = {c.name: c for c in _ACTIVE}
 _BY_DEXSCREENER: Final[dict[str, Chain]] = {
-    c.dexscreener_id: c for c in CHAINS if c.dexscreener_id
+    c.dexscreener_id: c for c in _ACTIVE if c.dexscreener_id
 }
 
 # Spellings seen in the wild that mean a chain already in the registry. Kept
@@ -182,11 +243,13 @@ def resolve_requested(names: list[str] | tuple[str, ...]) -> list[str]:
         chain = get(name)
         assert chain is not None
         if not chain.has_dexscreener_source:
-            supported = ", ".join(c.name for c in CHAINS if c.has_dexscreener_source)
+            supported = ", ".join(supported_names())
             raise ValueError(
                 f"chain {raw!r} has no DexScreener source "
                 f"({'not in the registry' if not chain.known else 'registered but uncovered'}). "
-                f"Supported: {supported}"
+                f"Set {CHAIN_ID_ENV}=\"{name}=<dexscreener chainId>\" once you know the id "
+                "(find it with: python -m collectors.dexscreener --discover-chains). "
+                f"Supported now: {supported}"
             )
         if name not in resolved:
             resolved.append(name)
@@ -194,4 +257,24 @@ def resolve_requested(names: list[str] | tuple[str, ...]) -> list[str]:
 
 
 def supported_names() -> list[str]:
-    return [c.name for c in CHAINS if c.has_dexscreener_source]
+    return [c.name for c in _ACTIVE if c.has_dexscreener_source]
+
+
+def registry() -> tuple[Chain, ...]:
+    """The registry as it stands, with any ``SCREENER_CHAIN_IDS`` overrides applied."""
+    return _ACTIVE
+
+
+def reload_overrides(raw: str | None = None) -> tuple[Chain, ...]:
+    """Re-read ``SCREENER_CHAIN_IDS``. For tests, and for a long-lived process.
+
+    Rebinds the lookup tables in place so ``canonical`` and ``resolve_requested``
+    see the change; there is no second copy of the registry to fall out of step.
+    """
+    global _ACTIVE
+    _ACTIVE = _apply_overrides(CHAINS, _overrides(raw))
+    _BY_NAME.clear()
+    _BY_NAME.update({c.name: c for c in _ACTIVE})
+    _BY_DEXSCREENER.clear()
+    _BY_DEXSCREENER.update({c.dexscreener_id: c for c in _ACTIVE if c.dexscreener_id})
+    return _ACTIVE

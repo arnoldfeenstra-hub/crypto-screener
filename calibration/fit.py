@@ -38,12 +38,22 @@ MIN_TRIGGERED_TOKENS = 300
 MIN_DEAD_PER_SURVIVOR = 20
 PUBLISHED_CONCORDANCE_BENCHMARK = 0.858
 
+# The pillars a fit sees. `mindshare` is here even though its prior weight in
+# prompts/score.md is 0.00, and that is the point: the prior is zero because nobody
+# has fitted it, and it can only ever be fitted if the fitter is given it. Its
+# fitted coefficient comes out of normalised_pillar_weights() alongside the other
+# five, which is the moment its weight stops being a guess.
+#
+# One caution carried from prompts/score.md: mindshare and onchain_structure both
+# read 24h volume, so their coefficients are collinear and must not be read
+# independently.
 FEATURE_NAMES = (
     "attention_velocity",
     "community_depth",
     "lineage_meta_fit",
     "onchain_structure",
     "asymmetry_timing",
+    "mindshare",
 )
 
 

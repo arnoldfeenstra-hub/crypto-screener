@@ -116,6 +116,9 @@
     border: 1px solid var(--line); background: var(--panel); color: var(--ink);
   }
   .msbar { display: block; height: 4px; border-radius: 99px; background: var(--accent); margin-top: 3px; opacity: .55; }
+  /* Six single-letter verdicts read as one glyph row, not as a wrapped paragraph. */
+  td.safety { min-width: 132px; }
+  td.safety .pill { padding: 0 4px; font-size: 10.5px; letter-spacing: .02em; }
   .facts { columns: 2; column-gap: 28px; font-size: 13.5px; }
   .facts p { margin: 0 0 9px; break-inside: avoid; color: var(--muted); }
   .facts b { color: var(--ink); }
@@ -178,6 +181,7 @@
         <option value="scored">Scored</option>
         <option value="evidence">Excluded on evidence</option>
         <option value="unmeasured">Excluded as unmeasured</option>
+        <option value="checked">Safety checked</option>
       </select>
       <select id="sort-by">
         <option value="rank">Sort: rank, then mcap</option>
@@ -204,6 +208,7 @@
             <th class="num">Holders</th>
             <th class="num">Age</th>
             <th>Socials</th>
+            <th title="What a keyless safety source (GoPlus / RugCheck) could establish">Safety</th>
             <th class="num">Complete</th>
             <th class="num" title="Weighted mean over the pillars that resolved. Not a score.">Pillars</th>
             <th class="num">Score</th>
@@ -213,6 +218,11 @@
         <tbody id="rows"></tbody>
       </table>
     </div>
+  </section>
+
+  <section>
+    <h2>What the safety column means</h2>
+    <div class="card" id="safety-explainer"></div>
   </section>
 
   <section>
@@ -258,6 +268,7 @@ function renderProgress(d) {
     ['Snapshots scored', fmtInt(p.snapshots_scored), 'paper mode only'],
     ['Excluded on evidence', fmtInt(p.excluded_on_evidence), 'failed a hard filter'],
     ['Excluded as unmeasured', fmtInt(p.excluded_as_unmeasured), 'the check was never run'],
+    ['Safety checked', fmtInt(p.safety_checked), 'GoPlus / RugCheck, keyless'],
   ];
   document.getElementById('progress').innerHTML = cards.map(([l, v, n]) =>
     `<div class="card"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`
@@ -288,6 +299,32 @@ function socialPills(s) {
     const mark = v === true ? '✓' : v === false ? '✕' : '?';
     return `<span class="pill ${cls}">${k[0].toUpperCase()}${mark}</span>`;
   }).join(' ');
+}
+
+// Five checks a safety source can answer, as a compact row. A question mark is
+// "not established", never "fine" — the hard filters exclude on unknown, and the
+// cell has to read the same way the filter behaves.
+const SAFETY_CHECKS = [
+  ['H', 'honeypot',        v => v === false, 'honeypot check'],
+  ['M', 'mint_revoked',    v => v === true,  'mint authority revoked'],
+  ['F', 'freeze_active',   v => v === false, 'freeze authority inactive'],
+  ['L', 'lp_burned',       v => v === true,  'LP burned'],
+  ['C', 'top10_ex_lp_pct', v => v != null && v <= 35, 'top-10 concentration'],
+];
+
+function safetyPills(safety) {
+  if (!safety) return '<span class="pill unk" title="the checks were never run">unchecked</span>';
+  const pills = SAFETY_CHECKS.map(([letter, key, ok, label]) => {
+    const v = safety[key];
+    const cls = v == null ? 'unk' : ok(v) ? '' : 'bad';
+    const mark = v == null ? '?' : ok(v) ? '✓' : '✕';
+    return `<span class="pill ${cls}" title="${esc(label)}">${letter}${mark}</span>`;
+  }).join(' ');
+  const rugs = safety.deployer_prior_rugs;
+  const deployer = rugs == null
+    ? '<span class="pill unk" title="deployer history not established">D?</span>'
+    : `<span class="pill ${rugs > 0 ? 'bad' : ''}" title="${rugs} prior rug(s) on the deployer">D${rugs > 0 ? '✕' : '✓'}</span>`;
+  return `${pills} ${deployer}`;
 }
 
 function statusCell(t) {
@@ -365,6 +402,7 @@ function renderRows() {
     if (status === 'scored' && (t.excluded || t.score == null)) return false;
     if (status === 'evidence' && !(t.excluded && (t.rejected_by || []).length)) return false;
     if (status === 'unmeasured' && !(t.excluded && !(t.rejected_by || []).length)) return false;
+    if (status === 'checked' && !t.safety) return false;
     return true;
   }).sort(SORTS[sort] || SORTS.rank);
 
@@ -383,11 +421,34 @@ function renderRows() {
       <td class="num">${cell(fmtInt(t.holders))}</td>
       <td class="num">${cell(fmtAge(t.age_at_trigger_minutes))}</td>
       <td>${socialPills(t.socials_declared)}</td>
+      <td class="safety">${safetyPills(t.safety)}</td>
       <td class="num">${t.data_completeness == null ? '<span class="null">null</span>' : (t.data_completeness * 100).toFixed(0) + '%'}</td>
       <td class="num">${t.pillar_composite == null ? '<span class="null">null</span>' : t.pillar_composite.toFixed(1)}</td>
       <td class="num">${t.score == null ? '<span class="null">null</span>' : t.score.toFixed(1)}</td>
       <td>${statusCell(t)}</td>
     </tr>`).join('');
+}
+
+function renderSafetyExplainer(d) {
+  const live = (d && d.live) || {};
+  const checked = live.safety_measured;
+  document.getElementById('safety-explainer').innerHTML = `
+    <p style="margin:0 0 8px">Six of the eight hard filters are facts about a contract, not predictions:
+      whether it can be sold, whether the mint and freeze authorities are gone, whether the
+      liquidity is burned, how concentrated the holders are, and whether the deployer has been
+      flagged before. They come from <b>GoPlus</b> and <b>RugCheck</b> — both keyless.</p>
+    <p style="margin:0 0 8px;color:var(--muted);font-size:13.5px">
+      <b>?</b> means the check was not established, and that <i>excludes</i> the token exactly as a
+      failure would. Unknown is never treated as clean. A row marked
+      <span class="pill unk">unchecked</span> was never looked up at all.</p>
+    <p style="margin:0;color:var(--muted);font-size:13px">
+      Two things these sources cannot answer, and are not guessed at: an LP <i>lock expiry</i>
+      (so a locked-but-undated LP stays unknown rather than counting as the 30-day lock the
+      filter asks for), and deployer history on Solana (GoPlus address security covers EVM
+      chains only).
+      ${checked == null ? '' : `<br>This view established safety for <b>${fmtInt(checked)}</b> of the listed tokens.`}
+      ${live.safety_error ? `<br><b>The safety lookup failed for this view:</b> ${esc(live.safety_error)} — every filter reads unknown, so nothing is passed on missing evidence.` : ''}
+    </p>`;
 }
 
 function renderMindshareExplainer(d) {
@@ -460,6 +521,7 @@ function refresh() {
   renderBanner();
   renderTableLede();
   renderMindshareExplainer(d);
+  renderSafetyExplainer(d);
   renderRows();
   const gen = d.generated_at ? `Data generated ${d.generated_at}.` : '';
   document.getElementById('generated').textContent = gen;

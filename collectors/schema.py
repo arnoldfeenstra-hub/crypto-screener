@@ -25,13 +25,14 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
-# 2 adds market.fdv_usd and the whole `mindshare` group. Both are additive, but
+# 3 adds the `safety_observations` table (collectors/safety.py). 2 added
+# market.fdv_usd and the whole `mindshare` group. All additive, but
 # DuckDB tables are created once and never altered here (append-only, and
 # store.py may contain no ALTER), so a database written under version 1 cannot
 # take version 2 rows. Store.open refuses it by name rather than failing on the
 # insert. Phase 0 has no production database yet; if one exists, start a new file
 # and keep the old one -- the old rows are still the graveyard.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Groups whose leaf fields count toward the Data Completeness modifier in
 # prompts/score.md. Identity and bookkeeping columns are excluded: they are always
@@ -565,6 +566,42 @@ OUTCOME_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
     ("volume_24h_usd", "DOUBLE"),
     ("holder_count", "BIGINT"),
     ("source", "VARCHAR"),
+]
+
+# One safety lookup, from collectors/safety.py. Append-only and separate from the
+# snapshot for the usual reason: it arrives after the snapshot was written, so
+# putting it on that row would be an edit. It is also genuinely a time series --
+# "the mint authority was live when we looked and revoked an hour later" is a real
+# sequence of events, and a table that overwrote the first reading would lose it.
+#
+# Every field is nullable and null means *not established*, never *fine*. The hard
+# filters treat unknown as excluding, so a gap here costs a token its place in the
+# ranking rather than buying it one.
+SAFETY_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
+    ("observation_id", "VARCHAR"),
+    ("snapshot_id", "VARCHAR"),
+    ("chain", "VARCHAR"),
+    ("contract", "VARCHAR"),
+    ("ts", "BIGINT"),
+    ("source", "VARCHAR"),
+    ("collected_at_ms", "BIGINT"),
+    ("honeypot", "BOOLEAN"),
+    ("sells_failing", "BOOLEAN"),
+    ("buy_tax_pct", "DOUBLE"),
+    ("sell_tax_pct", "DOUBLE"),
+    ("mint_revoked", "BOOLEAN"),
+    ("freeze_active", "BOOLEAN"),
+    ("lp_burned", "BOOLEAN"),
+    ("lp_locked_pct", "DOUBLE"),
+    ("top10_ex_lp_pct", "DOUBLE"),
+    ("holder_count", "BIGINT"),
+    ("upgradeable", "BOOLEAN"),
+    ("admin_renounced", "BOOLEAN"),
+    ("deployer_address", "VARCHAR"),
+    ("deployer_prior_rugs", "BIGINT"),
+    ("rugged", "BOOLEAN"),
+    ("risk_labels", "JSON"),
+    ("error", "VARCHAR"),
 ]
 
 # One row per token that has ever fired. Doubles as the "already triggered" index,

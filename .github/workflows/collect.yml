@@ -1,0 +1,139 @@
+# Phase 0 collector, on a schedule.
+#
+# BUILD_BRIEF.md section 3 asks for four to six weeks of forward collection, and
+# section 1 explains why it cannot be shortcut: on-chain history is backfillable,
+# per-token social history is not. A token that dies today is only in the dataset
+# if something was watching today. This workflow is that something.
+#
+# State lives in state/*.jsonl -- an append-only journal (collectors/journal.py)
+# committed back to the repo after each run. It is rebuilt into DuckDB at the start
+# of a run and appended to at the end, so nothing is ever rewritten and the diff of
+# each commit is exactly the rows that were added.
+#
+# A note on cost, because it decides the interval you actually want:
+#
+#   * A public repository has unlimited Actions minutes. Every 30 minutes is fine.
+#   * A private repository on the free plan has 2,000 minutes a month. At roughly
+#     two minutes a run, every 30 minutes is ~2,900 minutes and will run out.
+#     Hourly (~1,450) fits. Change the cron below rather than discovering this at
+#     the end of the month.
+#   * GitHub throttles scheduled workflows under load and drops them entirely on
+#     repositories with no activity for 60 days. For a collector whose whole value
+#     is not missing hours, a small always-on host is the better home; this
+#     workflow is the version that needs no infrastructure.
+#
+# It cannot trade and holds no credentials: DexScreener, GoPlus and RugCheck are
+# all keyless, and the only secret in use is the token GitHub provides for the
+# commit.
+
+name: collect
+
+on:
+  schedule:
+    # Every 30 minutes. Tokens cross $250k and die inside an hour, so a longer gap
+    # loses rows the sample cannot get back. See the cost note above.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      chains:
+        description: "Comma-separated chains to poll"
+        default: "solana,bnb,base,ethereum"
+        required: false
+      regime:
+        description: "Tape regime recorded on this batch (hot / neutral / cold)"
+        default: "neutral"
+        required: false
+      safety:
+        description: "Run the GoPlus/RugCheck lookups"
+        type: boolean
+        default: true
+        required: false
+
+# One run at a time. Two runs appending to the same journal would both be correct
+# in isolation and would conflict on push, and cancel-in-progress would throw away
+# a run that had already collected rows.
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --quiet duckdb
+
+      - name: Collect
+        id: collect
+        env:
+          CHAINS: ${{ inputs.chains || 'solana,bnb,base,ethereum' }}
+          REGIME: ${{ inputs.regime || 'neutral' }}
+          # Bind a chain whose DexScreener id this repo does not ship, e.g.
+          # "robinhood=<id>". Find the id with:
+          #   python -m collectors.dexscreener --discover-chains
+          SCREENER_CHAIN_IDS: ${{ vars.SCREENER_CHAIN_IDS }}
+        run: |
+          set -o pipefail
+          SAFETY=""
+          if [ "${{ inputs.safety }}" = "false" ]; then SAFETY="--no-safety"; fi
+          python -m collect \
+            --chains "$CHAINS" \
+            --regime "$REGIME" \
+            --state state \
+            --export web/screener-data.json \
+            $SAFETY | tee summary.json
+          {
+            echo 'summary<<EOF'
+            python -c "
+          import json
+          s = json.load(open('summary.json'))
+          t = s.get('totals', {})
+          print(
+              f\"observed={s.get('poll', {}).get('observed', 0)} \"
+              f\"fired={s.get('poll', {}).get('fired', 0)} \"
+              f\"snapshots={t.get('snapshots', 0)} \"
+              f\"labelled={t.get('labelled_snapshots', 0)} \"
+              f\"safety={t.get('safety_observations', 0)}\"
+          )
+          "
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit the journal
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state web/screener-data.json
+          if git diff --cached --quiet; then
+            echo "nothing new this cycle"
+            exit 0
+          fi
+          git commit -m "collect: ${{ steps.collect.outputs.summary }}"
+          # Another run may have landed while this one was collecting. Rebase
+          # rather than force: the journal is append-only, so both sets of rows
+          # are wanted and neither may overwrite the other.
+          for attempt in 1 2 3; do
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && break
+            sleep $((attempt * 5))
+          done
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Upload the run summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collect-summary-${{ github.run_id }}
+          path: summary.json
+          if-no-files-found: ignore
+          retention-days: 14

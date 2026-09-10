@@ -1,0 +1,224 @@
+{
+  "_comment": [
+    "Response shapes for collectors/safety.py, used by tests/test_safety.py.",
+    "",
+    "PROVENANCE, same status as fixtures/dexscreener_responses.json: hand-built to",
+    "the documented GoPlus and RugCheck schemas, NOT recorded from the live APIs.",
+    "The session that wrote the module had no egress to api.gopluslabs.io or",
+    "api.rugcheck.xyz. Field names come from the docs; the shapes are unconfirmed.",
+    "",
+    "Confirm and re-record on first run:",
+    "    python -m collectors.safety --probe --chain bnb 0x<token>",
+    "    python -m collectors.safety --probe --chain solana <mint>",
+    "",
+    "This matters more here than for a price feed. A price parsed wrong is a wrong",
+    "number; a safety field parsed wrong is a token that passes a filter it should",
+    "have failed. The parsers are total and every field defaults to None, so a shape",
+    "change degrades to 'unknown' -- which excludes -- rather than to a false pass.",
+    "Verify before trusting a green verdict.",
+    "",
+    "Cases below cover: a clean token, a honeypot, a token whose LP is visible and",
+    "wholly unlocked, one where the LP is locked with no stated expiry, a Solana",
+    "mint with a live freeze authority, and a deployer flagged for prior honeypots."
+  ],
+
+  "goplus_evm_clean": {
+    "code": 1,
+    "message": "OK",
+    "result": {
+      "0xaaa0000000000000000000000000000000000001": {
+        "token_name": "Alpha Example",
+        "token_symbol": "ALPHA",
+        "is_honeypot": "0",
+        "cannot_sell_all": "0",
+        "buy_tax": "0.01",
+        "sell_tax": "0.01",
+        "is_mintable": "0",
+        "transfer_pausable": "0",
+        "is_proxy": "0",
+        "can_take_back_ownership": "0",
+        "owner_address": "",
+        "creator_address": "0xdeployer000000000000000000000000000000aa",
+        "holder_count": "2841",
+        "total_supply": "1000000000",
+        "lp_holders": [
+          {
+            "address": "0x000000000000000000000000000000000000dead",
+            "tag": "Null Address",
+            "is_locked": 1,
+            "percent": "0.994",
+            "is_contract": 0
+          }
+        ],
+        "holders": [
+          { "address": "0x1111", "tag": "", "percent": "0.041", "is_contract": 0 },
+          { "address": "0x2222", "tag": "", "percent": "0.033", "is_contract": 0 },
+          { "address": "0x3333", "tag": "Uniswap V2 Pool", "percent": "0.62", "is_contract": 1 },
+          { "address": "0x4444", "tag": "Binance 14", "percent": "0.10", "is_contract": 1 }
+        ]
+      }
+    }
+  },
+
+  "goplus_evm_honeypot": {
+    "code": 1,
+    "message": "OK",
+    "result": {
+      "0xbbb0000000000000000000000000000000000002": {
+        "is_honeypot": "1",
+        "cannot_sell_all": "1",
+        "buy_tax": "0.05",
+        "sell_tax": "0.99",
+        "is_mintable": "1",
+        "transfer_pausable": "1",
+        "is_proxy": "1",
+        "can_take_back_ownership": "1",
+        "owner_address": "0xowner00000000000000000000000000000000bb",
+        "creator_address": "0xdeployer000000000000000000000000000000bb",
+        "hidden_owner": "1",
+        "is_blacklisted": "1",
+        "holder_count": "63",
+        "lp_holders": [
+          { "address": "0x9999", "tag": "", "is_locked": 0, "percent": "1.0" }
+        ],
+        "holders": [
+          { "address": "0x8888", "tag": "", "percent": "0.72" },
+          { "address": "0x7777", "tag": "", "percent": "0.11" }
+        ]
+      }
+    }
+  },
+
+  "goplus_evm_locked_no_expiry": {
+    "code": 1,
+    "result": {
+      "0xccc0000000000000000000000000000000000003": {
+        "is_honeypot": "0",
+        "cannot_sell_all": "0",
+        "buy_tax": "0",
+        "sell_tax": "0",
+        "is_mintable": "0",
+        "transfer_pausable": "0",
+        "is_proxy": "0",
+        "owner_address": "0x0000000000000000000000000000000000000000",
+        "creator_address": "0xdeployer000000000000000000000000000000cc",
+        "lp_holders": [
+          {
+            "address": "0xunicrypt0000000000000000000000000000cccc",
+            "tag": "UNCX Locker",
+            "is_locked": 1,
+            "percent": "0.97"
+          }
+        ],
+        "holders": [{ "address": "0x6666", "tag": "", "percent": "0.05" }]
+      }
+    }
+  },
+
+  "goplus_solana": {
+    "code": 1,
+    "result": {
+      "SoLMint11111111111111111111111111111111111": {
+        "metadata": { "name": "Gamma Example", "symbol": "GAMMA" },
+        "mintable": { "status": "0", "authority": [] },
+        "freezable": { "status": "1", "authority": ["FrEEze1111111111111111111111111111111111111"] },
+        "closable": { "status": "0", "authority": [] },
+        "metadata_mutable": { "status": "1", "authority": [] },
+        "balance_mutable_authority": { "status": "0", "authority": [] },
+        "non_transferable": "0",
+        "default_account_state": "0",
+        "transfer_fee": {},
+        "transfer_hook": [],
+        "creators": [{ "address": "CrEAtor11111111111111111111111111111111111", "malicious": "0" }],
+        "lp_holders": [
+          {
+            "account": "1nc1nerator11111111111111111111111111111111",
+            "tag": "Incinerator",
+            "is_locked": 1,
+            "percent": "1.0"
+          }
+        ],
+        "holders": [
+          { "account": "Hold1", "tag": "", "percent": "0.06" },
+          { "account": "Hold2", "tag": "", "percent": "0.04" },
+          { "account": "Raydium1", "tag": "Raydium Liquidity Pool", "percent": "0.55" }
+        ]
+      }
+    }
+  },
+
+  "goplus_address_clean": {
+    "code": 1,
+    "result": {
+      "cybercrime": "0",
+      "money_laundering": "0",
+      "number_of_malicious_contracts_created": "0",
+      "financial_crime": "0",
+      "phishing_activities": "0",
+      "fake_token": "0",
+      "stealing_attack": "0",
+      "blackmail_activities": "0",
+      "honeypot_related_address": "0",
+      "sanctioned": "0"
+    }
+  },
+
+  "goplus_address_flagged": {
+    "code": 1,
+    "result": {
+      "cybercrime": "0",
+      "number_of_malicious_contracts_created": "3",
+      "phishing_activities": "1",
+      "honeypot_related_address": "1",
+      "fake_token": "0",
+      "stealing_attack": "0",
+      "blackmail_activities": "0",
+      "financial_crime": "0"
+    }
+  },
+
+  "goplus_address_empty": { "code": 1, "result": {} },
+
+  "rugcheck_report": {
+    "mint": "SoLMint11111111111111111111111111111111111",
+    "creator": "CrEAtor11111111111111111111111111111111111",
+    "mintAuthority": null,
+    "freezeAuthority": "FrEEze1111111111111111111111111111111111111",
+    "rugged": false,
+    "totalHolders": 1893,
+    "totalMarketLiquidity": 128000.5,
+    "risks": [
+      { "name": "Low amount of LP Providers", "level": "warn", "score": 400 },
+      { "name": "Mutable metadata", "level": "warn", "score": 100 }
+    ],
+    "markets": [
+      { "marketType": "raydium", "lp": { "lpLockedPct": 100.0, "lpBurned": true } },
+      { "marketType": "meteora", "lp": { "lpLockedPct": 84.2, "lpBurned": false } }
+    ],
+    "topHolders": [
+      { "owner": "Hold1", "pct": 6.1, "insider": false },
+      { "owner": "Hold2", "pct": 4.4, "insider": false },
+      { "owner": "Raydium Liquidity Pool", "pct": 55.0, "insider": false }
+    ]
+  },
+
+  "rugcheck_rugged": {
+    "mint": "RugMint111111111111111111111111111111111111",
+    "mintAuthority": "MintAuth111111111111111111111111111111111",
+    "freezeAuthority": null,
+    "rugged": true,
+    "risks": [{ "name": "Rugged", "level": "danger" }],
+    "markets": [{ "lp": { "lpLockedPct": 0.0, "lpBurned": false } }],
+    "topHolders": [{ "owner": "Whale1", "pct": 62.0 }]
+  },
+
+  "malformed_responses": [
+    null,
+    [],
+    {},
+    { "code": 0, "message": "error" },
+    { "result": null },
+    { "result": { "0xabc": "not an object" } },
+    { "result": [] }
+  ]
+}

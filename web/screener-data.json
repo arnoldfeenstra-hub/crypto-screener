@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09T19:09:38+00:00",
+  "generated_at": "2026-09-10T13:06:26+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -52,7 +52,9 @@
     "social_observations": 0,
     "labelled_snapshots": 0,
     "excluded_on_evidence": 1,
-    "excluded_as_unmeasured": 5
+    "excluded_as_unmeasured": 5,
+    "safety_checked": 0,
+    "safety_observations": 0
   },
   "calibration": {
     "verdict": "not_ready",
@@ -120,7 +122,7 @@
   },
   "tokens": [
     {
-      "snapshot_id": "0f32345c-003c-442e-be75-6497822b71ce",
+      "snapshot_id": "108cde70-184a-4bdf-bdcb-f63bc75c8b01",
       "ticker": "$EXACT",
       "chain": "solana",
       "contract": "EXACT6ccccDDDDeeeeFFFFggggHHHHiiiiJJJJkkkkL",
@@ -161,6 +163,7 @@
         "universe_volume_24h_usd": 1420000.0,
         "universe_boost_total": null
       },
+      "safety": null,
       "data_completeness": 0.35185185185185186,
       "fields_present": 19,
       "fields_expected": 54,
@@ -196,7 +199,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "3b92b327-d7e3-406b-bfb1-f8649453a0fd",
+      "snapshot_id": "fc5a45b6-889c-4c17-9f9b-94eface0476c",
       "ticker": "$EDGE",
       "chain": "solana",
       "contract": "EDGE4ppppQQQQrrrrSSSStttt1111UUUUvvvvWWWWxx",
@@ -237,6 +240,7 @@
         "universe_volume_24h_usd": 1420000.0,
         "universe_boost_total": null
       },
+      "safety": null,
       "data_completeness": 0.35185185185185186,
       "fields_present": 19,
       "fields_expected": 54,
@@ -269,7 +273,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "a8db338d-3a09-4c24-a503-308ebd5af236",
+      "snapshot_id": "94489441-f52a-4cf5-9d86-7faeb451de1d",
       "ticker": "$LATE",
       "chain": "solana",
       "contract": "LATE3xqvT1qkNfPjCtq8xJ2mWq6rZ9dHbKcVnA4uYpS",
@@ -310,6 +314,7 @@
         "universe_volume_24h_usd": 13054000.0,
         "universe_boost_total": null
       },
+      "safety": null,
       "data_completeness": 0.35185185185185186,
       "fields_present": 19,
       "fields_expected": 54,
@@ -342,7 +347,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "a345dd28-8909-4338-a582-d5018cc6ca87",
+      "snapshot_id": "9726a431-26a9-4611-9183-9d0ab0ed1577",
       "ticker": "$FIRE",
       "chain": "solana",
       "contract": "FIRE1kLmNpQrStUvWxYz2AbCdEfGhJkMnPqRsTuVwXy",
@@ -383,6 +388,7 @@
         "universe_volume_24h_usd": 4672000.0,
         "universe_boost_total": null
       },
+      "safety": null,
       "data_completeness": 0.35185185185185186,
       "fields_present": 19,
       "fields_expected": 54,
@@ -415,7 +421,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "0a12709f-a727-4e74-b7d5-1951fa8e8118",
+      "snapshot_id": "c4b53f1e-1cdc-44ed-ab87-4de775675853",
       "ticker": "$HOLD",
       "chain": "solana",
       "contract": "HOLD2zYxWvUtSrQpOnMlKjIhGfEdCbA9876543210zz",
@@ -456,6 +462,7 @@
         "universe_volume_24h_usd": 4672000.0,
         "universe_boost_total": null
       },
+      "safety": null,
       "data_completeness": 0.3148148148148148,
       "fields_present": 17,
       "fields_expected": 54,
@@ -489,7 +496,7 @@
       "survived_7d": null
     },
     {
-      "snapshot_id": "1ccad183-7332-4ba2-9fcf-28da150a97c0",
+      "snapshot_id": "e87265dc-5649-4321-af34-838f4f4c49a4",
       "ticker": "$BOTH",
       "chain": "solana",
       "contract": "FIRE5mmmmNNNNooooPPPPqqqqRRRRssssTTTTuuuuVV",
@@ -530,6 +537,7 @@
         "universe_volume_24h_usd": 4672000.0,
         "universe_boost_total": null
       },
+      "safety": null,
       "data_completeness": 0.35185185185185186,
       "fields_present": 19,
       "fields_expected": 54,

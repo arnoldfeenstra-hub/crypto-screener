@@ -88,6 +88,7 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
         score_row = scores.get(snap["snapshot_id"], {})
         labels = store.latest_labels(snap["snapshot_id"]) or {}
         pillar_scores = _json_field(score_row.get("pillar_scores"), {})
+        safety = store.latest_safety(snap["snapshot_id"])
         tokens.append(
             {
                 "snapshot_id": snap["snapshot_id"],
@@ -136,6 +137,30 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                     "universe_volume_24h_usd": snap["mindshare_universe_volume_24h_usd"],
                     "universe_boost_total": snap["mindshare_universe_boost_total"],
                 },
+                # The safety lookup behind the filter verdicts, if one was made.
+                # Null here means the checks were never run, which is why the row
+                # reads "excluded as unmeasured" rather than "rejected".
+                "safety": (
+                    {
+                        "source": safety["source"],
+                        "collected_at_ms": safety["collected_at_ms"],
+                        "honeypot": safety["honeypot"],
+                        "buy_tax_pct": safety["buy_tax_pct"],
+                        "sell_tax_pct": safety["sell_tax_pct"],
+                        "mint_revoked": safety["mint_revoked"],
+                        "freeze_active": safety["freeze_active"],
+                        "lp_burned": safety["lp_burned"],
+                        "lp_locked_pct": safety["lp_locked_pct"],
+                        "top10_ex_lp_pct": safety["top10_ex_lp_pct"],
+                        "holder_count": safety["holder_count"],
+                        "deployer_address": safety["deployer_address"],
+                        "deployer_prior_rugs": safety["deployer_prior_rugs"],
+                        "rugged": safety["rugged"],
+                        "risk_labels": _json_field(safety["risk_labels"], []),
+                    }
+                    if safety
+                    else None
+                ),
                 "data_completeness": snap["data_completeness"],
                 "fields_present": snap["fields_present"],
                 "fields_expected": snap["fields_expected"],
@@ -248,6 +273,8 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             "labelled_snapshots": store.labelled_snapshot_count(),
             "excluded_on_evidence": excluded_evidence,
             "excluded_as_unmeasured": excluded_unmeasured,
+            "safety_checked": store.snapshots_with_safety(),
+            "safety_observations": store.safety_observation_count(),
         },
         "calibration": {
             "verdict": calibration["verdict"],

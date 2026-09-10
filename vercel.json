@@ -7,7 +7,7 @@
   "functions": {
     "api/screener.py": {
       "memory": 512,
-      "maxDuration": 30,
+      "maxDuration": 60,
       "includeFiles": "{collectors,filters,scoring,prompts}/**"
     }
   },

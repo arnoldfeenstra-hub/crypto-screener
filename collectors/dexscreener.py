@@ -47,15 +47,13 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
 from collectors import chains
+from collectors.httpjson import HttpJsonError, JsonGetClient, Throttle
 from collectors.metrics import TokenMetrics
 from collectors.schema import now_ms
 
@@ -84,84 +82,35 @@ class DexScreenerError(RuntimeError):
 
 
 # --- Network layer -----------------------------------------------------------
+#
+# Retry and throttle policy lives in collectors/httpjson.py, shared with the safety
+# source. `_Throttle` stays as a name here because it is the throttle this client
+# uses, now pre-loaded with the per-endpoint limits above.
 
 
-class _Throttle:
-    """Smallest thing that keeps us under a per-minute cap: a minimum gap.
-
-    Spacing requests evenly rather than bursting to the cap and stalling is both
-    kinder to the endpoint and steadier for a long-running watcher.
-    """
-
-    def __init__(self, sleep: Any = time.sleep, clock: Any = time.monotonic) -> None:
-        self._sleep = sleep
-        self._clock = clock
-        self._last: dict[str, float] = {}
-
-    def wait(self, bucket: str) -> None:
-        per_minute = RATE_LIMIT_PER_MINUTE.get(bucket)
-        if not per_minute:
-            return
-        min_gap = 60.0 / per_minute
-        last = self._last.get(bucket)
-        now = self._clock()
-        if last is not None:
-            remaining = min_gap - (now - last)
-            if remaining > 0:
-                self._sleep(remaining)
-                now = self._clock()
-        self._last[bucket] = now
+def _Throttle(*, sleep: Any = None, clock: Any = None, **kwargs: Any) -> Throttle:
+    """A Throttle carrying DexScreener's documented per-endpoint limits."""
+    extra = {k: v for k, v in (("sleep", sleep), ("clock", clock)) if v is not None}
+    return Throttle(RATE_LIMIT_PER_MINUTE, **extra, **kwargs)
 
 
 @dataclass
-class DexScreenerClient:
+class DexScreenerClient(JsonGetClient):
     """Read-only JSON GET client for the public DexScreener API.
 
     No token, no header beyond a user agent, no method that writes.
     """
 
     base_url: str = BASE_URL
-    timeout: float = 20.0
-    max_retries: int = 3
-    opener: Any = None
-    throttle: _Throttle = field(default_factory=_Throttle)
-    sleep: Any = time.sleep
+    throttle: Throttle = field(default_factory=_Throttle)
 
     def _get(self, path: str, bucket: str, params: dict[str, str] | None = None) -> Any:
-        url = f"{self.base_url}{path}"
-        if params:
-            url = f"{url}?{urllib.parse.urlencode(params)}"
-        last_error: Exception | None = None
-        for attempt in range(1, self.max_retries + 1):
-            self.throttle.wait(bucket)
-            request = urllib.request.Request(
-                url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"}
-            )
-            try:
-                opener = self.opener or urllib.request.urlopen
-                with opener(request, timeout=self.timeout) as response:
-                    return json.loads(response.read().decode("utf-8"))
-            except urllib.error.HTTPError as exc:
-                # 429 and 5xx are worth another go; a 400 or 404 is a bug in the
-                # call and retrying it just burns the shared budget.
-                if exc.code not in (408, 429, 500, 502, 503, 504):
-                    raise DexScreenerError(f"HTTP {exc.code} for {url}") from exc
-                last_error = exc
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-                last_error = exc
-            if attempt < self.max_retries:
-                backoff = min(2**attempt, 30)
-                log.warning(
-                    "dexscreener %s attempt %d/%d failed: %s",
-                    path,
-                    attempt,
-                    self.max_retries,
-                    last_error,
-                )
-                self.sleep(backoff)
-        raise DexScreenerError(
-            f"dexscreener failed after {self.max_retries} attempts: {url}: {last_error}"
-        )
+        try:
+            return self.get(path, bucket, params)
+        except HttpJsonError as exc:
+            # Re-raised under this module's own error type so callers that catch
+            # DexScreenerError keep catching everything this client can raise.
+            raise DexScreenerError(str(exc)) from exc
 
     # Each endpoint is one method, so the rate-limit bucket is decided here rather
     # than guessed at every call site.
@@ -666,6 +615,47 @@ class DexScreenerPriceSource:
         return out
 
 
+def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
+    """Every ``chainId`` the discovery endpoints actually return, with counts.
+
+    The answer to "what is Robinhood Chain's DexScreener id" is not something this
+    repo can hardcode honestly -- see ``collectors/chains.py``. This asks the API
+    instead, and reports what came back with each id flagged as registered or not,
+    so an unregistered id can be bound with ``SCREENER_CHAIN_IDS`` without a code
+    change.
+
+    A chain with no boosted or profiled tokens at this moment will not appear. That
+    is a fact about the sample, not proof the chain is absent from DexScreener.
+    """
+    seen: dict[str, int] = {}
+    for fetch in (
+        client.token_boosts_top,
+        client.token_boosts_latest,
+        client.token_profiles,
+    ):
+        try:
+            entries = fetch()
+        except DexScreenerError:
+            log.exception("discovery endpoint failed during chain discovery")
+            continue
+        for entry in entries if isinstance(entries, list) else []:
+            if isinstance(entry, dict) and entry.get("chainId"):
+                raw = str(entry["chainId"])
+                seen[raw] = seen.get(raw, 0) + 1
+
+    out: dict[str, dict[str, Any]] = {}
+    for raw, count in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
+        name = chains.canonical(raw)
+        entry = chains.get(raw)
+        out[raw] = {
+            "tokens_seen": count,
+            "canonical_name": name,
+            "registered": bool(entry and entry.known),
+            "bound_to_a_source": bool(entry and entry.has_dexscreener_source),
+        }
+    return out
+
+
 def merge_discovery(metrics: TokenMetrics, discovery: dict[str, Any]) -> TokenMetrics:
     """Layer discovery metadata onto a metrics record without overwriting a measurement."""
     updates: dict[str, Any] = {}
@@ -688,6 +678,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--probe", action="store_true", help="run each endpoint once")
     parser.add_argument(
+        "--discover-chains",
+        action="store_true",
+        help=(
+            "list every chainId the discovery endpoints return, flagged registered "
+            "or not. Use it to find an id for a chain this repo does not yet bind "
+            f"(then set {chains.CHAIN_ID_ENV}=\"name=<id>\")."
+        ),
+    )
+    parser.add_argument(
         "--chains",
         default=",".join(chains.DEFAULT_CHAINS),
         help=f"comma-separated (supported: {', '.join(chains.supported_names())})",
@@ -696,6 +695,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
+
+    if args.discover_chains:
+        try:
+            found = discover_chain_ids(DexScreenerClient())
+        except DexScreenerError as exc:
+            print(json.dumps({"error": str(exc)}, indent=2))
+            return 1
+        unbound = [
+            chain_id for chain_id, info in found.items() if not info["bound_to_a_source"]
+        ]
+        print(
+            json.dumps(
+                {
+                    "chain_ids_seen": found,
+                    "not_bound_to_a_source": unbound,
+                    "hint": (
+                        f'{chains.CHAIN_ID_ENV}="robinhood=<id>" binds one without a '
+                        "code change. A chain with no boosted or profiled tokens right "
+                        "now will not appear here; that is a fact about this sample, "
+                        "not proof the chain is absent from DexScreener."
+                    ),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
     if not args.probe:
         parser.print_help()
         return 0

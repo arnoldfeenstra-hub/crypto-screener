@@ -17,12 +17,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from collectors import chains
 from collectors.metrics import TokenMetrics
+from collectors.safety import SafetyReport
 from collectors.store import Store
 from collectors.trigger_watcher import TriggerWatcher, evaluate
 from filters.hard_filters import FilterInput, Outcome, check_proxy_risk
@@ -100,6 +102,99 @@ class TestChainRegistry:
         """BUILD_BRIEF.md section 4 names three; all three must exist as names."""
         for name in ("solana", "bnb", "robinhood"):
             assert chains.get(name) is not None
+
+
+class TestChainIdOverride:
+    """Robinhood Chain, and every chain whose id this repo does not yet know.
+
+    BUILD_BRIEF.md section 4 names Robinhood Chain as a target. It is an Arbitrum
+    Orbit rollup, so `evm=True` is a property of the chain and safe to assert;
+    its DexScreener `chainId` is not, because nobody here has seen DexScreener
+    return one. Hardcoding a guess would produce the worst available outcome -- a
+    request that matches nothing, indistinguishable from a quiet chain. So the id
+    is configuration, and these tests check that path works end to end.
+    """
+
+    def teardown_method(self):
+        chains.reload_overrides("")
+
+    def test_binding_an_id_switches_a_registered_chain_on(self):
+        chains.reload_overrides("robinhood=robinhood-chain")
+        assert chains.dexscreener_id("robinhood") == "robinhood-chain"
+        assert chains.resolve_requested(["robinhood"]) == ["robinhood"]
+        assert "robinhood" in chains.supported_names()
+
+    def test_a_bound_chain_normalises_back_from_its_dexscreener_id(self):
+        """The whole point of the registry: one name in the `chain` column."""
+        chains.reload_overrides("robinhood=robinhood-chain")
+        assert chains.from_dexscreener("robinhood-chain") == "robinhood"
+
+    def test_robinhood_is_evm_whether_or_not_an_id_is_bound(self):
+        assert chains.is_evm("robinhood") is True
+        chains.reload_overrides("robinhood=robinhood-chain")
+        assert chains.is_evm("robinhood") is True
+
+    def test_an_unbound_chain_still_fails_by_name_with_the_remedy(self):
+        chains.reload_overrides("")
+        with pytest.raises(ValueError) as exc:
+            chains.resolve_requested(["robinhood"])
+        assert "SCREENER_CHAIN_IDS" in str(exc.value)
+        assert "discover-chains" in str(exc.value)
+
+    def test_a_name_the_registry_has_never_seen_can_also_be_bound(self):
+        chains.reload_overrides("newchain=some-dex-id")
+        assert chains.resolve_requested(["newchain"]) == ["newchain"]
+
+    def test_a_malformed_override_is_skipped_rather_than_guessed_at(self):
+        chains.reload_overrides("robinhood,=nothing,  , solana=")
+        assert chains.dexscreener_id("robinhood") is None
+        assert chains.dexscreener_id("solana") == "solana"
+
+    def test_the_override_does_not_disturb_the_chains_already_bound(self):
+        chains.reload_overrides("robinhood=robinhood-chain")
+        assert chains.dexscreener_id("bnb") == "bsc"
+        assert chains.canonical("bsc") == "bnb"
+
+
+class TestChainDiscovery:
+    """The probe that finds an id, so binding one is not guesswork either."""
+
+    def test_it_reports_every_chain_id_seen_and_whether_it_is_bound(self):
+        from collectors.dexscreener import discover_chain_ids
+
+        class StubClient:
+            def token_boosts_top(self):
+                return [
+                    {"chainId": "solana", "tokenAddress": "A"},
+                    {"chainId": "robinhood-chain", "tokenAddress": "B"},
+                ]
+
+            def token_boosts_latest(self):
+                return [{"chainId": "robinhood-chain", "tokenAddress": "C"}]
+
+            def token_profiles(self):
+                return []
+
+        found = discover_chain_ids(StubClient())
+        assert found["solana"]["bound_to_a_source"] is True
+        assert found["robinhood-chain"]["tokens_seen"] == 2
+        assert found["robinhood-chain"]["canonical_name"] == "robinhood"
+        assert found["robinhood-chain"]["bound_to_a_source"] is False
+
+    def test_a_failing_endpoint_does_not_lose_the_others(self):
+        from collectors.dexscreener import DexScreenerError, discover_chain_ids
+
+        class StubClient:
+            def token_boosts_top(self):
+                raise DexScreenerError("down")
+
+            def token_boosts_latest(self):
+                return [{"chainId": "base", "tokenAddress": "A"}]
+
+            def token_profiles(self):
+                return []
+
+        assert "base" in discover_chain_ids(StubClient())
 
 
 class TestProxyFilterFollowsTheChain:
@@ -229,8 +324,47 @@ def live_tokens():
     ]
 
 
+class StubSafety:
+    """A safety source that answers from a dict, with no network."""
+
+    def __init__(self, reports=None, error=None):
+        self.reports = reports or {}
+        self.error = error
+
+    def fetch(self, tokens):
+        if self.error:
+            raise RuntimeError(self.error)
+        return {key: self.reports[key] for key in tokens if key in self.reports}
+
+
+def clean_report(chain: str, contract: str) -> SafetyReport:
+    """A token that passes every check a safety source can answer."""
+    return SafetyReport(
+        chain=chain,
+        contract=contract,
+        source="goplus",
+        collected_at_ms=TS,
+        honeypot=False,
+        sells_failing=False,
+        buy_tax_pct=0.0,
+        sell_tax_pct=0.0,
+        mint_revoked=True,
+        freeze_active=False,
+        lp_burned=True,
+        top10_ex_lp_pct=12.0,
+        upgradeable=False,
+        admin_renounced=True,
+        holder_count=1400,
+        deployer_address="0xcreator",
+        deployer_prior_rugs=0,
+    )
+
+
 class TestLivePayload:
     def payload(self, **kwargs):
+        # with_safety defaults off here so the common case needs no stub; the
+        # safety-specific tests below pass one explicitly.
+        kwargs.setdefault("with_safety", False)
         return API.build_live_payload(
             ["solana", "bnb", "base"], feed=StubFeed(live_tokens()), **kwargs
         )
@@ -340,10 +474,85 @@ class TestLivePayload:
         assert len(payload["tokens"]) == 1
 
     def test_query_parsing_defaults_and_clamps(self):
-        assert API._parse_query("") == (list(chains.DEFAULT_CHAINS), API.DEFAULT_LIMIT)
+        assert API._parse_query("") == (
+            list(chains.DEFAULT_CHAINS),
+            API.DEFAULT_LIMIT,
+            True,
+        )
         assert API._parse_query("chains=solana,bsc&limit=5")[0] == ["solana", "bsc"]
         assert API._parse_query("limit=99999")[1] == API.MAX_LIMIT
         assert API._parse_query("limit=nonsense")[1] == API.DEFAULT_LIMIT
+        assert API._parse_query("safety=0")[2] is False
+        assert API._parse_query("safety=1")[2] is True
+
+
+class TestLiveSafety:
+    """The live view's verdicts have to come from evidence, or say they do not."""
+
+    def with_safety(self, reports=None, error=None):
+        return API.build_live_payload(
+            ["solana", "bnb", "base"],
+            feed=StubFeed(live_tokens()),
+            safety_source=StubSafety(reports, error),
+            with_safety=True,
+        )
+
+    def test_a_clean_report_lets_a_token_actually_score(self):
+        """The whole point: with safety answered, a row is judged instead of skipped."""
+        payload = self.with_safety({("solana", "A"): clean_report("solana", "A")})
+        alpha = next(t for t in payload["tokens"] if t["ticker"] == "$ALPHA")
+        assert alpha["excluded"] is False
+        assert alpha["score"] is not None
+        assert alpha["indeterminate_on"] == []
+        assert alpha["rank"] == 1
+
+    def test_a_honeypot_is_rejected_on_evidence_not_excluded_as_unknown(self):
+        report = replace(clean_report("solana", "A"), honeypot=True)
+        payload = self.with_safety({("solana", "A"): report})
+        alpha = next(t for t in payload["tokens"] if t["ticker"] == "$ALPHA")
+        assert alpha["rejected_by"] == ["sellability"]
+        assert alpha["score"] is None
+
+    def test_a_token_with_no_report_stays_unmeasured(self):
+        """Partial coverage must not leak into a pass for the tokens not covered."""
+        payload = self.with_safety({("solana", "A"): clean_report("solana", "A")})
+        beta = next(t for t in payload["tokens"] if t["ticker"] == "$BETA")
+        assert beta["excluded"] is True
+        assert beta["safety"] is None
+        assert "mint_authority" in beta["indeterminate_on"]
+
+    def test_the_safety_evidence_travels_with_the_row(self):
+        """Hard rule 6: a verdict whose inputs are gone cannot be back-tested."""
+        payload = self.with_safety({("solana", "A"): clean_report("solana", "A")})
+        alpha = next(t for t in payload["tokens"] if t["ticker"] == "$ALPHA")
+        assert alpha["safety"]["source"] == "goplus"
+        assert alpha["safety"]["mint_revoked"] is True
+        assert alpha["safety"]["holder_count"] == 1400
+
+    def test_a_failing_safety_lookup_degrades_toward_fewer_scores(self):
+        """A view must not die on a side lookup, and must not pass rows instead."""
+        payload = self.with_safety(error="goplus is down")
+        assert payload["live"]["safety_error"] is not None
+        assert payload["live"]["safety_measured"] == 0
+        assert all(t["excluded"] for t in payload["tokens"])
+        assert all(t["score"] is None for t in payload["tokens"])
+
+    def test_safety_is_only_looked_up_for_tokens_that_cleared_the_trigger(self):
+        asked: list[tuple[str, str]] = []
+
+        class Recording(StubSafety):
+            def fetch(self, tokens):
+                asked.extend(tokens)
+                return {}
+
+        API.build_live_payload(
+            ["solana", "bnb", "base"],
+            feed=StubFeed(live_tokens()),
+            safety_source=Recording(),
+            with_safety=True,
+        )
+        assert ("base", "0xC") not in asked  # below the trigger
+        assert ("solana", "A") in asked
 
 
 class TestSharedLogicIsActuallyShared:

@@ -24,28 +24,86 @@ tokens whether or not a collector has ever run.
 | 0.4 outcome tracker | Built |
 | 0.5 on-chain backfill | Built |
 | 0.6 mindshare (share-of-attention variable) | Built, weight 0.00 in the composite |
-| 1 hard filters | Built, 8/8 filters |
+| 0.7 safety source (GoPlus + RugCheck, keyless) | Built, answers 6 of the 8 hard filters |
+| 0.8 scheduled collector + append-only journal | Built, `collect.py` + GitHub Actions |
+| 1 hard filters | Built, 8/8 filters, and they now answer |
 | 1 scoring runner | Built, paper mode only |
 | 2 calibration (fit + report) | Built, gated on Phase 0 exit criteria |
 | 3 live ranking | **Not built, and should not be** — gated on Phase 2 measuring an edge |
 | Web viewer | Built, `web/` + `api/screener.py`, chain and mindshare filters |
 
-467 tests, no network, ~6s. `ruff` clean.
+554 tests, no network, ~8s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
 
 ## Run it against real data
 
-No API key, no signup. DexScreener is keyless:
+No API key, no signup. DexScreener, GoPlus and RugCheck are all keyless. One command does
+a whole cycle — restore, poll, re-price, label, score, export, journal:
 
 ```bash
-python -m collectors.dexscreener --probe --chains solana,bnb          # see what comes back
-python -m collectors.trigger_watcher --chains solana,bnb,base --once --db data/screener.duckdb --regime neutral
-python -m scoring.runner --db data/screener.duckdb --regime neutral
+python -m collect --chains solana,bnb,base --regime neutral --export
+python -m collect --summary-only          # what the journal holds
+```
+
+Run that on a schedule and Phase 0 actually accumulates. `.github/workflows/collect.yml`
+does it every 30 minutes and commits the journal back to the repo; read the cost note at
+the top of that file before leaving it on for a private repo.
+
+The individual steps still exist if you want them:
+
+```bash
+python -m collectors.dexscreener --probe --chains solana,bnb   # see what comes back
+python -m collectors.dexscreener --discover-chains             # every chainId it returns
+python -m collectors.safety --probe --chain bnb 0xTOKEN        # what the filters can answer
+python -m collectors.trigger_watcher --chains solana,bnb,base --once --db data/screener.duckdb
+python -m scoring.runner --db data/screener.duckdb --safety --regime neutral
+python -m collectors.outcomes --reprice --refresh-labels --db data/screener.duckdb
 python -m export_web --db data/screener.duckdb
 ```
 
-Leave the watcher running (drop `--once`) and it polls forever, firing one snapshot per
-token at first crossing. `python -m collectors.outcomes --reprice --refresh-labels` on a
-schedule fills the forward labels.
+## Where the dataset lives
+
+`state/*.jsonl` — an append-only JSONL journal, committed to the repo. It is rebuilt into
+DuckDB at the start of each run and appended to at the end, so the database is a working
+copy and the journal is the dataset.
+
+JSONL rather than the DuckDB file because the DuckDB file is one binary blob rewritten in
+full on every run: a job firing twice an hour would add a multi-megabyte object to git
+history every time. A journal appends lines. It is cheap in git, greppable by a human, and
+append-only *in the file format* rather than as a promise about SQL — which is hard rule 1
+expressed as a file layout.
+
+## Safety — what makes the filters answer
+
+Six of the eight hard filters are facts about a contract, not predictions. Until
+`collectors/safety.py` existed none of them had a source, so every row was excluded as
+*unmeasured* rather than judged — honest, but not a screen.
+
+- **GoPlus Token Security** covers the EVM chains *and* Solana with one keyless API:
+  honeypot, buy/sell tax, mint and freeze authority, LP holders and their lock state, top
+  holders, proxy and ownership.
+- **GoPlus address security** on the deployer wallet answers `deployer_history` — the one
+  filter no token-level API can. Deduplicated per deployer and capped, because keyless
+  GoPlus is 30 requests a minute.
+- **RugCheck** is a genuine second opinion on Solana: LP locked percentage per market and a
+  `rugged` flag GoPlus has no equivalent for.
+
+Two things are deliberately **not** concluded:
+
+- **A locked LP is not a 30-day lock.** Neither API reports a lock expiry, and that is
+  exactly what `check_liquidity_lock` asks about. A burn address holding the LP gives
+  `lp_burned=True` — burning is irreversible, so the question does not arise. "Locked,
+  expiry unknown" stays unknown.
+- **Deployer history on Solana stays unknown.** GoPlus address security covers EVM
+  addresses only. Unknown excludes; it is not a claim that the deployer is clean.
+
+Where the two sources disagree, `merge` takes the unsafe answer and never lets an unknown
+overwrite a measurement. Sources disagree because one of them is stale, and picking the
+reassuring one is how a screen quietly stops screening.
+
+Safety runs **after** the trigger, never before it. GoPlus reports holder counts on EVM and
+not on Solana; if that reached the trigger, the 500-holder condition would be fireable on
+one chain and not another, and a pooled cross-chain sample with a chain-dependent entry rule
+cannot be interpreted.
 
 ## Try the whole pipeline offline
 
@@ -132,9 +190,26 @@ earned mindshare are identical in a share number and are opposite signals.
 BUILD_BRIEF.md section 4 calls it `bnb`; every source normalises through `canonical()` on the
 way in, so one chain is never two rows in a `GROUP BY` or two entries in the page's chain
 filter. Covered today: Solana, BNB Chain, Ethereum, Base, Arbitrum, Polygon, Avalanche,
-Optimism, Blast, Sui, TON, Tron. Robinhood Chain is registered as a named target with no
-source — `--chains robinhood` fails by name rather than collecting nothing, because a silent
-skip and a quiet day look identical in the counts afterwards.
+Optimism, Blast, Sui, TON, Tron.
+
+**Robinhood Chain.** Registered as an EVM chain (it is an Arbitrum Orbit rollup, so that
+much is a property of the chain). Its DexScreener `chainId` is *not* hardcoded, because
+nobody here has seen DexScreener return one and a guessed string produces the worst outcome
+available: a request that quietly matches nothing, indistinguishable from a quiet chain. So
+it is configuration, and switching it on takes two commands and no code change:
+
+```bash
+python -m collectors.dexscreener --discover-chains     # prints every chainId seen
+export SCREENER_CHAIN_IDS="robinhood=<the id it printed>"
+python -m collect --chains solana,bnb,robinhood
+```
+
+The same variable binds any chain the registry does not yet know
+(`"robinhood=abc,newchain=def"`), and the GitHub Actions workflow reads it from a repository
+variable of the same name. Until it is bound, `--chains robinhood` fails **by name** rather
+than collecting nothing: a silent skip and a quiet chain look identical in the counts
+afterwards. Note that GoPlus has no chain id for it either, so its safety checks will read
+unknown — which excludes — until they do.
 
 The trigger never sees the chain, so tokens from every chain enter the sample on identical
 terms. `filters/hard_filters.py` asks the registry whether a chain is EVM rather than
@@ -167,12 +242,14 @@ free pass.
 - **`flows` and `launch` are never populated.** Cohort flow and bundle/sniper analysis need
   heavier per-wallet queries that aren't written. Null, not zero, so the rows stay honest —
   but `data_completeness` sits near 0.35 and the composite is multiplied by it.
-- **Three of five pillars resolve to null on Phase 0 data**, so a composite score today is
+- **Three of six pillars resolve to null on Phase 0 data**, so a composite score today is
   computed from on-chain structure and asymmetry only, renormalised over what resolved.
-- **Nearly every row is excluded as *unmeasured*, not rejected.** Sellability, LP burn and
-  proxy admin come from a safety source (RugCheck / GoPlus / Honeypot.is) that isn't wired
-  up. Unknown never passes a filter, so the exclusion is correct — it just isn't evidence.
-  The page shows both counts separately.
+- **The GoPlus and RugCheck response shapes are unverified too**, for the same reason as
+  DexScreener's, and it matters more here: a price parsed wrong is a wrong number, but a
+  safety field parsed wrong is a token that passes a filter it should have failed. The
+  parsers are total and every field defaults to `None`, so a shape change degrades to
+  *unknown* — which excludes — rather than to a false pass. Run
+  `python -m collectors.safety --probe` before trusting a green verdict.
 - **Only Solana has a Bitquery source.** DexScreener covers the other chains;
   `BitqueryFeed.poll()` still raises for a non-Solana chain rather than silently collecting
   nothing.
@@ -185,8 +262,12 @@ Follows BUILD_BRIEF.md §5. Extra modules inside `collectors/` (`config`, `schem
 `metrics`, `social_base`) are the shared spine the named modules build on.
 
 ```
+collect.py                 one full cycle: restore, poll, re-price, label, score, journal
 collectors/
   chains.py            canonical chain names, EVM flags, DexScreener id mapping
+  httpjson.py          shared read-only JSON GET: throttle, retry, no method that writes
+  journal.py           append-only JSONL persistence, so a schedule can carry state
+  safety.py            GoPlus + RugCheck: what makes six of the eight filters answer
   dexscreener.py       the live source: keyless client, pure parsers, multi-chain feed
   mindshare.py         share-of-observed-attention, with the denominators kept
   trigger_rule.py      the trigger rule alone, importable without DuckDB
@@ -208,8 +289,10 @@ calibration/fit.py         Phase 2 — time split, logistic fit, AUC/lift/interv
 calibration/report.py      Phase 2 — the verdict, with two ways to say "no"
 export_web.py              DuckDB → web/screener-data.json
 api/screener.py            Vercel function: live DexScreener → scored ranking (stdlib only)
-web/                       static viewer (Vercel), chain + mindshare filters
-tests/                     467 tests, no network
+web/                       static viewer (Vercel), chain + mindshare + safety
+state/                     the dataset, as an append-only JSONL journal (tracked in git)
+.github/workflows/         the scheduled collector
+tests/                     554 tests, network access blocked by conftest
 ```
 
 Four modules were split out so `api/screener.py` can share the repo's real logic instead of

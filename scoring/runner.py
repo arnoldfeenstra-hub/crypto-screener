@@ -23,6 +23,13 @@ raises; there is nothing for it to switch on.
 **No execution path, ever** (hard rule 4). No exchange keys, no signing, no order
 placement. The output is a ranked list a human reads.
 
+**Safety is looked up per batch, not per row, and never before the trigger.**
+``collectors/safety.py`` answers six of the eight hard filters. It runs here rather
+than in the watcher because a safety API that reports holder counts on some chains
+and not others would, if it reached the trigger, make entry to the dataset
+chain-dependent -- and a pooled cross-chain sample with a chain-dependent entry rule
+cannot be interpreted. By the time this module runs, entry has already been decided.
+
 **Every scored row carries its inputs** (hard rule 6). ``prompt_version``,
 ``weights_version``, the model id and the entire candidate packet are stored in the
 same row as the score. prompts/score.md will be edited many times before Phase 2,
@@ -44,6 +51,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from collectors.config import load_config
+from collectors.safety import SafetyReport, SafetySource
 from collectors.schema import now_ms
 from collectors.store import Store
 from filters.hard_filters import Verdict, apply
@@ -263,6 +271,7 @@ class ScoringRunner:
         paper_mode: bool = True,
         narrator: NarrativeClient | None = None,
         model: str = DEFAULT_MODEL,
+        safety_source: SafetySource | None = None,
     ) -> None:
         if not paper_mode:
             raise NotImplementedError(
@@ -274,6 +283,10 @@ class ScoringRunner:
         self.paper_mode = True
         self.narrator = narrator
         self.model = model
+        # Optional, and additive like the narrator: without it the filters answer
+        # "unknown" exactly as they did before, which excludes rather than passes.
+        self.safety_source = safety_source
+        self.last_safety_reports: dict[tuple[str, str], SafetyReport] = {}
         self.prompt_version = prompt_version()
 
     def score_one(
@@ -284,7 +297,14 @@ class ScoringRunner:
         safety: dict[str, Any] | None = None,
         run_id: str | None = None,
     ) -> dict[str, Any]:
-        verdict: Verdict = apply(filter_input_from_candidate(candidate, **(safety or {})))
+        safety = safety or {}
+        if safety:
+            # Hard rule 6: the score and the inputs that produced it live in the
+            # same row. Safety fields decide six of the eight hard filters, so a
+            # score stored without them could never be re-derived -- the row would
+            # say "excluded" with no record of what excluded it.
+            candidate = {**candidate, "safety": safety}
+        verdict: Verdict = apply(filter_input_from_candidate(candidate, **safety))
         excluded = verdict.excluded
 
         pillars = score_candidate(candidate, regime=regime)
@@ -335,6 +355,29 @@ class ScoringRunner:
             "chain": candidate.get("chain"),
         }
 
+    def fetch_safety(
+        self, candidates: Sequence[dict[str, Any]]
+    ) -> dict[tuple[str, str], SafetyReport]:
+        """Look up safety for a whole batch at once, or return nothing.
+
+        A failure here is not fatal and must not be: unknown excludes, so a
+        degraded safety fetch makes the screener more conservative, never less.
+        """
+        if self.safety_source is None:
+            return {}
+        tokens = [
+            (c["chain"], c["contract"])
+            for c in candidates
+            if c.get("chain") and c.get("contract")
+        ]
+        if not tokens:
+            return {}
+        try:
+            return self.safety_source.fetch(tokens)
+        except Exception:
+            log.exception("safety lookup failed; every filter stays unmeasured")
+            return {}
+
     def score_batch(
         self,
         candidates: Sequence[dict[str, Any]],
@@ -345,10 +388,19 @@ class ScoringRunner:
         # One id for the whole batch: a ranking is read from a run, and two runs can
         # land in the same millisecond.
         run_id = str(uuid.uuid4())
-        rows = [
-            self.score_one(c, regime=regime, safety=safety, run_id=run_id)
-            for c in candidates
-        ]
+        reports = self.fetch_safety(candidates)
+        self.last_safety_reports = reports
+        rows = []
+        for candidate in candidates:
+            report = reports.get((candidate.get("chain"), candidate.get("contract")))
+            per_token = dict(safety or {})
+            if report is not None:
+                per_token.update(report.to_filter_fields())
+            rows.append(
+                self.score_one(
+                    candidate, regime=regime, safety=per_token or None, run_id=run_id
+                )
+            )
         ranked = sorted(
             (r for r in rows if not r["excluded"]),
             key=lambda r: (r["score"] is None, -(r["score"] or 0.0)),
@@ -360,11 +412,20 @@ class ScoringRunner:
     def run(self, *, limit: int = 50, regime: str | None = None) -> ScoredBatch:
         if self.store is None:
             raise ValueError("a Store is required to score stored snapshots")
-        candidates = [
-            candidate_from_row(row) for row in self.store.recent_snapshots(limit)
-        ]
+        rows = self.store.recent_snapshots(limit)
+        candidates = [candidate_from_row(row) for row in rows]
         batch = self.score_batch(candidates, regime=regime)
         self.store.append_scores(batch.rows)
+        if self.last_safety_reports:
+            # Stored as its own append-only observation, never written back onto the
+            # snapshot: the lookup happened after the snapshot was taken, and the
+            # change over time is itself worth keeping.
+            snapshot_ids = {
+                (row["chain"], row["contract"]): row["snapshot_id"] for row in rows
+            }
+            self.store.append_safety_observations(
+                self.last_safety_reports.values(), snapshot_ids
+            )
         return batch
 
 
@@ -384,6 +445,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="also call the API for thesis / bear case / falsifier (needs ANTHROPIC_API_KEY)",
     )
+    parser.add_argument(
+        "--safety",
+        action="store_true",
+        help=(
+            "look up GoPlus and RugCheck for each candidate (no API key). Without "
+            "this, six of the eight hard filters can only answer 'unknown' and "
+            "nearly every row is excluded as unmeasured rather than judged."
+        ),
+    )
+    parser.add_argument(
+        "--no-rugcheck",
+        action="store_true",
+        help="with --safety, use GoPlus only (RugCheck is one request per token)",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
@@ -396,8 +471,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     db_path = args.db or str(config.db_path)
 
     narrator = NarrativeClient(model=args.model) if args.narrate else None
+    safety_source = (
+        SafetySource(use_rugcheck=not args.no_rugcheck) if args.safety else None
+    )
     with Store(db_path) as store:
-        runner = ScoringRunner(store, narrator=narrator, model=args.model)
+        runner = ScoringRunner(
+            store, narrator=narrator, model=args.model, safety_source=safety_source
+        )
         batch = runner.run(limit=args.limit, regime=args.regime)
         payload = batch.to_dict()
         payload["_meta"] = {
@@ -406,6 +486,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "weights_version": WEIGHTS_VERSION,
             "weights": WEIGHTS,
             "scored": len(batch.rows),
+            "safety_measured": len(runner.last_safety_reports),
             **batch.exclusion_summary(),
             "warning": (
                 "Weights are uncalibrated priors. Phase 2 has not run, so no edge "
