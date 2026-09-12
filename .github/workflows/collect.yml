@@ -12,11 +12,10 @@
 #
 # A note on cost, because it decides the interval you actually want:
 #
-#   * A public repository has unlimited Actions minutes. Every 30 minutes is fine.
-#   * A private repository on the free plan has 2,000 minutes a month. At roughly
-#     two minutes a run, every 30 minutes is ~2,900 minutes and will run out.
-#     Hourly (~1,450) fits. Change the cron below rather than discovering this at
-#     the end of the month.
+#   * This workflow runs HOURLY, which at roughly two minutes a run is ~1,450
+#     minutes a month -- inside a private repository's 2,000 free minutes.
+#   * A public repository has unlimited Actions minutes, so there every 30 minutes
+#     ("*/30 * * * *") is both affordable and better: see the note on the cron.
 #   * GitHub throttles scheduled workflows under load and drops them entirely on
 #     repositories with no activity for 60 days. For a collector whose whole value
 #     is not missing hours, a small always-on host is the better home; this
@@ -36,9 +35,18 @@ name: collect
 
 on:
   schedule:
-    # Every 30 minutes. Tokens cross $250k and die inside an hour, so a longer gap
-    # loses rows the sample cannot get back. See the cost note above.
-    - cron: "*/30 * * * *"
+    # Hourly, to fit a private repository's 2,000 free Actions minutes a month.
+    #
+    # This is a real trade-off, not a free saving. Tokens cross $250k and die
+    # inside an hour, so an hourly poll misses some of them entirely -- and a
+    # token that is never observed is not in the graveyard, which is the dataset.
+    # The loss is invisible in the counts afterwards: the sample simply looks
+    # smaller, not biased, when in fact it is slightly biased toward tokens that
+    # lived long enough to be seen.
+    #
+    # Every 30 minutes ("*/30 * * * *") halves that and costs ~2,900 minutes a
+    # month; on a public repository, where minutes are unlimited, prefer it.
+    - cron: "0 * * * *"
   workflow_dispatch:
     inputs:
       chains:
