@@ -30,6 +30,16 @@ irreversible, and the 30-day question does not arise -- while "locked, expiry
 unknown" stays ``None``. Reading a locker balance as a 30-day lock would be
 inventing the one number the filter is actually about.
 
+**"Honeypot" is answered per chain, not skipped off EVM.** GoPlus has no
+``is_honeypot`` for Solana, and treating that as unknown left ``check_sellability``
+unanswerable for every Solana token -- which is most of the sample, so the screener
+could rank nothing at all. The question is answerable; the mechanics just differ.
+On an SPL mint a sale is blocked by the ``non_transferable`` extension or by a
+``transfer_hook`` program that can reject the transfer, and a report that covers
+the mint and shows neither has *measured* that it is sellable. Same for tax:
+``transfer_fee: {}`` on a real report means the fee extension is off -- a measured
+zero, not a missing measurement.
+
 **A holder count from a safety API never reaches the trigger.** GoPlus reports
 ``holder_count`` on EVM and not on Solana. Feeding it into the trigger would make
 the 500-holder condition fireable on one chain and not another -- a chain-dependent
@@ -522,16 +532,57 @@ def parse_goplus_solana(
         mintable = _flag((data.get("mintable") or {}).get("status"))
         freezable = _flag((data.get("freezable") or {}).get("status"))
 
-        # A non-transferable mint cannot be sold at all. That is the Solana shape of
-        # the honeypot question, and it is the one thing here that maps to it.
+        # Is this a substantive report, or an envelope with nothing in it? The
+        # distinction decides whether an absent field means "no" or "not checked",
+        # and getting it wrong in the permissive direction is how a screen starts
+        # passing tokens it never examined.
+        answered = mintable is not None or freezable is not None
+
+        # Sellability, Solana-shaped.
+        #
+        # GoPlus has no `is_honeypot` off Solana, and until this was written that
+        # left check_sellability permanently unanswerable for every Solana token --
+        # which is to say for almost the whole sample. But "can this be sold" IS
+        # answerable here; it just has different mechanics. What can block a
+        # transfer on an SPL mint:
+        #
+        #   * the Token-2022 `non_transferable` extension -- an outright block;
+        #   * a `transfer_hook` -- a program that runs on every transfer and can
+        #     reject it;
+        #   * a live freeze authority -- handled by check_freeze_authority, not
+        #     double-counted here.
+        #
+        # A hook is treated as a honeypot rather than as a note, for the same
+        # reason `transfer_pausable` maps to freeze_active on EVM above: it is an
+        # unaudited program holding the power to refuse your sell, which is exactly
+        # what the filter exists to catch. Some legitimate Token-2022 tokens will
+        # be excluded by this. That is the safe direction of the error.
         non_transferable = _flag(data.get("non_transferable"))
+        has_hook = bool(data.get("transfer_hook"))
+        blockers = [non_transferable, True if has_hook else None]
+        measured = [b for b in blockers if b is not None]
+        if measured:
+            honeypot = any(measured)
+        elif answered:
+            # The report covered this mint and none of the blockers are present.
+            # That is a measured "sellable", not an unknown.
+            honeypot = False
+        else:
+            honeypot = None
 
         transfer_fee = data.get("transfer_fee")
         fee_pct = None
-        if isinstance(transfer_fee, dict) and transfer_fee:
-            fee_pct = _number(transfer_fee.get("transfer_fee_percent"))
-            if fee_pct is None:
-                fee_pct = _percent_from_fraction(transfer_fee.get("transfer_fee"))
+        if isinstance(transfer_fee, dict):
+            if transfer_fee:
+                fee_pct = _number(transfer_fee.get("transfer_fee_percent"))
+                if fee_pct is None:
+                    fee_pct = _percent_from_fraction(transfer_fee.get("transfer_fee"))
+            elif answered:
+                # `transfer_fee: {}` on a real report means the Token-2022
+                # transfer-fee extension is not enabled -- a measured zero, not a
+                # missing measurement. Reading it as unknown left every Solana
+                # token's tax permanently unanswerable and so permanently excluded.
+                fee_pct = 0.0
 
         risks = [
             name
@@ -559,7 +610,11 @@ def parse_goplus_solana(
             contract=str(mint),
             source="goplus",
             collected_at_ms=collected,
-            sells_failing=non_transferable,
+            honeypot=honeypot,
+            # An outright non-transferable mint is the one case where the sell does
+            # not merely risk failing -- it cannot be attempted.
+            sells_failing=non_transferable if non_transferable is not None
+            else (False if answered else None),
             # A transfer fee is charged on both sides on Solana.
             buy_tax_pct=fee_pct,
             sell_tax_pct=fee_pct,

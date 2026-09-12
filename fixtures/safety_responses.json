@@ -19,9 +19,10 @@
     "",
     "Cases below cover: a clean token, a honeypot, a token whose LP is visible and",
     "wholly unlocked, one where the LP is locked with no stated expiry, a Solana",
-    "mint with a live freeze authority, and a deployer flagged for prior honeypots."
+    "mint with a live freeze authority, and a deployer flagged for prior honeypots.",
+    "",
+    "The Solana cases below were added after the first live collector run showed check_sellability unanswerable for 12 of 13 real tokens, all Solana. GoPlus has no is_honeypot off EVM, so the question is answered from the SPL mechanics that actually block a sale: the non_transferable extension and a transfer_hook program. goplus_solana_empty_report is the guard that matters most -- an envelope covering nothing must stay unknown rather than become a pass."
   ],
-
   "goplus_evm_clean": {
     "code": 1,
     "message": "OK",
@@ -51,15 +52,34 @@
           }
         ],
         "holders": [
-          { "address": "0x1111", "tag": "", "percent": "0.041", "is_contract": 0 },
-          { "address": "0x2222", "tag": "", "percent": "0.033", "is_contract": 0 },
-          { "address": "0x3333", "tag": "Uniswap V2 Pool", "percent": "0.62", "is_contract": 1 },
-          { "address": "0x4444", "tag": "Binance 14", "percent": "0.10", "is_contract": 1 }
+          {
+            "address": "0x1111",
+            "tag": "",
+            "percent": "0.041",
+            "is_contract": 0
+          },
+          {
+            "address": "0x2222",
+            "tag": "",
+            "percent": "0.033",
+            "is_contract": 0
+          },
+          {
+            "address": "0x3333",
+            "tag": "Uniswap V2 Pool",
+            "percent": "0.62",
+            "is_contract": 1
+          },
+          {
+            "address": "0x4444",
+            "tag": "Binance 14",
+            "percent": "0.10",
+            "is_contract": 1
+          }
         ]
       }
     }
   },
-
   "goplus_evm_honeypot": {
     "code": 1,
     "message": "OK",
@@ -79,16 +99,28 @@
         "is_blacklisted": "1",
         "holder_count": "63",
         "lp_holders": [
-          { "address": "0x9999", "tag": "", "is_locked": 0, "percent": "1.0" }
+          {
+            "address": "0x9999",
+            "tag": "",
+            "is_locked": 0,
+            "percent": "1.0"
+          }
         ],
         "holders": [
-          { "address": "0x8888", "tag": "", "percent": "0.72" },
-          { "address": "0x7777", "tag": "", "percent": "0.11" }
+          {
+            "address": "0x8888",
+            "tag": "",
+            "percent": "0.72"
+          },
+          {
+            "address": "0x7777",
+            "tag": "",
+            "percent": "0.11"
+          }
         ]
       }
     }
   },
-
   "goplus_evm_locked_no_expiry": {
     "code": 1,
     "result": {
@@ -110,26 +142,56 @@
             "percent": "0.97"
           }
         ],
-        "holders": [{ "address": "0x6666", "tag": "", "percent": "0.05" }]
+        "holders": [
+          {
+            "address": "0x6666",
+            "tag": "",
+            "percent": "0.05"
+          }
+        ]
       }
     }
   },
-
   "goplus_solana": {
     "code": 1,
     "result": {
       "SoLMint11111111111111111111111111111111111": {
-        "metadata": { "name": "Gamma Example", "symbol": "GAMMA" },
-        "mintable": { "status": "0", "authority": [] },
-        "freezable": { "status": "1", "authority": ["FrEEze1111111111111111111111111111111111111"] },
-        "closable": { "status": "0", "authority": [] },
-        "metadata_mutable": { "status": "1", "authority": [] },
-        "balance_mutable_authority": { "status": "0", "authority": [] },
+        "metadata": {
+          "name": "Gamma Example",
+          "symbol": "GAMMA"
+        },
+        "mintable": {
+          "status": "0",
+          "authority": []
+        },
+        "freezable": {
+          "status": "1",
+          "authority": [
+            "FrEEze1111111111111111111111111111111111111"
+          ]
+        },
+        "closable": {
+          "status": "0",
+          "authority": []
+        },
+        "metadata_mutable": {
+          "status": "1",
+          "authority": []
+        },
+        "balance_mutable_authority": {
+          "status": "0",
+          "authority": []
+        },
         "non_transferable": "0",
         "default_account_state": "0",
         "transfer_fee": {},
         "transfer_hook": [],
-        "creators": [{ "address": "CrEAtor11111111111111111111111111111111111", "malicious": "0" }],
+        "creators": [
+          {
+            "address": "CrEAtor11111111111111111111111111111111111",
+            "malicious": "0"
+          }
+        ],
         "lp_holders": [
           {
             "account": "1nc1nerator11111111111111111111111111111111",
@@ -139,14 +201,25 @@
           }
         ],
         "holders": [
-          { "account": "Hold1", "tag": "", "percent": "0.06" },
-          { "account": "Hold2", "tag": "", "percent": "0.04" },
-          { "account": "Raydium1", "tag": "Raydium Liquidity Pool", "percent": "0.55" }
+          {
+            "account": "Hold1",
+            "tag": "",
+            "percent": "0.06"
+          },
+          {
+            "account": "Hold2",
+            "tag": "",
+            "percent": "0.04"
+          },
+          {
+            "account": "Raydium1",
+            "tag": "Raydium Liquidity Pool",
+            "percent": "0.55"
+          }
         ]
       }
     }
   },
-
   "goplus_address_clean": {
     "code": 1,
     "result": {
@@ -162,7 +235,6 @@
       "sanctioned": "0"
     }
   },
-
   "goplus_address_flagged": {
     "code": 1,
     "result": {
@@ -176,9 +248,10 @@
       "financial_crime": "0"
     }
   },
-
-  "goplus_address_empty": { "code": 1, "result": {} },
-
+  "goplus_address_empty": {
+    "code": 1,
+    "result": {}
+  },
   "rugcheck_report": {
     "mint": "SoLMint11111111111111111111111111111111111",
     "creator": "CrEAtor11111111111111111111111111111111111",
@@ -188,37 +261,209 @@
     "totalHolders": 1893,
     "totalMarketLiquidity": 128000.5,
     "risks": [
-      { "name": "Low amount of LP Providers", "level": "warn", "score": 400 },
-      { "name": "Mutable metadata", "level": "warn", "score": 100 }
+      {
+        "name": "Low amount of LP Providers",
+        "level": "warn",
+        "score": 400
+      },
+      {
+        "name": "Mutable metadata",
+        "level": "warn",
+        "score": 100
+      }
     ],
     "markets": [
-      { "marketType": "raydium", "lp": { "lpLockedPct": 100.0, "lpBurned": true } },
-      { "marketType": "meteora", "lp": { "lpLockedPct": 84.2, "lpBurned": false } }
+      {
+        "marketType": "raydium",
+        "lp": {
+          "lpLockedPct": 100.0,
+          "lpBurned": true
+        }
+      },
+      {
+        "marketType": "meteora",
+        "lp": {
+          "lpLockedPct": 84.2,
+          "lpBurned": false
+        }
+      }
     ],
     "topHolders": [
-      { "owner": "Hold1", "pct": 6.1, "insider": false },
-      { "owner": "Hold2", "pct": 4.4, "insider": false },
-      { "owner": "Raydium Liquidity Pool", "pct": 55.0, "insider": false }
+      {
+        "owner": "Hold1",
+        "pct": 6.1,
+        "insider": false
+      },
+      {
+        "owner": "Hold2",
+        "pct": 4.4,
+        "insider": false
+      },
+      {
+        "owner": "Raydium Liquidity Pool",
+        "pct": 55.0,
+        "insider": false
+      }
     ]
   },
-
   "rugcheck_rugged": {
     "mint": "RugMint111111111111111111111111111111111111",
     "mintAuthority": "MintAuth111111111111111111111111111111111",
     "freezeAuthority": null,
     "rugged": true,
-    "risks": [{ "name": "Rugged", "level": "danger" }],
-    "markets": [{ "lp": { "lpLockedPct": 0.0, "lpBurned": false } }],
-    "topHolders": [{ "owner": "Whale1", "pct": 62.0 }]
+    "risks": [
+      {
+        "name": "Rugged",
+        "level": "danger"
+      }
+    ],
+    "markets": [
+      {
+        "lp": {
+          "lpLockedPct": 0.0,
+          "lpBurned": false
+        }
+      }
+    ],
+    "topHolders": [
+      {
+        "owner": "Whale1",
+        "pct": 62.0
+      }
+    ]
   },
-
   "malformed_responses": [
     null,
     [],
     {},
-    { "code": 0, "message": "error" },
-    { "result": null },
-    { "result": { "0xabc": "not an object" } },
-    { "result": [] }
-  ]
+    {
+      "code": 0,
+      "message": "error"
+    },
+    {
+      "result": null
+    },
+    {
+      "result": {
+        "0xabc": "not an object"
+      }
+    },
+    {
+      "result": []
+    }
+  ],
+  "goplus_solana_hooked": {
+    "code": 1,
+    "result": {
+      "HookMint1111111111111111111111111111111111": {
+        "metadata": {
+          "name": "Gamma Example",
+          "symbol": "GAMMA"
+        },
+        "mintable": {
+          "status": "0",
+          "authority": []
+        },
+        "freezable": {
+          "status": "1",
+          "authority": [
+            "FrEEze1111111111111111111111111111111111111"
+          ]
+        },
+        "closable": {
+          "status": "0",
+          "authority": []
+        },
+        "metadata_mutable": {
+          "status": "1",
+          "authority": []
+        },
+        "balance_mutable_authority": {
+          "status": "0",
+          "authority": []
+        },
+        "non_transferable": "0",
+        "default_account_state": "0",
+        "transfer_fee": {},
+        "transfer_hook": [
+          {
+            "address": "HookProg111111111111111111111111111111111"
+          }
+        ],
+        "lp_holders": [
+          {
+            "account": "1nc1nerator11111111111111111111111111111111",
+            "tag": "Incinerator",
+            "is_locked": 1,
+            "percent": "1.0"
+          }
+        ],
+        "holders": [
+          {
+            "account": "Hold1",
+            "tag": "",
+            "percent": "0.06"
+          },
+          {
+            "account": "Hold2",
+            "tag": "",
+            "percent": "0.04"
+          },
+          {
+            "account": "Raydium1",
+            "tag": "Raydium Liquidity Pool",
+            "percent": "0.55"
+          }
+        ],
+        "transfer_hook_upgradable": {
+          "status": "1",
+          "authority": []
+        }
+      }
+    }
+  },
+  "goplus_solana_non_transferable": {
+    "code": 1,
+    "result": {
+      "FrozenMint11111111111111111111111111111111": {
+        "mintable": {
+          "status": "0",
+          "authority": []
+        },
+        "freezable": {
+          "status": "0",
+          "authority": []
+        },
+        "non_transferable": "1",
+        "transfer_fee": {},
+        "transfer_hook": []
+      }
+    }
+  },
+  "goplus_solana_taxed": {
+    "code": 1,
+    "result": {
+      "TaxMint1111111111111111111111111111111111": {
+        "mintable": {
+          "status": "0",
+          "authority": []
+        },
+        "freezable": {
+          "status": "0",
+          "authority": []
+        },
+        "non_transferable": "0",
+        "transfer_hook": [],
+        "transfer_fee": {
+          "transfer_fee_percent": 9.5
+        }
+      }
+    }
+  },
+  "goplus_solana_empty_report": {
+    "code": 1,
+    "result": {
+      "BareMint111111111111111111111111111111111": {}
+    }
+  }
 }

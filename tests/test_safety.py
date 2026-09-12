@@ -194,6 +194,64 @@ class TestGoPlusSolana:
         assert report.deployer_address is not None
         assert report.deployer_prior_rugs is None
 
+    def test_a_clean_mint_is_measured_sellable_not_left_unknown(self):
+        """The gap the first live run exposed.
+
+        GoPlus has no is_honeypot off EVM, and treating that as unknown made
+        check_sellability unanswerable for every Solana token -- 12 of the 13 real
+        tokens in the first collector run. The question is answerable from the SPL
+        mechanics that actually block a sale.
+        """
+        report = self.report()
+        assert report.honeypot is False
+        assert report.sells_failing is False
+
+    def test_an_absent_transfer_fee_extension_is_a_measured_zero(self):
+        """`transfer_fee: {}` on a real report means the extension is off."""
+        report = self.report()
+        assert report.buy_tax_pct == 0.0
+        assert report.sell_tax_pct == 0.0
+
+    def test_a_transfer_hook_is_treated_as_a_honeypot(self):
+        """An unaudited program that can refuse your sell is what the filter is for.
+
+        Some legitimate Token-2022 tokens are excluded by this. That is the safe
+        direction of the error, and the same reasoning that maps EVM
+        transfer_pausable onto freeze_active.
+        """
+        report = parse_goplus_solana(DATA["goplus_solana_hooked"])[
+            "HookMint1111111111111111111111111111111111"
+        ]
+        assert report.honeypot is True
+
+    def test_a_non_transferable_mint_cannot_be_sold(self):
+        report = parse_goplus_solana(DATA["goplus_solana_non_transferable"])[
+            "FrozenMint11111111111111111111111111111111"
+        ]
+        assert report.honeypot is True
+        assert report.sells_failing is True
+
+    def test_a_transfer_fee_is_read_as_a_tax_on_both_sides(self):
+        report = parse_goplus_solana(DATA["goplus_solana_taxed"])[
+            "TaxMint1111111111111111111111111111111111"
+        ]
+        assert report.buy_tax_pct == pytest.approx(9.5)
+        assert report.sell_tax_pct == pytest.approx(9.5)
+
+    def test_an_envelope_covering_nothing_stays_unknown(self):
+        """The guard that matters most: absence of evidence is not a pass.
+
+        A report that answered none of the structural questions must not have its
+        silence read as "no blockers found".
+        """
+        report = parse_goplus_solana(DATA["goplus_solana_empty_report"])[
+            "BareMint111111111111111111111111111111111"
+        ]
+        assert report.honeypot is None
+        assert report.sells_failing is None
+        assert report.buy_tax_pct is None
+        assert report.to_filter_fields() == {}
+
     def test_proxy_risk_is_not_asserted_on_solana(self):
         """The chain registry answers that; a second answer here could disagree."""
         assert self.report().upgradeable is None
@@ -365,6 +423,32 @@ class TestFiltersActuallyAnswerNow:
         )
         assert verdict.indeterminate_on == ["liquidity_lock"]
         assert verdict.rejected_by == []
+
+    def test_a_real_solana_token_now_clears_sellability(self):
+        """End to end on the chain that is most of the sample.
+
+        Before this, sellability was unanswerable on Solana and every Solana row
+        was excluded as unmeasured no matter how clean it was.
+        """
+        report = parse_goplus_solana(DATA["goplus_solana"])[SOL_MINT]
+        verdict = apply(
+            filter_input_from_candidate(
+                candidate(chain="solana", contract=SOL_MINT), **report.to_filter_fields()
+            )
+        )
+        assert "sellability" not in verdict.indeterminate_on
+        assert "sellability" not in verdict.rejected_by
+
+    def test_a_taxed_solana_token_is_rejected_on_evidence(self):
+        report = parse_goplus_solana(DATA["goplus_solana_taxed"])[
+            "TaxMint1111111111111111111111111111111111"
+        ]
+        verdict = apply(
+            filter_input_from_candidate(
+                candidate(chain="solana", contract="TaxMint"), **report.to_filter_fields()
+            )
+        )
+        assert "sellability" in verdict.rejected_by
 
     def test_no_report_leaves_the_row_exactly_as_it_was_before(self):
         verdict = apply(filter_input_from_candidate(candidate()))
