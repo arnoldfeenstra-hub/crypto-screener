@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-12T20:42:28+00:00",
+  "generated_at": "2026-09-12T21:10:35+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -53,7 +53,7 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 16,
-    "outcome_observations": 71,
+    "outcome_observations": 87,
     "social_observations": 0,
     "labelled_snapshots": 14,
     "excluded_on_evidence": 4,
