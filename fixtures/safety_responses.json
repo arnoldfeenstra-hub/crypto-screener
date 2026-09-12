@@ -21,7 +21,8 @@
     "wholly unlocked, one where the LP is locked with no stated expiry, a Solana",
     "mint with a live freeze authority, and a deployer flagged for prior honeypots.",
     "",
-    "The Solana cases below were added after the first live collector run showed check_sellability unanswerable for 12 of 13 real tokens, all Solana. GoPlus has no is_honeypot off EVM, so the question is answered from the SPL mechanics that actually block a sale: the non_transferable extension and a transfer_hook program. goplus_solana_empty_report is the guard that matters most -- an envelope covering nothing must stay unknown rather than become a pass."
+    "The Solana cases below were added after the first live collector run showed check_sellability unanswerable for 12 of 13 real tokens, all Solana. GoPlus has no is_honeypot off EVM, so the question is answered from the SPL mechanics that actually block a sale: the non_transferable extension and a transfer_hook program. goplus_solana_empty_report is the guard that matters most -- an envelope covering nothing must stay unknown rather than become a pass.",
+    "rugcheck_dust_pool_unlocked and rugcheck_every_pool_secured were added after the second live run left 11 of 13 real tokens rejected on liquidity_lock. A Solana token routinely has several pools, and collapsing them with min() reads a burned main pool plus a dust pool as 0% locked -- a rejection the data does not support. collectors.safety._rugcheck_lp now answers only where the pools agree; these two fixtures are the disagreeing and the agreeing case. Both are hand-built to the documented schema, same provenance caveat as everything else in this file."
   ],
   "goplus_evm_clean": {
     "code": 1,
@@ -489,5 +490,67 @@
         ]
       }
     }
+  },
+  "rugcheck_dust_pool_unlocked": {
+    "mint": "DustMint111111111111111111111111111111111",
+    "creator": "CrEAtor11111111111111111111111111111111111",
+    "mintAuthority": null,
+    "freezeAuthority": null,
+    "rugged": false,
+    "totalHolders": 4102,
+    "totalMarketLiquidity": 413200.0,
+    "markets": [
+      {
+        "marketType": "raydium",
+        "lp": {
+          "lpLockedPct": 100.0,
+          "lpBurned": true,
+          "lpLockedUSD": 412000.0
+        }
+      },
+      {
+        "marketType": "meteora",
+        "lp": {
+          "lpLockedPct": 0.0,
+          "lpBurned": false,
+          "lpLockedUSD": 0.0
+        }
+      }
+    ],
+    "topHolders": [
+      {
+        "owner": "Hold1",
+        "pct": 5.2
+      }
+    ]
+  },
+  "rugcheck_every_pool_secured": {
+    "mint": "SafeMint111111111111111111111111111111111",
+    "mintAuthority": null,
+    "freezeAuthority": null,
+    "rugged": false,
+    "totalMarketLiquidity": 288000.0,
+    "markets": [
+      {
+        "marketType": "raydium",
+        "lp": {
+          "lpLockedPct": 100.0,
+          "lpBurned": true
+        }
+      },
+      {
+        "marketType": "orca",
+        "lp": {
+          "lpLockedPct": 98.4,
+          "lpBurned": false
+        }
+      }
+    ],
+    "topHolders": [
+      {
+        "owner": "Hold1",
+        "pct": 3.9
+      }
+    ]
   }
 }

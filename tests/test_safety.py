@@ -20,19 +20,27 @@ from pathlib import Path
 import pytest
 
 from collectors.safety import (
+    LP_SECURED_PCT,
     GoPlusClient,
     RugCheckClient,
     SafetyReport,
     SafetySource,
+    from_row,
     merge,
     parse_goplus_address_security,
     parse_goplus_evm,
     parse_goplus_solana,
     parse_rugcheck,
 )
-from collectors.schema import now_ms
+from collectors.schema import SAFETY_OBSERVATION_COLUMNS, now_ms
 from collectors.store import Store
-from filters.hard_filters import FilterInput, Outcome, apply, check_liquidity_lock
+from filters.hard_filters import (
+    LP_LOCK_MIN_PCT,
+    FilterInput,
+    Outcome,
+    apply,
+    check_liquidity_lock,
+)
 from scoring.candidate import filter_input_from_candidate
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "safety_responses.json"
@@ -283,10 +291,74 @@ class TestRugCheck:
         assert report.mint_revoked is True
         assert report.freeze_active is True
 
-    def test_the_least_locked_market_is_the_one_reported(self):
-        """A token is only as locked as its thinnest escape route."""
+    def test_pools_that_disagree_leave_the_lock_unmeasured(self):
+        """The fixture has a burned pool at 100% and a second at 84.2%.
+
+        Collapsing those with min() would assert 84.2% -- a number that describes
+        neither pool and that no weighting was applied to produce. Unknown is the
+        answer the evidence supports, and unknown excludes.
+        """
         report = parse_rugcheck(DATA["rugcheck_report"], SOL_MINT)
-        assert report.lp_locked_pct == pytest.approx(84.2)
+        assert report.lp_locked_pct is None
+        assert "lp_locked_pct" not in report.to_filter_fields()
+
+    def test_a_burned_main_pool_beside_an_open_dust_pool_is_not_a_rejection(self):
+        """The case that made 11 of 13 real tokens reject on liquidity_lock.
+
+        min() across pools read this as 0% locked, which `check_liquidity_lock`
+        rejects outright on "no LP locked or burned". It is not a measured zero:
+        one pool holds $412k of burned LP and the other holds nothing.
+        """
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert report.lp_locked_pct is None
+        assert report.lp_burned is None
+        assert report.to_filter_fields().keys().isdisjoint({"lp_locked_pct", "lp_burned"})
+
+    def test_a_single_burned_pool_cannot_pass_the_whole_token(self):
+        """The mirror of the same bug, and the dangerous direction.
+
+        `check_liquidity_lock` passes outright on ``lp_burned is True``, so reading
+        "any pool burned" as burned would pass a token whose actual liquidity is
+        still pullable.
+        """
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert report.lp_burned is not True
+
+    def test_when_every_pool_is_secured_the_weakest_of_them_is_reported(self):
+        report = parse_rugcheck(DATA["rugcheck_every_pool_secured"], "SafeMint")
+        assert report.lp_locked_pct == pytest.approx(98.4)
+        # One pool burned, one merely locked, so "burned" is not the token's state.
+        assert report.lp_burned is None
+
+    def test_when_every_pool_is_open_that_is_a_measured_zero(self):
+        report = parse_rugcheck(DATA["rugcheck_rugged"], "RugMint")
+        assert report.lp_locked_pct == 0.0
+
+    def test_the_pool_rows_are_retained_as_evidence(self):
+        """Without these the aggregate cannot be second-guessed after the fact, and
+        the raw response is not stored anywhere."""
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert [m["market"] for m in report.lp_markets] == ["raydium", "meteora"]
+        assert [m["locked_pct"] for m in report.lp_markets] == [100.0, 0.0]
+        assert [m["burned"] for m in report.lp_markets] == [True, False]
+        assert report.lp_markets[0]["locked_usd"] == pytest.approx(412000.0)
+
+    def test_pool_evidence_does_not_inflate_data_completeness(self):
+        """`lp_markets` is evidence for a measurement, not a measurement of its
+        own. Counting it would make an unmeasured lock look like a measured one."""
+        with_pools = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert with_pools.lp_markets
+        assert with_pools.measured_fields == replace(with_pools, lp_markets=()).measured_fields
+
+    def test_a_token_with_no_pools_at_all_is_unknown_not_zero(self):
+        report = parse_rugcheck({"mint": "x", "markets": []}, "x")
+        assert report.lp_locked_pct is None
+        assert report.lp_markets == ()
+
+    def test_the_secured_threshold_matches_the_filter_that_reads_it(self):
+        """Two constants, one question. Drift would mean the collector answers
+        "secured" for a share the filter does not accept."""
+        assert LP_SECURED_PCT == LP_LOCK_MIN_PCT
 
     def test_a_rugged_flag_is_carried_even_though_no_filter_reads_it(self):
         report = parse_rugcheck(DATA["rugcheck_rugged"], "RugMint")
@@ -305,7 +377,7 @@ class TestRugCheck:
 
 class TestAddressSecurity:
     def test_a_checked_clean_wallet_is_a_real_zero(self):
-        """"Checked and clean" is what lets check_deployer_history pass at all."""
+        """ "Checked and clean" is what lets check_deployer_history pass at all."""
         count, labels = parse_goplus_address_security(DATA["goplus_address_clean"], "0xa")
         assert count == 0
         assert labels == ()
@@ -577,7 +649,11 @@ class TestSafetySource:
         found = self.source().fetch([("solana", SOL_MINT)])
         report = found[("solana", SOL_MINT)]
         assert "rugcheck" in report.source
-        assert report.lp_locked_pct == pytest.approx(84.2)
+        # RugCheck's pools disagree, so it measures no share; GoPlus sees the
+        # incinerator holding all of the LP on the pool it does cover. An unknown
+        # never overwrites a measurement, so the measurement stands.
+        assert report.lp_locked_pct == pytest.approx(100.0)
+        assert report.rugged is False
 
     def test_a_chain_with_no_safety_source_is_left_unmeasured(self):
         """Robinhood Chain today. Unknown excludes, so this is the safe direction."""
@@ -600,8 +676,27 @@ class TestSafetySource:
 
 
 class TestStorage:
+    def test_the_pool_rows_survive_a_write_and_read_back(self):
+        """`lp_markets` is only worth collecting if it reaches the journal, which
+        is what the next run replays the parser against."""
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        names = [name for name, _ in SAFETY_OBSERVATION_COLUMNS]
+        with Store() as store:
+            store.append_safety_observations([report])
+            values = store._con.execute(
+                f"SELECT {', '.join(names)} FROM safety_observations"
+            ).fetchall()[0]
+        stored = dict(zip(names, values, strict=True))
+        assert from_row(stored).lp_markets == report.lp_markets
+
+    def test_a_row_written_before_the_column_existed_still_loads(self):
+        """Schema 3 rows carry no `lp_markets` key. Absent means the collector did
+        not retain it, which is not the same as a token with no pools -- but both
+        read as "nothing to replay", and neither may crash the restore."""
+        assert from_row({"chain": "solana", "contract": "x", "ts": 1}).lp_markets == ()
+
     def test_a_safety_row_is_appended_and_never_replaces_an_earlier_one(self):
-        """"Live when we looked, revoked an hour later" is a real sequence of events."""
+        """ "Live when we looked, revoked an hour later" is a real sequence of events."""
         with Store() as store:
             first = SafetyReport(
                 chain="bnb",

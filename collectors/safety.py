@@ -150,6 +150,11 @@ NON_HOLDER_TAGS = (
 
 TOP_HOLDER_COUNT = 10
 
+# The share of LP that has to be locked or burned for `check_liquidity_lock` to
+# pass without an expiry. Kept here as well as in `filters.hard_filters` so this
+# module needs no import from the filter layer; a test asserts the two agree.
+LP_SECURED_PCT = 95.0
+
 
 class SafetyError(RuntimeError):
     """A safety lookup failed after retries."""
@@ -182,6 +187,11 @@ class SafetyReport:
     # Liquidity lock
     lp_burned: bool | None = None
     lp_locked_pct: float | None = None
+    # The per-pool evidence `lp_locked_pct` was aggregated from, retained rather
+    # than discarded: a Solana token routinely has several pools, and only the
+    # pool-level rows can tell "unlocked everywhere" from "one dust pool drags the
+    # aggregate down". Evidence, not a measurement -- see `measured_fields`.
+    lp_markets: tuple[dict[str, Any], ...] = ()
 
     # Concentration and ownership
     top10_ex_lp_pct: float | None = None
@@ -206,7 +216,15 @@ class SafetyReport:
             1
             for f in fields(self)
             if f.name
-            not in ("chain", "contract", "source", "collected_at_ms", "risk_labels", "error")
+            not in (
+                "chain",
+                "contract",
+                "source",
+                "collected_at_ms",
+                "risk_labels",
+                "lp_markets",
+                "error",
+            )
             and getattr(self, f.name) is not None
         )
 
@@ -235,6 +253,7 @@ class SafetyReport:
     def to_row(self, snapshot_id: str | None = None) -> dict[str, Any]:
         row = asdict(self)
         row["risk_labels"] = json.dumps(list(self.risk_labels))
+        row["lp_markets"] = json.dumps(list(self.lp_markets))
         row["snapshot_id"] = snapshot_id
         row["ts"] = self.collected_at_ms
         return row
@@ -257,6 +276,15 @@ def from_row(row: dict[str, Any]) -> SafetyReport:
         except json.JSONDecodeError:
             labels = []
     values["risk_labels"] = tuple(labels or ())
+    markets = row.get("lp_markets")
+    if isinstance(markets, str):
+        try:
+            markets = json.loads(markets)
+        except json.JSONDecodeError:
+            markets = []
+    if not isinstance(markets, list):
+        markets = []
+    values["lp_markets"] = tuple(m for m in markets if isinstance(m, dict))
     values.setdefault("source", "stored")
     values.setdefault("collected_at_ms", row.get("ts") or 0)
     return SafetyReport(**values)
@@ -317,6 +345,7 @@ def merge(first: SafetyReport | None, second: SafetyReport | None) -> SafetyRepo
         first,
         source="+".join(sources),
         deployer_address=first.deployer_address or second.deployer_address,
+        lp_markets=first.lp_markets or second.lp_markets,
         collected_at_ms=max(first.collected_at_ms, second.collected_at_ms),
         risk_labels=tuple(sorted(set(first.risk_labels) | set(second.risk_labels))),
         error=first.error or second.error,
@@ -657,6 +686,65 @@ def parse_goplus_solana(
     return out
 
 
+def _rugcheck_lp(
+    markets: Any,
+) -> tuple[bool | None, float | None, tuple[dict[str, Any], ...]]:
+    """``(lp_burned, lp_locked_pct, per-pool evidence)`` from RugCheck ``markets``.
+
+    A Solana token usually has more than one pool, and the two obvious ways to
+    collapse them are both wrong in a way that matters:
+
+    * **min of the pool percentages** -- what this did until the pool rows showed
+      up. A token whose real pool is burned and which also has a $40 Meteora pool
+      with unlocked LP reads as 0% locked, and ``check_liquidity_lock`` rejects it
+      on "no LP locked or burned". That is a measurement the data does not
+      support, asserted with the confidence of one that is.
+    * **any pool burned** -- the mirror image, and the dangerous direction: a
+      burned dust pool would pass a token whose actual liquidity is pullable.
+
+    The honest aggregate is liquidity-weighted, and RugCheck's USD fields are not
+    verified from here well enough to divide by. So this answers only where the
+    weighting cannot change the verdict -- every pool secured, or every pool
+    unsecured -- and returns ``None`` when the pools disagree. Unknown excludes,
+    which is the safe direction, and the per-pool rows are kept in ``lp_markets``
+    so a later weighted rule can be written against recorded evidence rather than
+    against a schema doc.
+    """
+    if not isinstance(markets, list):
+        return None, None, ()
+
+    rows: list[dict[str, Any]] = []
+    for market in markets:
+        lp = market.get("lp") if isinstance(market, dict) else None
+        if not isinstance(lp, dict):
+            continue
+        kind = market.get("marketType") or market.get("marketTypeName")
+        rows.append(
+            {
+                "market": str(kind) if kind else None,
+                "locked_pct": _number(lp.get("lpLockedPct")),
+                "burned": _flag(lp.get("lpBurned")),
+                "locked_usd": _number(lp.get("lpLockedUSD")),
+            }
+        )
+
+    evidence = tuple(rows)
+    burn_flags = [row["burned"] for row in rows if row["burned"] is not None]
+    # True only when every pool that answered says burned. One burned pool among
+    # several says nothing about the rest, and `check_liquidity_lock` passes
+    # outright on `lp_burned is True`.
+    burned = True if burn_flags and all(burn_flags) else None
+
+    pcts = [row["locked_pct"] for row in rows if row["locked_pct"] is not None]
+    if not pcts:
+        return burned, None, evidence
+    if all(pct >= LP_SECURED_PCT for pct in pcts):
+        return burned, min(pcts), evidence
+    if all(pct <= 0.0 for pct in pcts):
+        return burned, 0.0, evidence
+    return burned, None, evidence
+
+
 def parse_rugcheck(
     payload: Any, contract: str, *, collected_at_ms: int | None = None
 ) -> SafetyReport | None:
@@ -674,19 +762,7 @@ def parse_rugcheck(
     if "freezeAuthority" in payload:
         freeze_active = bool(payload.get("freezeAuthority"))
 
-    locked_pcts = []
-    burned = None
-    markets = payload.get("markets")
-    if isinstance(markets, list):
-        for market in markets:
-            lp = (market or {}).get("lp") if isinstance(market, dict) else None
-            if not isinstance(lp, dict):
-                continue
-            pct = _number(lp.get("lpLockedPct"))
-            if pct is not None:
-                locked_pcts.append(pct)
-            if _flag(lp.get("lpBurned")) is True:
-                burned = True
+    burned, locked_pct, lp_markets = _rugcheck_lp(payload.get("markets"))
 
     top10 = None
     holders = payload.get("topHolders")
@@ -717,7 +793,8 @@ def parse_rugcheck(
         mint_revoked=mint_revoked,
         freeze_active=freeze_active,
         lp_burned=burned,
-        lp_locked_pct=min(locked_pcts) if locked_pcts else None,
+        lp_locked_pct=locked_pct,
+        lp_markets=lp_markets,
         top10_ex_lp_pct=top10,
         holder_count=int(total_holders) if total_holders is not None else None,
         rugged=payload.get("rugged") if isinstance(payload.get("rugged"), bool) else None,
@@ -881,9 +958,7 @@ class SafetySource:
                 )
         return reports
 
-    def fetch(
-        self, tokens: Sequence[tuple[str, str]]
-    ) -> dict[tuple[str, str], SafetyReport]:
+    def fetch(self, tokens: Sequence[tuple[str, str]]) -> dict[tuple[str, str], SafetyReport]:
         """``{(chain, contract): report}`` for whatever could be established."""
         out: dict[tuple[str, str], SafetyReport] = {}
         by_chain: dict[str, list[str]] = {}
@@ -892,8 +967,11 @@ class SafetySource:
 
         for chain, contracts in by_chain.items():
             if chain not in GOPLUS_CHAIN_IDS and chain not in GOPLUS_NATIVE_PATHS:
-                log.info("no safety source for chain %s; %d tokens stay unmeasured",
-                         chain, len(contracts))
+                log.info(
+                    "no safety source for chain %s; %d tokens stay unmeasured",
+                    chain,
+                    len(contracts),
+                )
                 continue
             for batch in [
                 contracts[i : i + MAX_ADDRESSES_PER_REQUEST]
