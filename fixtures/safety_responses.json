@@ -465,5 +465,29 @@
     "result": {
       "BareMint111111111111111111111111111111111": {}
     }
+  },
+  "goplus_solana_malicious_creator": {
+    "code": 1,
+    "result": {
+      "BadMint1111111111111111111111111111111111": {
+        "mintable": {
+          "status": "0",
+          "authority": []
+        },
+        "freezable": {
+          "status": "0",
+          "authority": []
+        },
+        "non_transferable": "0",
+        "transfer_hook": [],
+        "transfer_fee": {},
+        "creators": [
+          {
+            "address": "BadCreator11111111111111111111111111111",
+            "malicious": "1"
+          }
+        ]
+      }
+    }
   }
 }

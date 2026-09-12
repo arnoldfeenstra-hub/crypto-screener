@@ -1,12 +1,31 @@
 # Memecoin Screener — Ranking Prompt
 
-`prompt_version: 3` — bump this on every edit and write it into every scored row.
+`prompt_version: 4` — bump this on every edit and write it into every scored row.
 
 Drop the SYSTEM block into your model call. Feed one `candidate` object per token.
 
 **Status: uncalibrated priors.** The weights below are informed guesses plus two effects that
 have been measured against a real graveyard (see "Evidence-backed priors"). Everything else is
 placeholder until Phase 2 of `BUILD_BRIEF.md` replaces it with fitted coefficients.
+
+**Version 4 changes — a deliberate weakening of one hard filter, stated plainly.**
+The first live collection run scored **zero of thirteen** real tokens. Every one was
+excluded as *unmeasured*, not rejected: three of the eight STEP 1 filters could not be
+answered from any keyless source. Two are now answerable; the third was relaxed.
+
+- **Sellability** is answered on Solana from the SPL mechanics that actually block a sale
+  (`non_transferable`, `transfer_hook`) rather than from an `is_honeypot` field that only
+  exists on EVM. No weakening — a report that covers the mint and shows neither blocker has
+  measured that it is sellable.
+- **Deployer history** is answered on Solana from GoPlus's own `creators[].malicious` flag,
+  which the parser had been ignoring. Also no weakening.
+- **Liquidity lock is weakened, and this is the one to argue with.** The rule below asks for
+  a lock ≥30 days out. No keyless source reports a lock *expiry*, so holding out for one
+  meant the filter abstained on 12 of 13 real tokens — it was not screening, it was
+  declining to answer. It now passes when ≥95% of LP sits in a locker or burn address, with
+  the reason string saying the expiry was never measured. **What this gives up: a lock
+  expiring next week now reads the same as one expiring next year.** The honest way to close
+  that gap is a source that reports the expiry, not a lower threshold.
 
 **Version 3 changes.** Pillar F (Mindshare) was added, and it carries **weight 0.00**. That is
 not a prior about mindshare being worthless — it is a refusal to invent a prior. `.claude/rules/
@@ -53,12 +72,12 @@ Reject and exclude on any of:
 
 | Filter | Reject condition |
 |---|---|
-| Sellability | Honeypot detected, sells failing, or transfer tax > 5% either side |
+| Sellability | Honeypot detected, sells failing, or transfer tax > 5% either side. On Solana the honeypot question is the `non_transferable` extension and `transfer_hook` programs |
 | Mint authority | Not revoked (SOL) / owner retains mint or rebase (EVM) |
 | Freeze authority | Active |
-| Liquidity | LP neither burned nor locked, **or** lock expires < 30 days out |
+| Liquidity | LP neither burned nor locked, **or** lock expires < 30 days out. Where no source reports an expiry, ≥95% of LP locked or burned passes instead — see the version 4 note above for what that concedes |
 | Concentration | Top-10 holders excluding LP, CEX, and known burn addresses > 35% supply |
-| Deployer | Wallet linked to ≥1 prior confirmed rug or soft-rug |
+| Deployer | Wallet linked to ≥1 prior confirmed rug or soft-rug (EVM: GoPlus address security; Solana: `creators[].malicious`) |
 | Liquidity depth | Pooled liquidity < 2% of fully diluted market cap |
 | Proxy risk | Upgradeable contract with unrenounced admin |
 

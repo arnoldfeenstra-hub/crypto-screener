@@ -225,6 +225,7 @@ class SafetyReport:
             "freeze_active": self.freeze_active,
             "lp_burned": self.lp_burned,
             "top10_ex_lp_pct": self.top10_ex_lp_pct,
+            "lp_locked_pct": self.lp_locked_pct,
             "upgradeable": self.upgradeable,
             "admin_renounced": self.admin_renounced,
             "deployer_prior_rugs": self.deployer_prior_rugs,
@@ -599,11 +600,32 @@ def parse_goplus_solana(
             if _flag(value) is True
         ]
 
+        # The creator, and GoPlus's own verdict on them.
+        #
+        # `creators[].malicious` is the Solana answer to check_deployer_history.
+        # It was there all along and this parser was ignoring it, which is why
+        # deployer_history came back unknown for every Solana token in the first
+        # live run -- while the EVM rows, which take a whole extra address-security
+        # request to answer, were fine. One flag, already in the response.
+        #
+        # A creator list with the flag present and clear is a measured zero, not an
+        # absence: GoPlus looked at this wallet and said no.
         creators = data.get("creators")
         creator = None
+        prior_rugs = None
         if isinstance(creators, list) and creators:
-            first = creators[0]
-            creator = first.get("address") if isinstance(first, dict) else first
+            flags = []
+            for entry in creators:
+                if isinstance(entry, dict):
+                    if creator is None and entry.get("address"):
+                        creator = entry["address"]
+                    flag = _flag(entry.get("malicious"))
+                    if flag is not None:
+                        flags.append(flag)
+                elif creator is None:
+                    creator = entry
+            if flags:
+                prior_rugs = sum(1 for f in flags if f)
 
         out[str(mint)] = SafetyReport(
             chain="solana",
@@ -626,10 +648,10 @@ def parse_goplus_solana(
             # Solana programs are not EVM proxies; hard_filters already answers the
             # proxy question from the chain registry, so nothing is asserted here.
             deployer_address=str(creator) if creator else None,
-            # deployer_prior_rugs stays None on Solana: GoPlus address security
-            # covers EVM addresses only, and there is no keyless equivalent. Unknown
-            # excludes, which is the correct and conservative answer -- it is not a
-            # claim that the deployer is clean.
+            # From creators[].malicious above. GoPlus address security is EVM-only,
+            # but the Solana response carries its own per-creator verdict, so this
+            # is answered without a second request.
+            deployer_prior_rugs=prior_rugs,
             risk_labels=tuple(risks),
         )
     return out
