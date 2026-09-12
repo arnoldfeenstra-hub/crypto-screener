@@ -13,6 +13,14 @@
 # The suite needs no network: tests/conftest.py blocks urllib and requests
 # outright, so a test that tried to reach DexScreener or GoPlus fails here the
 # same way it fails locally, rather than passing on a runner that has egress.
+#
+# `push` and `pull_request` both fire on a branch with a PR open, and that is
+# deliberate rather than a missed de-dupe. They run different commits: `push`
+# tests the branch tip, `pull_request` tests the tip merged into the base. Those
+# differ exactly when it matters -- when the base moved -- and at ~30 seconds a
+# run the second one is the cheapest check in the repository. Narrowing `push`
+# to the default branch would remove the duplicate and with it the only coverage
+# a branch gets before its PR exists.
 
 name: ci
 
