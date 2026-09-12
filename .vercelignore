@@ -1,17 +1,29 @@
-# Only web/ needs deploying. Exclude the Python side explicitly so Vercel does not
-# see pyproject.toml and try to build this as a Python project.
-*.py
+# What gets deployed: web/ (static) and api/screener.py (one Python function),
+# plus the pure modules that function imports -- collectors/, filters/, scoring/
+# and prompts/score.md, which it reads for prompt_version.
+#
+# pyproject.toml stays excluded on purpose. It declares duckdb and requests, and
+# the deployed function needs neither: it is stdlib-only so there is nothing to
+# install at build time. Letting the builder see a dependency list would add an
+# install step whose only possible contribution is a new way for the deploy to
+# fail.
 pyproject.toml
-collectors/
-filters/
-scoring/
+uv.lock
+requirements.txt
+
+# Not deployed: the collector's own tooling and its data.
 calibration/
 tests/
 fixtures/
 data/
 .venv/
 .claude/
-prompts/
+.github/
+export_web.py
+collect.py
+state/
+deploy.ps1
+deploy.sh
 BUILD_BRIEF.md
 CLAUDE.md
 README.md

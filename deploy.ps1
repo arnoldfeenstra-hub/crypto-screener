@@ -1,4 +1,10 @@
-# Refresh the exported data and deploy web/ to Vercel.
+# Refresh the exported data and deploy to Vercel.
+#
+# The deployment is two things now: the static page in web/, and the live endpoint
+# api/screener.py, which fetches DexScreener at request time so the page shows real
+# tokens whether or not a collector has ever run. Both come from a deploy at the
+# repo root -- vercel.json points the static half at web/ -- so do not deploy the
+# web/ directory on its own or the live view will be missing.
 #
 # Node and the Vercel CLI are already installed (via winget, user scope). The one
 # step that cannot be automated is `vercel login` -- it authenticates as you, in a
@@ -36,7 +42,7 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-Write-Host "`n== Deploying web/ ==" -ForegroundColor Cyan
+Write-Host "`n== Deploying web/ + api/ ==" -ForegroundColor Cyan
 if ($Production) {
     & $vercel deploy --prod --yes
 } else {

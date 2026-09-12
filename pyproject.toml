@@ -12,6 +12,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
+    # Only so the tests can read .github/workflows/*.yml back and assert what the
+    # deploy and collect schedules actually say.
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]

@@ -25,7 +25,14 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
-SCHEMA_VERSION = 1
+# 3 adds the `safety_observations` table (collectors/safety.py). 2 added
+# market.fdv_usd and the whole `mindshare` group. All additive, but
+# DuckDB tables are created once and never altered here (append-only, and
+# store.py may contain no ALTER), so a database written under version 1 cannot
+# take version 2 rows. Store.open refuses it by name rather than failing on the
+# insert. Phase 0 has no production database yet; if one exists, start a new file
+# and keep the old one -- the old rows are still the graveyard.
+SCHEMA_VERSION = 3
 
 # Groups whose leaf fields count toward the Data Completeness modifier in
 # prompts/score.md. Identity and bookkeeping columns are excluded: they are always
@@ -37,6 +44,7 @@ FEATURE_GROUPS = (
     "deployer",
     "launch",
     "flows",
+    "mindshare",
     "social_x",
     "social_tg",
     "socials_declared",
@@ -96,6 +104,12 @@ class Market:
     liquidity_usd: float | None = None
     volume_24h_usd: float | None = None
     price_usd: float | None = None
+    # Fully diluted valuation. Separate from mcap because the liquidity-depth
+    # filter prefers it and the two differ by the unvested supply -- which on a
+    # fresh launch is most of it. DexScreener reports both; Bitquery reports
+    # neither as FDV, so this stays None on those rows rather than copying mcap
+    # across, which would quietly turn the filter into a different filter.
+    fdv_usd: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +145,35 @@ class Flows:
     net_flow_by_cohort: dict[str, Any] | None = None
     smart_money_entries: int | None = None
     smart_money_hit_rate: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Mindshare:
+    """Share of the attention observed across one measurement universe.
+
+    See :mod:`collectors.mindshare` for the formula and its caveats. The row keeps
+    both halves on purpose: the derived share *and* the raw components with the
+    universe totals they were divided by. Derived formulas change; raw counts do
+    not (BUILD_BRIEF.md section 3 item 3), so every past row stays recomputable
+    when the formula is revised.
+
+    ``share_pct`` is only comparable within one universe, which is why
+    ``universe_size`` sits beside it and is never dropped.
+    """
+
+    share_pct: float | None = None
+    rank: int | None = None
+    percentile: float | None = None
+    universe_size: int | None = None
+    txns_24h: int | None = None
+    txns_6h: int | None = None
+    boost_amount: float | None = None
+    boost_total: float | None = None
+    boosts_active: float | None = None
+    pair_count: int | None = None
+    universe_txns_24h: int | None = None
+    universe_volume_24h_usd: float | None = None
+    universe_boost_total: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +228,7 @@ _GROUP_TYPES: dict[str, type] = {
     "deployer": Deployer,
     "launch": Launch,
     "flows": Flows,
+    "mindshare": Mindshare,
     "social_x": SocialX,
     "social_tg": SocialTG,
     "socials_declared": SocialsDeclared,
@@ -230,6 +274,7 @@ class Snapshot:
     deployer: Deployer = field(default_factory=Deployer)
     launch: Launch = field(default_factory=Launch)
     flows: Flows = field(default_factory=Flows)
+    mindshare: Mindshare = field(default_factory=Mindshare)
     social_x: SocialX = field(default_factory=SocialX)
     social_tg: SocialTG = field(default_factory=SocialTG)
     socials_declared: SocialsDeclared = field(default_factory=SocialsDeclared)
@@ -331,6 +376,7 @@ _GROUP_COLUMN_TYPES: dict[str, str] = {
     "market_liquidity_usd": "DOUBLE",
     "market_volume_24h_usd": "DOUBLE",
     "market_price_usd": "DOUBLE",
+    "market_fdv_usd": "DOUBLE",
     "holders_count": "BIGINT",
     "holders_growth_6h_pct": "DOUBLE",
     "holders_top10_ex_lp_pct": "DOUBLE",
@@ -346,6 +392,19 @@ _GROUP_COLUMN_TYPES: dict[str, str] = {
     "flows_net_flow_by_cohort": "JSON",
     "flows_smart_money_entries": "BIGINT",
     "flows_smart_money_hit_rate": "DOUBLE",
+    "mindshare_share_pct": "DOUBLE",
+    "mindshare_rank": "BIGINT",
+    "mindshare_percentile": "DOUBLE",
+    "mindshare_universe_size": "BIGINT",
+    "mindshare_txns_24h": "BIGINT",
+    "mindshare_txns_6h": "BIGINT",
+    "mindshare_boost_amount": "DOUBLE",
+    "mindshare_boost_total": "DOUBLE",
+    "mindshare_boosts_active": "DOUBLE",
+    "mindshare_pair_count": "BIGINT",
+    "mindshare_universe_txns_24h": "BIGINT",
+    "mindshare_universe_volume_24h_usd": "DOUBLE",
+    "mindshare_universe_boost_total": "DOUBLE",
     "social_x_mentions_6h": "BIGINT",
     "social_x_mentions_24h": "BIGINT",
     "social_x_unique_authors_24h": "BIGINT",
@@ -507,6 +566,42 @@ OUTCOME_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
     ("volume_24h_usd", "DOUBLE"),
     ("holder_count", "BIGINT"),
     ("source", "VARCHAR"),
+]
+
+# One safety lookup, from collectors/safety.py. Append-only and separate from the
+# snapshot for the usual reason: it arrives after the snapshot was written, so
+# putting it on that row would be an edit. It is also genuinely a time series --
+# "the mint authority was live when we looked and revoked an hour later" is a real
+# sequence of events, and a table that overwrote the first reading would lose it.
+#
+# Every field is nullable and null means *not established*, never *fine*. The hard
+# filters treat unknown as excluding, so a gap here costs a token its place in the
+# ranking rather than buying it one.
+SAFETY_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
+    ("observation_id", "VARCHAR"),
+    ("snapshot_id", "VARCHAR"),
+    ("chain", "VARCHAR"),
+    ("contract", "VARCHAR"),
+    ("ts", "BIGINT"),
+    ("source", "VARCHAR"),
+    ("collected_at_ms", "BIGINT"),
+    ("honeypot", "BOOLEAN"),
+    ("sells_failing", "BOOLEAN"),
+    ("buy_tax_pct", "DOUBLE"),
+    ("sell_tax_pct", "DOUBLE"),
+    ("mint_revoked", "BOOLEAN"),
+    ("freeze_active", "BOOLEAN"),
+    ("lp_burned", "BOOLEAN"),
+    ("lp_locked_pct", "DOUBLE"),
+    ("top10_ex_lp_pct", "DOUBLE"),
+    ("holder_count", "BIGINT"),
+    ("upgradeable", "BOOLEAN"),
+    ("admin_renounced", "BOOLEAN"),
+    ("deployer_address", "VARCHAR"),
+    ("deployer_prior_rugs", "BIGINT"),
+    ("rugged", "BOOLEAN"),
+    ("risk_labels", "JSON"),
+    ("error", "VARCHAR"),
 ]
 
 # One row per token that has ever fired. Doubles as the "already triggered" index,

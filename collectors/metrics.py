@@ -48,9 +48,26 @@ class TokenMetrics:
     first_seen_at_ms: int | None = None  # pool creation; None means unknown age
 
     mcap_usd: float | None = None
+    fdv_usd: float | None = None
     price_usd: float | None = None
     liquidity_usd: float | None = None
     volume_24h_usd: float | None = None
+    volume_6h_usd: float | None = None
+    volume_1h_usd: float | None = None
+
+    # Trade counts and paid-boost figures. Raw counts, never derived rates:
+    # BUILD_BRIEF.md section 3 item 3 -- "store raw counts, not derived scores,
+    # derived formulas will change, raw won't". collectors/mindshare.py turns
+    # these into a share of the observed universe at read time.
+    txns_24h: int | None = None
+    txns_6h: int | None = None
+    buys_24h: int | None = None
+    sells_24h: int | None = None
+    price_change_24h_pct: float | None = None
+    pair_count: int | None = None
+    boosts_active: float | None = None
+    boost_amount: float | None = None
+    boost_total: float | None = None
 
     holder_count: int | None = None
     holders_growth_6h_pct: float | None = None

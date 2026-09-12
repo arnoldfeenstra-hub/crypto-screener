@@ -17,6 +17,9 @@
     --warn-bg: #fdf3e3;
     --warn-line: #e0b978;
     --warn-ink: #6b4a12;
+    --live-bg: #eaf3ec;
+    --live-line: #9dc3a9;
+    --live-ink: #1f5334;
     --bad: #a33b32;
     --ok: #2f6b4f;
     --dim: #8c8880;
@@ -33,6 +36,9 @@
       --warn-bg: #33280f;
       --warn-line: #7a5f22;
       --warn-ink: #f0d9a8;
+      --live-bg: #16301f;
+      --live-line: #2f6b45;
+      --live-ink: #a9dcbd;
       --bad: #e08a80;
       --ok: #7fc0a0;
       --dim: #77736c;
@@ -45,7 +51,7 @@
     color: var(--ink);
     font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 20px 80px; }
   header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
   header p.sub { margin: 0 0 24px; color: var(--muted); }
   .warn {
@@ -65,6 +71,16 @@
     margin: -2px 0 14px;
   }
   .synthetic strong { display: block; margin-bottom: 3px; letter-spacing: .01em; }
+  .live-note {
+    background: var(--live-bg);
+    border: 1px solid var(--live-line);
+    color: var(--live-ink);
+    border-radius: 8px;
+    padding: 11px 14px;
+    margin: -2px 0 14px;
+    font-size: 13.5px;
+  }
+  .live-note strong { display: block; margin-bottom: 3px; }
   .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
   .card {
     background: var(--panel);
@@ -77,11 +93,12 @@
   .card .note { font-size: 12px; color: var(--muted); margin-top: 2px; }
   section { margin-top: 34px; }
   section > h2 { font-size: 17px; margin: 0 0 12px; }
+  section > p.lede { margin: -4px 0 12px; color: var(--muted); font-size: 13.5px; }
   .bar { height: 8px; background: var(--line); border-radius: 99px; overflow: hidden; margin-top: 8px; }
   .bar > i { display: block; height: 100%; background: var(--accent); }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; white-space: nowrap; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
   .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
   .pill {
@@ -90,6 +107,7 @@
   }
   .pill.bad { color: var(--bad); border-color: currentColor; }
   .pill.unk { color: var(--dim); }
+  .pill.chain { color: var(--accent); border-color: currentColor; font-weight: 600; }
   .null { color: var(--dim); font-style: italic; }
   .mono { font-family: var(--mono); font-size: 12px; }
   .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
@@ -97,6 +115,10 @@
     font: inherit; padding: 6px 10px; border-radius: 8px;
     border: 1px solid var(--line); background: var(--panel); color: var(--ink);
   }
+  .msbar { display: block; height: 4px; border-radius: 99px; background: var(--accent); margin-top: 3px; opacity: .55; }
+  /* Six single-letter verdicts read as one glyph row, not as a wrapped paragraph. */
+  td.safety { min-width: 132px; }
+  td.safety .pill { padding: 0 4px; font-size: 10.5px; letter-spacing: .02em; }
   .facts { columns: 2; column-gap: 28px; font-size: 13.5px; }
   .facts p { margin: 0 0 9px; break-inside: avoid; color: var(--muted); }
   .facts b { color: var(--ink); }
@@ -109,7 +131,7 @@
 <div class="wrap">
   <header>
     <h1>Memecoin Screener</h1>
-    <p class="sub">Phase 0 collector — Solana. <span id="generated"></span></p>
+    <p class="sub">Phase 0 collector — <span id="chain-summary">multi-chain</span>. <span id="generated"></span></p>
   </header>
 
   <div class="warn" id="warning">
@@ -118,6 +140,8 @@
 
   <section>
     <h2>Phase 0 progress</h2>
+    <p class="lede">Progress of the <b>collected dataset</b> — the append-only rows a calibration
+      would eventually be fitted on. The live table below is a separate thing: a view, not a row.</p>
     <div class="grid" id="progress"></div>
     <div class="card" style="margin-top:14px">
       <div class="label">Exit criteria</div>
@@ -136,9 +160,17 @@
   </section>
 
   <section>
-    <h2>Snapshots</h2>
+    <h2>Tokens</h2>
+    <p class="lede" id="table-lede"></p>
     <div class="controls">
+      <select id="source-filter" title="Where the rows in this table come from">
+        <option value="live">Live — DexScreener</option>
+        <option value="collected">Collected dataset</option>
+      </select>
       <input type="search" id="q" placeholder="Filter by ticker or contract…">
+      <select id="chain-filter">
+        <option value="">All chains</option>
+      </select>
       <select id="trigger-filter">
         <option value="">All triggers</option>
         <option value="mcap_250k">mcap_250k</option>
@@ -149,6 +181,16 @@
         <option value="scored">Scored</option>
         <option value="evidence">Excluded on evidence</option>
         <option value="unmeasured">Excluded as unmeasured</option>
+        <option value="checked">Safety checked</option>
+      </select>
+      <select id="sort-by">
+        <option value="rank">Sort: rank, then mcap</option>
+        <option value="mindshare">Sort: mindshare</option>
+        <option value="mcap">Sort: market cap</option>
+        <option value="liquidity">Sort: liquidity</option>
+        <option value="volume">Sort: 24h volume</option>
+        <option value="pillars">Sort: pillar composite</option>
+        <option value="age">Sort: youngest</option>
       </select>
       <span class="note" id="count"></span>
     </div>
@@ -157,13 +199,18 @@
         <thead>
           <tr>
             <th>Ticker</th>
+            <th>Chain</th>
             <th>Trigger</th>
             <th class="num">Mcap</th>
             <th class="num">Liquidity</th>
+            <th class="num">Vol 24h</th>
+            <th class="num" title="Share of attention across the tokens observed in the same poll">Mindshare</th>
             <th class="num">Holders</th>
             <th class="num">Age</th>
             <th>Socials</th>
+            <th title="What a keyless safety source (GoPlus / RugCheck) could establish">Safety</th>
             <th class="num">Complete</th>
+            <th class="num" title="Weighted mean over the pillars that resolved. Not a score.">Pillars</th>
             <th class="num">Score</th>
             <th>Status</th>
           </tr>
@@ -171,6 +218,16 @@
         <tbody id="rows"></tbody>
       </table>
     </div>
+  </section>
+
+  <section>
+    <h2>What the safety column means</h2>
+    <div class="card" id="safety-explainer"></div>
+  </section>
+
+  <section>
+    <h2>What “mindshare” means here</h2>
+    <div class="card" id="mindshare-explainer"></div>
   </section>
 
   <section>
@@ -189,8 +246,18 @@ const fmtUsd = n => n == null ? null :
 const fmtInt = n => n == null ? null : n.toLocaleString('en-US');
 const fmtAge = m => m == null ? null : m < 60 ? m + 'm' : m < 1440 ? (m/60).toFixed(1) + 'h' : (m/1440).toFixed(1) + 'd';
 const cell = v => v == null ? '<span class="null">null</span>' : v;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-let DATA = null;
+// COLLECTED is the append-only dataset export; LIVE is the /api/screener view.
+// They are kept apart deliberately — one is what was recorded, the other is what
+// is happening — and the table renders exactly one of them at a time.
+let COLLECTED = null;
+let LIVE = null;
+let LIVE_ERROR = null;
+
+const current = () => (document.getElementById('source-filter').value === 'live' && LIVE)
+  ? LIVE : COLLECTED;
 
 function renderProgress(d) {
   const p = d.progress;
@@ -201,6 +268,7 @@ function renderProgress(d) {
     ['Snapshots scored', fmtInt(p.snapshots_scored), 'paper mode only'],
     ['Excluded on evidence', fmtInt(p.excluded_on_evidence), 'failed a hard filter'],
     ['Excluded as unmeasured', fmtInt(p.excluded_as_unmeasured), 'the check was never run'],
+    ['Safety checked', fmtInt(p.safety_checked), 'GoPlus / RugCheck, keyless'],
   ];
   document.getElementById('progress').innerHTML = cards.map(([l, v, n]) =>
     `<div class="card"><div class="label">${l}</div><div class="value">${v}</div><div class="note">${n}</div></div>`
@@ -226,58 +294,242 @@ function renderVerdict(d) {
 
 function socialPills(s) {
   return ['telegram', 'x', 'website'].map(k => {
-    const v = s[k];
+    const v = (s || {})[k];
     const cls = v === true ? '' : v === false ? 'bad' : 'unk';
     const mark = v === true ? '✓' : v === false ? '✕' : '?';
     return `<span class="pill ${cls}">${k[0].toUpperCase()}${mark}</span>`;
   }).join(' ');
 }
 
+// Five checks a safety source can answer, as a compact row. A question mark is
+// "not established", never "fine" — the hard filters exclude on unknown, and the
+// cell has to read the same way the filter behaves.
+const SAFETY_CHECKS = [
+  ['H', 'honeypot',        v => v === false, 'honeypot check'],
+  ['M', 'mint_revoked',    v => v === true,  'mint authority revoked'],
+  ['F', 'freeze_active',   v => v === false, 'freeze authority inactive'],
+  ['L', 'lp_burned',       v => v === true,  'LP burned'],
+  ['C', 'top10_ex_lp_pct', v => v != null && v <= 35, 'top-10 concentration'],
+];
+
+function safetyPills(safety) {
+  if (!safety) return '<span class="pill unk" title="the checks were never run">unchecked</span>';
+  const pills = SAFETY_CHECKS.map(([letter, key, ok, label]) => {
+    const v = safety[key];
+    const cls = v == null ? 'unk' : ok(v) ? '' : 'bad';
+    const mark = v == null ? '?' : ok(v) ? '✓' : '✕';
+    return `<span class="pill ${cls}" title="${esc(label)}">${letter}${mark}</span>`;
+  }).join(' ');
+  const rugs = safety.deployer_prior_rugs;
+  const deployer = rugs == null
+    ? '<span class="pill unk" title="deployer history not established">D?</span>'
+    : `<span class="pill ${rugs > 0 ? 'bad' : ''}" title="${rugs} prior rug(s) on the deployer">D${rugs > 0 ? '✕' : '✓'}</span>`;
+  return `${pills} ${deployer}`;
+}
+
 function statusCell(t) {
   if (!t.excluded && t.score != null) return '<span class="pill">scored</span>';
   if (t.rejected_by && t.rejected_by.length) {
-    return t.rejected_by.map(r => `<span class="pill bad">${r}</span>`).join(' ');
+    return t.rejected_by.map(r => `<span class="pill bad">${esc(r)}</span>`).join(' ');
   }
   if (t.indeterminate_on && t.indeterminate_on.length) {
-    return `<span class="pill unk">unmeasured: ${t.indeterminate_on.join(', ')}</span>`;
+    return `<span class="pill unk">unmeasured: ${esc(t.indeterminate_on.join(', '))}</span>`;
   }
   return '<span class="pill unk">not scored</span>';
 }
 
+// A share is meaningless without the universe it is a share of, so the cell shows
+// the rank and the universe size next to the percentage rather than the number on
+// its own.
+function mindshareCell(t) {
+  const m = t.mindshare || {};
+  if (m.share_pct == null) return '<span class="null">null</span>';
+  const width = Math.max(2, Math.min(100, m.share_pct));
+  const rank = m.rank == null ? '' :
+    `<div class="note" style="font-size:11px">#${m.rank} of ${fmtInt(m.universe_size)}</div>`;
+  return `${m.share_pct.toFixed(m.share_pct < 1 ? 2 : 1)}%` + rank +
+    `<i class="msbar" style="width:${width}%"></i>`;
+}
+
+function populateChainFilter(d) {
+  const select = document.getElementById('chain-filter');
+  const chosen = select.value;
+  // Built from the data rather than from a hardcoded list, so a chain added to
+  // collectors/chains.py shows up here without a second edit.
+  const seen = new Map((d.chains || []).map(c => [c.name, c]));
+  for (const t of d.tokens || []) {
+    if (!seen.has(t.chain)) seen.set(t.chain, { name: t.chain, label: t.chain_label || t.chain, count: 0 });
+  }
+  const counts = {};
+  for (const t of d.tokens || []) counts[t.chain] = (counts[t.chain] || 0) + 1;
+
+  const options = [...seen.values()]
+    .map(c => ({ ...c, shown: counts[c.name] || 0 }))
+    .sort((a, b) => b.shown - a.shown || a.name.localeCompare(b.name));
+
+  select.innerHTML = '<option value="">All chains</option>' + options.map(c =>
+    `<option value="${esc(c.name)}">${esc(c.label || c.name)} (${c.shown})</option>`).join('');
+  select.value = [...seen.keys()].includes(chosen) ? chosen : '';
+
+  document.getElementById('chain-summary').textContent =
+    options.length ? options.map(c => c.label || c.name).join(' · ') : 'no chains yet';
+}
+
+const SORTS = {
+  rank: (a, b) => (a.rank == null) - (b.rank == null) || (a.rank || 0) - (b.rank || 0)
+    || (b.mcap_usd || 0) - (a.mcap_usd || 0),
+  mindshare: (a, b) => ((b.mindshare || {}).share_pct || -1) - ((a.mindshare || {}).share_pct || -1),
+  mcap: (a, b) => (b.mcap_usd || 0) - (a.mcap_usd || 0),
+  liquidity: (a, b) => (b.liquidity_usd || 0) - (a.liquidity_usd || 0),
+  volume: (a, b) => (b.volume_24h_usd || 0) - (a.volume_24h_usd || 0),
+  pillars: (a, b) => (b.pillar_composite ?? -1) - (a.pillar_composite ?? -1),
+  age: (a, b) => (a.age_at_trigger_minutes ?? Infinity) - (b.age_at_trigger_minutes ?? Infinity),
+};
+
 function renderRows() {
+  const d = current();
+  if (!d) return;
   const q = document.getElementById('q').value.trim().toLowerCase();
+  const chain = document.getElementById('chain-filter').value;
   const trig = document.getElementById('trigger-filter').value;
   const status = document.getElementById('status-filter').value;
+  const sort = document.getElementById('sort-by').value;
 
-  const rows = DATA.tokens.filter(t => {
+  const rows = (d.tokens || []).filter(t => {
     if (q && !((t.ticker || '') + ' ' + (t.contract || '')).toLowerCase().includes(q)) return false;
+    if (chain && t.chain !== chain) return false;
     if (trig && t.trigger !== trig) return false;
     if (status === 'scored' && (t.excluded || t.score == null)) return false;
-    if (status === 'evidence' && !(t.excluded && t.rejected_by.length)) return false;
-    if (status === 'unmeasured' && !(t.excluded && !t.rejected_by.length)) return false;
+    if (status === 'evidence' && !(t.excluded && (t.rejected_by || []).length)) return false;
+    if (status === 'unmeasured' && !(t.excluded && !(t.rejected_by || []).length)) return false;
+    if (status === 'checked' && !t.safety) return false;
     return true;
-  });
+  }).sort(SORTS[sort] || SORTS.rank);
 
   document.getElementById('count').textContent =
-    `${rows.length} of ${DATA.tokens.length} rows`;
+    `${rows.length} of ${(d.tokens || []).length} rows`;
 
   document.getElementById('rows').innerHTML = rows.map(t => `
     <tr>
-      <td><b>${t.ticker || '<span class="null">null</span>'}</b><br><span class="mono">${(t.contract || '').slice(0, 12)}…</span></td>
-      <td><span class="pill">${t.trigger}</span>${t.trigger_mcap_crossed && t.trigger_holders_crossed ? ' <span class="pill">both</span>' : ''}</td>
+      <td><b>${t.ticker ? esc(t.ticker) : '<span class="null">null</span>'}</b><br><span class="mono">${esc((t.contract || '').slice(0, 12))}…</span></td>
+      <td><span class="pill chain">${esc(t.chain_label || t.chain || '?')}</span></td>
+      <td><span class="pill">${esc(t.trigger)}</span>${t.trigger_mcap_crossed && t.trigger_holders_crossed ? ' <span class="pill">both</span>' : ''}</td>
       <td class="num">${cell(fmtUsd(t.mcap_usd))}</td>
       <td class="num">${cell(fmtUsd(t.liquidity_usd))}</td>
+      <td class="num">${cell(fmtUsd(t.volume_24h_usd))}</td>
+      <td class="num">${mindshareCell(t)}</td>
       <td class="num">${cell(fmtInt(t.holders))}</td>
       <td class="num">${cell(fmtAge(t.age_at_trigger_minutes))}</td>
       <td>${socialPills(t.socials_declared)}</td>
-      <td class="num">${(t.data_completeness * 100).toFixed(0)}%</td>
+      <td class="safety">${safetyPills(t.safety)}</td>
+      <td class="num">${t.data_completeness == null ? '<span class="null">null</span>' : (t.data_completeness * 100).toFixed(0) + '%'}</td>
+      <td class="num">${t.pillar_composite == null ? '<span class="null">null</span>' : t.pillar_composite.toFixed(1)}</td>
       <td class="num">${t.score == null ? '<span class="null">null</span>' : t.score.toFixed(1)}</td>
       <td>${statusCell(t)}</td>
     </tr>`).join('');
 }
 
+function renderSafetyExplainer(d) {
+  const live = (d && d.live) || {};
+  const checked = live.safety_measured;
+  document.getElementById('safety-explainer').innerHTML = `
+    <p style="margin:0 0 8px">Six of the eight hard filters are facts about a contract, not predictions:
+      whether it can be sold, whether the mint and freeze authorities are gone, whether the
+      liquidity is burned, how concentrated the holders are, and whether the deployer has been
+      flagged before. They come from <b>GoPlus</b> and <b>RugCheck</b> — both keyless.</p>
+    <p style="margin:0 0 8px;color:var(--muted);font-size:13.5px">
+      <b>?</b> means the check was not established, and that <i>excludes</i> the token exactly as a
+      failure would. Unknown is never treated as clean. A row marked
+      <span class="pill unk">unchecked</span> was never looked up at all.</p>
+    <p style="margin:0;color:var(--muted);font-size:13px">
+      Two things these sources cannot answer, and are not guessed at: an LP <i>lock expiry</i>
+      (so a locked-but-undated LP stays unknown rather than counting as the 30-day lock the
+      filter asks for), and deployer history on Solana (GoPlus address security covers EVM
+      chains only).
+      ${checked == null ? '' : `<br>This view established safety for <b>${fmtInt(checked)}</b> of the listed tokens.`}
+      ${live.safety_error ? `<br><b>The safety lookup failed for this view:</b> ${esc(live.safety_error)} — every filter reads unknown, so nothing is passed on missing evidence.` : ''}
+    </p>`;
+}
+
+function renderMindshareExplainer(d) {
+  const m = (d && d.mindshare) || {};
+  const weights = m.component_weights || {};
+  document.getElementById('mindshare-explainer').innerHTML = `
+    <p style="margin:0 0 8px">${esc(m.definition || '')}</p>
+    <p style="margin:0 0 8px;color:var(--muted);font-size:13.5px">${esc(m.caveat || '')}</p>
+    <p style="margin:0;color:var(--muted);font-size:13px">
+      Method <code>${esc(m.method_version || 'n/a')}</code>,
+      components ${Object.keys(weights).map(k => `<code>${esc(k)}</code>`).join(' · ') || '—'} weighted equally,
+      contribution to the composite score <b>${m.prior_weight_in_composite == null ? '—' : m.prior_weight_in_composite.toFixed(2)}</b>.
+      The raw counts and the universe totals are stored on every row, so the share can be
+      recomputed if the formula changes.
+    </p>`;
+}
+
+function renderLivePanel() {
+  const parts = [];
+  if (LIVE && LIVE.live) {
+    const l = LIVE.live;
+    parts.push(`<div class="live-note"><strong>Live data — real tokens from DexScreener.</strong>
+      ${esc(LIVE.live_notice || '')}
+      <br><br>Polled <b>${fmtInt(l.polled)}</b> ${l.polled === 1 ? 'token' : 'tokens'} across
+      ${esc((l.chains_requested || []).join(', '))};
+      <b>${fmtInt(l.triggered)}</b> ${l.triggered === 1 ? 'is' : 'are'} at or above the trigger and listed below,
+      <b>${fmtInt(l.below_trigger)}</b> ${l.below_trigger === 1 ? 'is' : 'are'} below it and not listed.
+      <br><br>${esc(l.discovery || '')}</div>`);
+  } else if (LIVE_ERROR) {
+    parts.push(`<div class="live-note"><strong>Live data unavailable.</strong>
+      ${esc(LIVE_ERROR)} Showing the collected dataset instead.</div>`);
+  }
+  return parts.join('');
+}
+
+function renderBanner() {
+  const d = COLLECTED || LIVE;
+  if (!d) return;
+  const showingLive = document.getElementById('source-filter').value === 'live' && LIVE;
+  // The synthetic notice leads, because "these tokens are not real" is a bigger
+  // claim than "the weights are not calibrated", and the page has to make it
+  // before a reader starts reading the table as a screener. It is shown only when
+  // the table is actually showing those rows.
+  const synthetic = (!showingLive && COLLECTED && COLLECTED.synthetic_notice)
+    ? `<div class="synthetic"><strong>Demo data — not real tokens.</strong>${esc(COLLECTED.synthetic_notice)}</div>`
+    : '';
+  document.getElementById('warning').innerHTML =
+    `${synthetic}${renderLivePanel()}<strong>Phase 0 — collection only. Not a signal.</strong>${esc(d.headline_warning)}
+     <br><br>Weights version <code>${esc(d.weights_version)}</code>, prompt version <code>${esc(d.prompt_version)}</code>.
+     Trigger: ${esc(d.trigger.rule)}`;
+  document.title = (!showingLive && COLLECTED && COLLECTED.synthetic_notice)
+    ? 'DEMO DATA — Memecoin Screener (Phase 0)'
+    : 'Memecoin Screener — Phase 0 Collector';
+}
+
+function renderTableLede() {
+  const showingLive = document.getElementById('source-filter').value === 'live' && LIVE;
+  document.getElementById('table-lede').textContent = showingLive
+    ? 'Live view. Real market data fetched when this page loaded, scored with the same '
+      + 'filters and pillar maths as the collector. Nothing here is stored, and no row here '
+      + 'is part of the dataset above.'
+    : 'The collected dataset: one row per token, written once at the trigger and never '
+      + 'edited. This is what a calibration would be fitted on.';
+}
+
+function refresh() {
+  const d = current();
+  if (!d) return;
+  populateChainFilter(d);
+  renderBanner();
+  renderTableLede();
+  renderMindshareExplainer(d);
+  renderSafetyExplainer(d);
+  renderRows();
+  const gen = d.generated_at ? `Data generated ${d.generated_at}.` : '';
+  document.getElementById('generated').textContent = gen;
+}
+
 function renderFacts(d) {
   const b = d.published_base_rates;
+  if (!b) return;
   document.getElementById('facts').innerHTML = `
     <p>Pump.fun graduation rate sits between <b>${b.graduation_rate_range_pct[0]}%</b> and <b>${b.graduation_rate_range_pct[1]}%</b> depending on how it is measured. Method changes the number by 4–10x.</p>
     <p>A declared Telegram at launch graduates at <b>${b.telegram_declared_pct}%</b> versus <b>${b.telegram_absent_pct}%</b> without — a <b>${b.telegram_lift}x</b> lift.</p>
@@ -287,40 +539,46 @@ function renderFacts(d) {
     <p>Even the strongest known social signal moves you from ~0.1% to ~1.9%. The job is to beat a ~2% base rate, not to find winners.</p>`;
 }
 
-fetch('screener-data.json', { cache: 'no-store' })
-  .then(r => r.json())
-  .then(d => {
-    DATA = d;
-    document.getElementById('generated').textContent =
-      `Data generated ${d.generated_at}.`;
-    // The synthetic notice leads, because "these tokens are not real" is a bigger
-    // claim than "the weights are not calibrated", and the page has to make it
-    // before a reader starts reading the table as a screener.
-    const synthetic = d.synthetic_notice
-      ? `<div class="synthetic"><strong>Demo data — not real tokens.</strong>${d.synthetic_notice}</div>`
-      : '';
-    document.getElementById('warning').innerHTML =
-      `${synthetic}<strong>Phase 0 — collection only. Not a signal.</strong>${d.headline_warning}
-       <br><br>Weights version <code>${d.weights_version}</code>, prompt version <code>${d.prompt_version}</code>.
-       Trigger: ${d.trigger.rule}`;
-    if (d.synthetic_notice) document.title = 'DEMO DATA — Memecoin Screener (Phase 0)';
-    renderProgress(d);
-    renderVerdict(d);
-    renderFacts(d);
-    renderRows();
-    document.getElementById('footer').innerHTML =
-      `Every token is snapshotted once, at the same trigger, and no row is ever edited or deleted —
-       the dead tokens are the dataset. Scores are computed from uncalibrated priors and are logged,
-       never acted on; this repo holds no exchange keys and can place no orders.
-       ${d.tokens.length} rows shown.`;
-    for (const id of ['q', 'trigger-filter', 'status-filter']) {
-      document.getElementById(id).addEventListener('input', renderRows);
-    }
+const loadCollected = fetch('screener-data.json', { cache: 'no-store' })
+  .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+  .then(d => { COLLECTED = d; })
+  .catch(e => { LIVE_ERROR = LIVE_ERROR || null; console.warn('collected dataset unavailable', e); });
+
+// The live endpoint is additive: if it is missing (a plain static deploy, or
+// DexScreener not answering) the page falls back to the collected export and says
+// so, rather than showing nothing.
+const loadLive = fetch('/api/screener', { cache: 'no-store' })
+  .then(r => r.json().then(body => ({ ok: r.ok, body })))
+  .then(({ ok, body }) => {
+    if (ok && body && Array.isArray(body.tokens)) LIVE = body;
+    else LIVE_ERROR = (body && body.error) || 'The live endpoint returned an error.';
   })
-  .catch(e => {
+  .catch(() => { LIVE_ERROR = 'No live endpoint on this deployment.'; });
+
+Promise.allSettled([loadCollected, loadLive]).then(() => {
+  const select = document.getElementById('source-filter');
+  if (!LIVE) {
+    select.value = 'collected';
+    select.querySelector('option[value=live]').disabled = true;
+    select.querySelector('option[value=live]').textContent = 'Live — unavailable';
+  }
+  if (!COLLECTED && !LIVE) {
     document.getElementById('warning').innerHTML =
-      `<strong>Could not load screener-data.json</strong>${e}`;
-  });
+      '<strong>Could not load any data.</strong>screener-data.json is missing and /api/screener did not answer.';
+    return;
+  }
+  if (COLLECTED) { renderProgress(COLLECTED); renderVerdict(COLLECTED); renderFacts(COLLECTED); }
+  refresh();
+  document.getElementById('footer').innerHTML =
+    `Every token is snapshotted once, at the same trigger, and no row is ever edited or deleted —
+     the dead tokens are the dataset. Scores are computed from uncalibrated priors and are logged,
+     never acted on; this repo holds no exchange keys and can place no orders.`;
+
+  document.getElementById('source-filter').addEventListener('change', refresh);
+  for (const id of ['q', 'chain-filter', 'trigger-filter', 'status-filter', 'sort-by']) {
+    document.getElementById(id).addEventListener('input', renderRows);
+  }
+});
 </script>
 </body>
 </html>

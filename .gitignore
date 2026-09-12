@@ -5,7 +5,10 @@
 *.key
 *.pem
 
-# Hard rule 1: the dataset is append-only and lives outside git.
+# Hard rule 1: the dataset is append-only. The working DuckDB copy is disposable
+# and stays out of git; the dataset itself lives in state/*.jsonl and is
+# deliberately TRACKED, because that is how the scheduled collector carries the
+# graveyard from one run to the next. Do not add state/ here.
 data/
 *.duckdb
 *.duckdb.wal

@@ -23,6 +23,13 @@ raises; there is nothing for it to switch on.
 **No execution path, ever** (hard rule 4). No exchange keys, no signing, no order
 placement. The output is a ranked list a human reads.
 
+**Safety is looked up per batch, not per row, and never before the trigger.**
+``collectors/safety.py`` answers six of the eight hard filters. It runs here rather
+than in the watcher because a safety API that reports holder counts on some chains
+and not others would, if it reached the trigger, make entry to the dataset
+chain-dependent -- and a pooled cross-chain sample with a chain-dependent entry rule
+cannot be interpreted. By the time this module runs, entry has already been decided.
+
 **Every scored row carries its inputs** (hard rule 6). ``prompt_version``,
 ``weights_version``, the model id and the entire candidate packet are stored in the
 same row as the score. prompts/score.md will be edited many times before Phase 2,
@@ -38,30 +45,60 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from collectors.config import load_config
-from collectors.schema import FEATURE_GROUPS, now_ms
+from collectors.safety import SafetyReport, SafetySource
+from collectors.safety import from_row as safety_from_row
+from collectors.schema import now_ms
 from collectors.store import Store
-from filters.hard_filters import FilterInput, Verdict, apply
-from scoring.pillars import WEIGHTS, PillarResult, score_candidate
+from filters.hard_filters import Verdict, apply
+from scoring.candidate import candidate_from_row, filter_input_from_candidate
+from scoring.pillars import WEIGHTS, WEIGHTS_VERSION, PillarResult, score_candidate
+from scoring.prompt_meta import PROMPT_PATH, prompt_version, system_prompt
 
 log = logging.getLogger("scoring")
 
 PHASE = "1"
 PAPER_MODE_ONLY = True
 DEFAULT_MODEL = "claude-opus-5"
-# Bumped whenever scoring/pillars.py WEIGHTS change. Stored on every row so a score
-# can be traced to the numbers that produced it.
-WEIGHTS_VERSION = "priors-v1"
 NO_EDGE_THRESHOLD = 55.0
 
-PROMPT_PATH = Path(__file__).resolve().parent.parent / "prompts" / "score.md"
+# How long a stored safety verdict is reused before it is looked up again.
+#
+# Both numbers in this trade-off are real. Safety is not static -- a mint authority
+# gets revoked, an LP gets pulled -- so a verdict has a shelf life. But the
+# collector re-scores its recent snapshots every cycle, and re-asking a keyless,
+# rate-limited, free API the same question every half hour is both slow and rude:
+# at 30 requests a minute, 200 tokens is minutes of throttled traffic per run,
+# repeated forever.
+#
+# Six hours keeps the answers fresh enough to catch a rug that happened since, and
+# turns a per-cycle sweep into a per-token one. Every refresh still appends a new
+# row, so the history of what changed and when is kept in full.
+SAFETY_MAX_AGE_MS = 6 * 60 * 60 * 1000
+
+# WEIGHTS_VERSION, PROMPT_PATH, prompt_version and system_prompt are imported above
+# and re-exported here. They moved to scoring/pillars.py and scoring/prompt_meta.py
+# so api/screener.py can stamp the same versions on a live row without importing
+# DuckDB through the store; this module was their home, and every existing import
+# site still works.
+__all__ = [
+    "PROMPT_PATH",
+    "WEIGHTS_VERSION",
+    "Narrative",
+    "NarrativeClient",
+    "ScoredBatch",
+    "ScoringRunner",
+    "candidate_from_row",
+    "filter_input_from_candidate",
+    "main",
+    "prompt_version",
+    "system_prompt",
+]
 
 # prompts/score.md step 3.
 OUTPUT_SCHEMA: dict[str, Any] = {
@@ -76,94 +113,6 @@ OUTPUT_SCHEMA: dict[str, Any] = {
     "required": ["thesis", "bear_case", "falsifier", "confidence", "data_gaps"],
     "additionalProperties": False,
 }
-
-
-def prompt_version() -> int:
-    """Read ``prompt_version`` out of prompts/score.md.
-
-    Read from the file rather than held as a constant, so the recorded version
-    cannot drift away from the prompt actually used.
-    """
-    text = PROMPT_PATH.read_text(encoding="utf-8")
-    match = re.search(r"prompt_version:\s*(\d+)", text)
-    if not match:
-        raise ValueError(f"no prompt_version found in {PROMPT_PATH}")
-    return int(match.group(1))
-
-
-def system_prompt() -> str:
-    """Extract the SYSTEM block from prompts/score.md.
-
-    The file is the single source of truth: editing the prompt changes behaviour
-    without touching this module, which is the point of versioning it.
-    """
-    text = PROMPT_PATH.read_text(encoding="utf-8")
-    start = text.find("## SYSTEM")
-    if start == -1:
-        raise ValueError("no '## SYSTEM' block in prompts/score.md")
-    return text[start:].strip()
-
-
-def candidate_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    """Build the prompts/score.md step 4 input packet from a stored snapshot row."""
-    grouped: dict[str, Any] = {}
-    for group in FEATURE_GROUPS:
-        prefix = f"{group}_"
-        grouped[group] = {
-            key[len(prefix) :]: value
-            for key, value in row.items()
-            if key.startswith(prefix)
-        }
-    for key in ("net_flow_by_cohort",):
-        raw = grouped.get("flows", {}).get(key)
-        if isinstance(raw, str):
-            grouped["flows"][key] = json.loads(raw)
-
-    listings = row.get("listings")
-    age_minutes = row.get("age_at_trigger_minutes")
-    return {
-        "snapshot_id": row["snapshot_id"],
-        "ticker": row.get("ticker"),
-        "chain": row.get("chain"),
-        "contract": row.get("contract"),
-        "age_hours": None if age_minutes is None else age_minutes / 60.0,
-        "market_cap_usd": grouped["market"].get("mcap_usd"),
-        "liquidity_usd": grouped["market"].get("liquidity_usd"),
-        "volume_24h_usd": grouped["market"].get("volume_24h_usd"),
-        "holders": grouped["holders"],
-        "authorities": grouped["authorities"],
-        "deployer": grouped["deployer"],
-        "launch": grouped["launch"],
-        "flows": grouped["flows"],
-        "social_x": grouped["social_x"],
-        "social_tg": grouped["social_tg"],
-        "socials_declared": grouped["socials_declared"],
-        "trends": grouped["trends"],
-        "lineage": grouped["lineage"],
-        "listings": json.loads(listings) if isinstance(listings, str) else listings,
-        "data_completeness": row.get("data_completeness"),
-    }
-
-
-def filter_input_from_candidate(candidate: dict[str, Any], **safety: Any) -> FilterInput:
-    authorities = candidate.get("authorities") or {}
-    holders = candidate.get("holders") or {}
-    deployer = candidate.get("deployer") or {}
-    base: dict[str, Any] = {
-        "chain": candidate.get("chain") or "solana",
-        "ticker": candidate.get("ticker"),
-        "contract": candidate.get("contract"),
-        "evaluated_at_ms": candidate.get("evaluated_at_ms") or now_ms(),
-        "mint_revoked": authorities.get("mint_revoked"),
-        "freeze_active": authorities.get("freeze_active"),
-        "lp_locked_until_ms": authorities.get("lp_locked_until"),
-        "top10_ex_lp_pct": holders.get("top10_ex_lp_pct"),
-        "liquidity_usd": candidate.get("liquidity_usd"),
-        "mcap_usd": candidate.get("market_cap_usd"),
-        "deployer_prior_rugs": deployer.get("prior_rugs"),
-    }
-    base.update({k: v for k, v in safety.items() if k in FilterInput.__dataclass_fields__})
-    return FilterInput(**base)
 
 
 @dataclass(frozen=True, slots=True)
@@ -337,6 +286,8 @@ class ScoringRunner:
         paper_mode: bool = True,
         narrator: NarrativeClient | None = None,
         model: str = DEFAULT_MODEL,
+        safety_source: SafetySource | None = None,
+        safety_max_age_ms: int = SAFETY_MAX_AGE_MS,
     ) -> None:
         if not paper_mode:
             raise NotImplementedError(
@@ -348,6 +299,16 @@ class ScoringRunner:
         self.paper_mode = True
         self.narrator = narrator
         self.model = model
+        # Optional, and additive like the narrator: without it the filters answer
+        # "unknown" exactly as they did before, which excludes rather than passes.
+        self.safety_source = safety_source
+        self.safety_max_age_ms = safety_max_age_ms
+        # Everything used for scoring this batch, reused and fresh together...
+        self.last_safety_reports: dict[tuple[str, str], SafetyReport] = {}
+        # ...and only the part that was actually looked up, which is the part that
+        # gets appended. Writing back a reused verdict every cycle would grow the
+        # table without recording anything new.
+        self.last_safety_fetched: dict[tuple[str, str], SafetyReport] = {}
         self.prompt_version = prompt_version()
 
     def score_one(
@@ -358,7 +319,14 @@ class ScoringRunner:
         safety: dict[str, Any] | None = None,
         run_id: str | None = None,
     ) -> dict[str, Any]:
-        verdict: Verdict = apply(filter_input_from_candidate(candidate, **(safety or {})))
+        safety = safety or {}
+        if safety:
+            # Hard rule 6: the score and the inputs that produced it live in the
+            # same row. Safety fields decide six of the eight hard filters, so a
+            # score stored without them could never be re-derived -- the row would
+            # say "excluded" with no record of what excluded it.
+            candidate = {**candidate, "safety": safety}
+        verdict: Verdict = apply(filter_input_from_candidate(candidate, **safety))
         excluded = verdict.excluded
 
         pillars = score_candidate(candidate, regime=regime)
@@ -409,20 +377,74 @@ class ScoringRunner:
             "chain": candidate.get("chain"),
         }
 
+    def fetch_safety(
+        self,
+        candidates: Sequence[dict[str, Any]],
+        known: dict[tuple[str, str], SafetyReport] | None = None,
+        *,
+        as_of_ms: int | None = None,
+    ) -> dict[tuple[str, str], SafetyReport]:
+        """Safety for the batch: what is already known, plus what needs asking.
+
+        ``known`` is what earlier runs established, read back from the store. A
+        verdict younger than :data:`SAFETY_MAX_AGE_MS` is reused; anything older or
+        missing is looked up again. ``self.last_safety_fetched`` holds only the
+        fresh ones, so a reused verdict is not written to the table a second time.
+
+        A failure here is not fatal and must not be: unknown excludes, so a
+        degraded safety fetch makes the screener more conservative, never less.
+        """
+        known = dict(known or {})
+        self.last_safety_fetched = {}
+        if self.safety_source is None:
+            return known
+
+        now = as_of_ms if as_of_ms is not None else now_ms()
+        stale: list[tuple[str, str]] = []
+        for candidate in candidates:
+            key = (candidate.get("chain"), candidate.get("contract"))
+            if not key[0] or not key[1]:
+                continue
+            existing = known.get(key)
+            if existing is None or now - existing.collected_at_ms >= self.safety_max_age_ms:
+                stale.append(key)
+
+        if not stale:
+            return known
+        try:
+            fresh = self.safety_source.fetch(stale)
+        except Exception:
+            log.exception("safety lookup failed; those filters stay unmeasured")
+            return known
+
+        self.last_safety_fetched = fresh
+        known.update(fresh)
+        return known
+
     def score_batch(
         self,
         candidates: Sequence[dict[str, Any]],
         *,
         regime: str | None = None,
         safety: dict[str, Any] | None = None,
+        known_safety: dict[tuple[str, str], SafetyReport] | None = None,
     ) -> ScoredBatch:
         # One id for the whole batch: a ranking is read from a run, and two runs can
         # land in the same millisecond.
         run_id = str(uuid.uuid4())
-        rows = [
-            self.score_one(c, regime=regime, safety=safety, run_id=run_id)
-            for c in candidates
-        ]
+        reports = self.fetch_safety(candidates, known_safety)
+        self.last_safety_reports = reports
+        rows = []
+        for candidate in candidates:
+            report = reports.get((candidate.get("chain"), candidate.get("contract")))
+            per_token = dict(safety or {})
+            if report is not None:
+                per_token.update(report.to_filter_fields())
+            rows.append(
+                self.score_one(
+                    candidate, regime=regime, safety=per_token or None, run_id=run_id
+                )
+            )
         ranked = sorted(
             (r for r in rows if not r["excluded"]),
             key=lambda r: (r["score"] is None, -(r["score"] or 0.0)),
@@ -434,11 +456,24 @@ class ScoringRunner:
     def run(self, *, limit: int = 50, regime: str | None = None) -> ScoredBatch:
         if self.store is None:
             raise ValueError("a Store is required to score stored snapshots")
-        candidates = [
-            candidate_from_row(row) for row in self.store.recent_snapshots(limit)
-        ]
-        batch = self.score_batch(candidates, regime=regime)
+        rows = self.store.recent_snapshots(limit)
+        candidates = [candidate_from_row(row) for row in rows]
+        known_safety = {
+            key: safety_from_row(row)
+            for key, row in self.store.latest_safety_by_token().items()
+        }
+        batch = self.score_batch(candidates, regime=regime, known_safety=known_safety)
         self.store.append_scores(batch.rows)
+        if self.last_safety_fetched:
+            # Stored as its own append-only observation, never written back onto the
+            # snapshot: the lookup happened after the snapshot was taken, and the
+            # change over time is itself worth keeping.
+            snapshot_ids = {
+                (row["chain"], row["contract"]): row["snapshot_id"] for row in rows
+            }
+            self.store.append_safety_observations(
+                self.last_safety_fetched.values(), snapshot_ids
+            )
         return batch
 
 
@@ -458,6 +493,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="also call the API for thesis / bear case / falsifier (needs ANTHROPIC_API_KEY)",
     )
+    parser.add_argument(
+        "--safety",
+        action="store_true",
+        help=(
+            "look up GoPlus and RugCheck for each candidate (no API key). Without "
+            "this, six of the eight hard filters can only answer 'unknown' and "
+            "nearly every row is excluded as unmeasured rather than judged."
+        ),
+    )
+    parser.add_argument(
+        "--no-rugcheck",
+        action="store_true",
+        help="with --safety, use GoPlus only (RugCheck is one request per token)",
+    )
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
@@ -470,8 +519,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     db_path = args.db or str(config.db_path)
 
     narrator = NarrativeClient(model=args.model) if args.narrate else None
+    safety_source = (
+        SafetySource(use_rugcheck=not args.no_rugcheck) if args.safety else None
+    )
     with Store(db_path) as store:
-        runner = ScoringRunner(store, narrator=narrator, model=args.model)
+        runner = ScoringRunner(
+            store, narrator=narrator, model=args.model, safety_source=safety_source
+        )
         batch = runner.run(limit=args.limit, regime=args.regime)
         payload = batch.to_dict()
         payload["_meta"] = {
@@ -480,6 +534,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "weights_version": WEIGHTS_VERSION,
             "weights": WEIGHTS,
             "scored": len(batch.rows),
+            "safety_measured": len(runner.last_safety_reports),
             **batch.exclusion_summary(),
             "warning": (
                 "Weights are uncalibrated priors. Phase 2 has not run, so no edge "

@@ -1,12 +1,20 @@
 # Memecoin Screener — Ranking Prompt
 
-`prompt_version: 2` — bump this on every edit and write it into every scored row.
+`prompt_version: 3` — bump this on every edit and write it into every scored row.
 
 Drop the SYSTEM block into your model call. Feed one `candidate` object per token.
 
 **Status: uncalibrated priors.** The weights below are informed guesses plus two effects that
 have been measured against a real graveyard (see "Evidence-backed priors"). Everything else is
 placeholder until Phase 2 of `BUILD_BRIEF.md` replaces it with fitted coefficients.
+
+**Version 3 changes.** Pillar F (Mindshare) was added, and it carries **weight 0.00**. That is
+not a prior about mindshare being worthless — it is a refusal to invent a prior. `.claude/rules/
+stats.md` allows only fitted coefficients into the weight vector, and mindshare has no outcome
+data behind it yet, so the honest position is to collect and score it while contributing nothing
+to the composite until Phase 2 measures it. Weights A–E are unchanged and the composite is
+numerically identical to version 2. The same version also adds `fdv_usd`, which makes the
+liquidity-depth hard filter answerable for the first time.
 
 ## Evidence-backed priors
 
@@ -102,6 +110,31 @@ The core FOMO signal. Measure acceleration, not volume.
 - **Distance from ATH** and time spent consolidating.
 - **Listing trajectory**: DEX → aggregator inclusion → CEX perp → CEX spot. Each rung is a distinct liquidity unlock. Position on this ladder matters more than any single listing rumour.
 
+### F. Mindshare — weight 0.00 (collected, not yet weighted)
+
+Share of the attention observed across the measurement universe at the moment of the snapshot.
+Computed by `collectors/mindshare.py` from three raw components, each a share of the universe
+total: 24h transaction count (**trade attention**), 24h volume (**dollar attention**), and
+DexScreener boost spend (**paid attention**).
+
+- **Universe percentile** is the primary component: a share distribution is dominated by a few
+  tokens, so position within the universe is the stable 0–100 reading, not the raw share.
+- **Organic tilt** is the component that carries information the other pillars do not. Boost
+  share divided by trade share: above 1 more of the visibility was bought than traded, and
+  above 2 the pillar says so in its notes. Bought mindshare and earned mindshare are identical
+  in a share number and are opposite signals.
+- **Venue breadth**: how many pools list the token. Breadth of access, not depth.
+
+Three cautions for whoever fits this in Phase 2:
+
+1. **It is not social mindshare.** It measures on-chain and paid attention, not mentions. It is
+   not a substitute for Pillar A and must not be treated as one when the X collector is running.
+2. **It is collinear with Pillar D's turnover component** — both read 24h volume. Fit them
+   together or drop one; do not read their coefficients independently.
+3. **The universe is a biased sample.** Tokens enter it by being boosted or profiled on
+   DexScreener. `universe_size` is stored on every row, and shares from different universes are
+   not comparable.
+
 ### Modifiers (applied after weighting)
 
 - **Data completeness**: multiply by `(fields_present / fields_expected)`. Never compensate for a missing field with a guess.
@@ -126,7 +159,8 @@ The core FOMO signal. Measure acceleration, not volume.
         "community_depth": 0,
         "lineage_meta_fit": 0,
         "onchain_structure": 0,
-        "asymmetry_timing": 0
+        "asymmetry_timing": 0,
+        "mindshare": 0
       },
       "modifiers_applied": [],
       "thesis": "One sentence. What specifically is asymmetric here.",
@@ -154,6 +188,7 @@ The core FOMO signal. Measure acceleration, not volume.
   "contract": "0x...",
   "age_hours": 0,
   "market_cap_usd": 0,
+  "fdv_usd": 0,
   "liquidity_usd": 0,
   "volume_24h_usd": 0,
   "holders": { "count": 0, "growth_6h_pct": 0, "top10_ex_lp_pct": 0 },
@@ -161,6 +196,10 @@ The core FOMO signal. Measure acceleration, not volume.
   "deployer": { "address": "...", "prior_rugs": 0 },
   "launch": { "bundled_supply_pct": 0, "sniper_wallets": 0 },
   "flows": { "net_flow_by_cohort": {}, "smart_money_entries": 0, "smart_money_hit_rate": 0.0 },
+  "mindshare": { "share_pct": 0.0, "rank": 0, "percentile": 0.0, "universe_size": 0,
+                 "txns_24h": 0, "txns_6h": 0, "boost_amount": 0.0, "boost_total": 0.0,
+                 "boosts_active": 0.0, "pair_count": 0, "universe_txns_24h": 0,
+                 "universe_volume_24h_usd": 0.0, "universe_boost_total": 0.0 },
   "social_x": { "mentions_6h": 0, "mentions_24h": 0, "unique_authors_24h": 0,
                 "follower_weighted_reach": 0, "tier1_organic_engagements": 0,
                 "reply_to_post_ratio": 0.0 },

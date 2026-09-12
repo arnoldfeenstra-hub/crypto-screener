@@ -36,6 +36,8 @@ import duckdb
 from collectors.schema import (
     LABEL_COLUMNS,
     OUTCOME_OBSERVATION_COLUMNS,
+    SAFETY_OBSERVATION_COLUMNS,
+    SCHEMA_VERSION,
     SCORE_COLUMNS,
     SNAPSHOT_COLUMNS,
     SOCIAL_OBSERVATION_COLUMNS,
@@ -47,6 +49,17 @@ from collectors.schema import (
 
 class AppendOnlyViolation(RuntimeError):
     """Raised when a write would change or duplicate an existing row."""
+
+
+class SchemaMismatch(RuntimeError):
+    """The file on disk was written by an older schema than this code expects.
+
+    Raised on open rather than on the first insert, so the failure names the cause
+    instead of surfacing as a column error halfway through a poll. Nothing is
+    migrated in place: this module has no statement that can change a table, by
+    design, so a widened schema means a new file. The old file keeps every row it
+    had -- the graveyard is the dataset, and it is still there.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,6 +150,15 @@ SOCIAL_OBSERVATIONS_DDL = _ddl(
 )
 
 
+# Safety lookups. Append-only: re-checking a token writes another row and both
+# stay, because the change over time is itself the observation.
+SAFETY_OBSERVATIONS_DDL = _ddl(
+    "safety_observations",
+    SAFETY_OBSERVATION_COLUMNS,
+    ("PRIMARY KEY (observation_id)",),
+)
+
+
 def _insert_sql(table: str, columns: Sequence[str]) -> str:
     names = ", ".join(columns)
     placeholders = ", ".join("?" for _ in columns)
@@ -158,6 +180,27 @@ class Store:
         self._con = duckdb.connect(self.db_path, read_only=read_only)
         if not read_only:
             self._migrate()
+        self._verify_schema()
+
+    def _verify_schema(self) -> None:
+        """Fail loudly if an existing file predates a column this code writes."""
+        existing = {
+            str(row[0])
+            for row in self._con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'snapshots'"
+            ).fetchall()
+        }
+        if not existing:
+            return  # read-only handle on an empty file; nothing to check yet
+        missing = [name for name, _ in SNAPSHOT_COLUMNS if name not in existing]
+        if missing:
+            raise SchemaMismatch(
+                f"{self.db_path} was written under an older schema and has no "
+                f"{', '.join(missing)} column(s). This module never rewrites a table, "
+                f"so point --db at a new file (schema version {SCHEMA_VERSION}); the "
+                "existing file keeps all of its rows."
+            )
 
     def _migrate(self) -> None:
         for statement in (
@@ -167,6 +210,7 @@ class Store:
             OUTCOME_OBSERVATIONS_DDL,
             SCORES_DDL,
             SOCIAL_OBSERVATIONS_DDL,
+            SAFETY_OBSERVATIONS_DDL,
         ):
             self._con.execute(statement)
 
@@ -302,6 +346,71 @@ class Store:
                     ) from exc
                 written += 1
         return written
+
+    def append_safety_observations(
+        self, reports: Iterable[Any], snapshot_ids: dict[tuple[str, str], str] | None = None
+    ) -> int:
+        """Append safety lookups. Each is a new row; none replaces an earlier one."""
+        columns = [name for name, _ in SAFETY_OBSERVATION_COLUMNS]
+        ids = snapshot_ids or {}
+        written = 0
+        with self._transaction() as con:
+            for report in reports:
+                row = report.to_row(ids.get((report.chain, report.contract)))
+                row.setdefault("observation_id", str(uuid.uuid4()))
+                try:
+                    con.execute(
+                        _insert_sql("safety_observations", columns),
+                        [row.get(name) for name in columns],
+                    )
+                except duckdb.ConstraintException as exc:
+                    raise AppendOnlyViolation(
+                        f"safety observation {row['observation_id']} already recorded"
+                    ) from exc
+                written += 1
+        return written
+
+    def latest_safety(self, snapshot_id: str) -> dict[str, Any] | None:
+        """The most recent safety row for a snapshot. Earlier rows stay in place."""
+        columns = [name for name, _ in SAFETY_OBSERVATION_COLUMNS]
+        row = self._con.execute(
+            f"SELECT {', '.join(columns)} FROM safety_observations "
+            "WHERE snapshot_id = ? ORDER BY ts DESC LIMIT 1",
+            [snapshot_id],
+        ).fetchone()
+        return dict(zip(columns, row, strict=True)) if row else None
+
+    def latest_safety_by_token(self) -> dict[tuple[str, str], dict[str, Any]]:
+        """The most recent safety row for every token that has one.
+
+        Lets a scoring run reuse what was already established instead of asking a
+        free shared API the same question every half hour. Earlier rows stay where
+        they are -- this is a read.
+        """
+        columns = [name for name, _ in SAFETY_OBSERVATION_COLUMNS]
+        qualified = ", ".join(f"s.{name}" for name in columns)
+        rows = self._con.execute(
+            f"SELECT {qualified} FROM safety_observations s JOIN ("
+            "  SELECT chain, contract, max(ts) AS latest FROM safety_observations "
+            "  GROUP BY chain, contract"
+            ") m ON s.chain = m.chain AND s.contract = m.contract AND s.ts = m.latest"
+        ).fetchall()
+        out: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in rows:
+            record = dict(zip(columns, row, strict=True))
+            out[(record["chain"], record["contract"])] = record
+        return out
+
+    def safety_observation_count(self) -> int:
+        row = self._con.execute("SELECT count(*) FROM safety_observations").fetchone()
+        return int(row[0]) if row else 0
+
+    def snapshots_with_safety(self) -> int:
+        row = self._con.execute(
+            "SELECT count(DISTINCT snapshot_id) FROM safety_observations "
+            "WHERE snapshot_id IS NOT NULL"
+        ).fetchone()
+        return int(row[0]) if row else 0
 
     def append_social_observations(self, observations: Iterable[Any]) -> int:
         """Append raw social counts. One row per (snapshot, platform, offset)."""
@@ -532,11 +641,54 @@ class Store:
         ).fetchall()
         return [row[0].isoformat() for row in rows]
 
+    def chain_breakdown(self) -> dict[str, int]:
+        """Snapshots per chain, most first. Feeds the web page's chain filter."""
+        rows = self._con.execute(
+            "SELECT chain, count(*) AS n FROM snapshots GROUP BY chain "
+            "ORDER BY n DESC, chain"
+        ).fetchall()
+        return {row[0]: int(row[1]) for row in rows}
+
     def trigger_breakdown(self) -> dict[str, int]:
         rows = self._con.execute(
             "SELECT trigger_kind, count(*) FROM snapshots GROUP BY trigger_kind"
         ).fetchall()
         return {row[0]: int(row[1]) for row in rows}
+
+    # -- journal round trip ------------------------------------------------
+    #
+    # Two generic accessors, used only by collectors/journal.py, which keeps the
+    # dataset in append-only JSONL so a scheduled collector can carry state across
+    # runs in git. Both are read-or-insert: there is no statement here that can
+    # change or remove an existing row, same as everywhere else in this module.
+
+    def export_rows(self, table: str, columns: Sequence[str]) -> list[dict[str, Any]]:
+        """Every row of one table, oldest first where the table has an order."""
+        rows = self._con.execute(
+            f"SELECT {', '.join(columns)} FROM {table}"
+        ).fetchall()
+        return [dict(zip(columns, row, strict=True)) for row in rows]
+
+    def import_rows(
+        self, table: str, columns: Sequence[str], rows: Iterable[dict[str, Any]]
+    ) -> int:
+        """Insert journalled rows into an empty table.
+
+        A row the table already holds is skipped rather than raising: restoring a
+        journal onto a database that already has some of it is a resumed run, not
+        an error. Nothing existing is touched either way.
+        """
+        written = 0
+        with self._transaction() as con:
+            for row in rows:
+                try:
+                    con.execute(
+                        _insert_sql(table, columns), [row.get(name) for name in columns]
+                    )
+                except duckdb.ConstraintException:
+                    continue
+                written += 1
+        return written
 
     # -- export ------------------------------------------------------------
 

@@ -19,9 +19,19 @@ rather than broken:
 * ``flows`` -- needs per-cohort wallet analysis, a separate and much heavier query
   than the trigger path.
 
+``mindshare`` is filled when the caller supplies it, which the trigger watcher does
+for every batch: the batch is the measurement universe. It is null on a snapshot
+built from a single token in isolation, because a share with no universe behind it
+would be a number with no meaning.
+
 They are null, not zero. A zero would say "we measured no mentions"; null says "we
 did not measure". Those are different rows to a model, and `data_completeness` on
 each row records which one this is.
+
+This module imports the store lazily, inside the two functions that need it, so
+``build_snapshot`` -- the section 4 mapping itself -- can be imported without
+DuckDB. ``api/screener.py`` runs on stdlib only and uses the same mapping the
+collector uses, rather than a second one that would drift.
 
 ``socials_declared`` is the exception worth noting: it is filled from launch
 metadata now, from block one, because it is the best-evidenced feature available
@@ -39,6 +49,7 @@ from typing import TYPE_CHECKING
 
 from collectors.config import load_config
 from collectors.metrics import TokenMetrics
+from collectors.mindshare import MindshareObservation, to_schema_group
 from collectors.schema import (
     Authorities,
     Deployer,
@@ -54,9 +65,9 @@ from collectors.schema import (
     Trends,
     clean,
 )
-from collectors.store import Store
 
 if TYPE_CHECKING:  # avoids a cycle: trigger_watcher imports build_snapshot
+    from collectors.store import Store
     from collectors.trigger_watcher import TriggerDecision
 
 
@@ -66,12 +77,18 @@ def build_snapshot(
     *,
     source: str | None = None,
     regime: str | None = None,
+    mindshare: MindshareObservation | None = None,
 ) -> Snapshot:
     """Build the section 4 snapshot for a token that has just crossed the trigger.
 
     ``decision.trigger`` must be set; building a snapshot for a token that did not
     fire would put a row into the dataset at a lifecycle point of its own, which is
     exactly the comparison the cohort design exists to prevent.
+
+    ``mindshare`` comes from the caller rather than from ``metrics`` because it is
+    not a property of one token: it is a share of the universe the token was
+    observed in, so only the code holding the whole batch can compute it. Absent, it
+    is all-null -- unknown mindshare, not a mindshare of zero.
     """
     if not decision.fired or decision.trigger is None:
         raise ValueError(
@@ -96,6 +113,7 @@ def build_snapshot(
             liquidity_usd=clean(metrics.liquidity_usd),
             volume_24h_usd=clean(metrics.volume_24h_usd),
             price_usd=clean(metrics.price_usd),
+            fdv_usd=clean(metrics.fdv_usd),
         ),
         holders=Holders(
             count=metrics.holder_count,
@@ -117,6 +135,7 @@ def build_snapshot(
             sniper_wallets=metrics.sniper_wallets,
             initial_buy_sol=clean(metrics.initial_buy_sol),
         ),
+        mindshare=to_schema_group(mindshare),
         # Phase 0 items 3-5 fill these. Null until then, never zero.
         flows=Flows(),
         social_x=SocialX(),
@@ -182,6 +201,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, default=5, help="rows to emit (default: 5)")
     parser.add_argument("--stats", action="store_true", help="counts instead of rows")
     args = parser.parse_args(argv)
+
+    from collectors.store import Store
 
     config = load_config()
     db_path = args.db or str(config.db_path)

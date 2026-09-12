@@ -1,0 +1,174 @@
+# Push to GitHub -> deploy to Vercel.
+#
+# Two ways exist to get this behaviour, and they are not equivalent. This is the
+# one that lives in the repository; the other is Vercel's own Git integration,
+# switched on in the Vercel dashboard with no file at all. Pick one, not both, or
+# every push deploys twice.
+#
+#   This workflow                     | Vercel Git integration
+#   ----------------------------------|--------------------------------------
+#   Needs three repository secrets    | Needs no secrets, one click in the UI
+#   Deploys when *this file* says so  | Deploys on every push to the repo
+#   The collector's data commits do   | The collector's data commits each
+#   NOT trigger it (a push made with  | trigger a build -- ~48 a day, against
+#   GITHUB_TOKEN never starts another | a Hobby limit of 100. Add "[skip ci]"
+#   workflow), so the daily schedule  | to collect.yml's commit message if you
+#   below is what publishes new data  | want to suppress that.
+#
+# Setup for this workflow, in the repository's Settings -> Secrets and variables
+# -> Actions:
+#
+#   VERCEL_TOKEN        Vercel -> Account Settings -> Tokens -> Create
+#   VERCEL_ORG_ID       from .vercel/project.json after one `vercel link`,
+#   VERCEL_PROJECT_ID   or from Vercel -> Project -> Settings -> General
+#
+# Until those exist the job succeeds with a notice explaining what to set, rather
+# than putting a red cross on every push to a repository nobody has configured
+# yet.
+#
+# What gets deployed is decided by .vercelignore: the static page in web/ and the
+# one stdlib-only Python function in api/. The build happens on Vercel's side, so
+# this workflow is doing exactly what a Git-integration deploy would do.
+#
+# Note on the daily run below: GitHub fires `schedule` only from the repository's
+# DEFAULT branch. The `push` trigger works from any branch, so deploys-on-push are
+# live as soon as this file is pushed; the daily publish of the collector's data
+# starts only once this reaches the default branch.
+
+name: deploy
+
+on:
+  push:
+    branches: ["**"]
+    # Documentation changes cannot affect the deployed page, and a deploy costs a
+    # slot against the daily limit.
+    paths-ignore:
+      - "**/*.md"
+      - ".claude/**"
+      - "tests/**"
+      - "fixtures/**"
+  workflow_dispatch:
+    inputs:
+      production:
+        description: "Deploy to the production URL (otherwise a preview)"
+        type: boolean
+        default: false
+  schedule:
+    # Once a day, to publish the dataset the collector accumulated overnight.
+    # collect.yml commits with GITHUB_TOKEN, and such a push never starts another
+    # workflow, so without this the exported JSON would sit in the repository
+    # without ever reaching the deployed page. The live /api/screener endpoint is
+    # unaffected either way -- it fetches at request time.
+    - cron: "20 6 * * *"
+
+# One deploy at a time. Two overlapping deploys of the same project race to
+# decide which one the production alias ends up pointing at.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The one failure this workflow can actually prevent. api/screener.py runs
+      # on Vercel with no requirements.txt and nothing installed, so an import of
+      # duckdb or requests -- easy to add by accident, since the collector uses
+      # both -- would deploy fine and 500 on every request. Two seconds here.
+      - name: Verify the function needs no third-party packages
+        run: |
+          python - <<'PY'
+          import importlib.util, sys
+
+          class Blocker:
+              def find_module(self, name, path=None):
+                  if name.split(".")[0] in {"duckdb", "requests", "numpy", "pandas"}:
+                      raise ImportError(
+                          f"api/screener.py imports {name}, which is not installed on "
+                          "Vercel. The function must stay stdlib-only."
+                      )
+                  return None
+
+          sys.meta_path.insert(0, Blocker())
+          spec = importlib.util.spec_from_file_location("screener_api", "api/screener.py")
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          assert hasattr(module, "handler"), "no `handler` class for the Vercel runtime"
+          assert hasattr(module, "build_live_payload")
+          print("api/screener.py imports cleanly on stdlib alone")
+          PY
+
+      - name: Check for Vercel credentials
+        id: check
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Vercel deploy skipped::Set VERCEL_TOKEN, VERCEL_ORG_ID and VERCEL_PROJECT_ID in Settings -> Secrets and variables -> Actions. See the comments at the top of .github/workflows/deploy.yml."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy
+        if: steps.check.outputs.configured == 'true'
+        id: vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          npm install --global vercel@latest
+
+          # Production for the default branch and for a scheduled run; a preview
+          # URL for everything else, so a feature branch cannot silently replace
+          # what people are looking at.
+          TARGET=""
+          if [ "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}" ] \
+             || [ "${{ github.event_name }}" = "schedule" ] \
+             || [ "${{ inputs.production }}" = "true" ]; then
+            TARGET="--prod"
+          fi
+
+          URL="$(vercel deploy $TARGET --yes --token "$VERCEL_TOKEN")"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "### Deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "${TARGET:+production }$URL" >> "$GITHUB_STEP_SUMMARY"
+
+      # A deploy that builds and then serves a 500 is worse than one that fails,
+      # because nothing says so. This asks the deployment for the live endpoint
+      # and reports what came back.
+      - name: Check the deployment answers
+        if: steps.check.outputs.configured == 'true'
+        continue-on-error: true
+        run: |
+          URL="${{ steps.vercel.outputs.url }}"
+          echo "checking $URL"
+          PAGE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "$URL/") || PAGE=000
+          API=$(curl -sS -o /tmp/api.json -w '%{http_code}' --max-time 90 "$URL/api/screener?limit=5") || API=000
+          {
+            echo ""
+            echo "| check | status |"
+            echo "|---|---|"
+            echo "| page | $PAGE |"
+            echo "| /api/screener | $API |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$API" != "200" ]; then
+            echo "::warning title=Live endpoint::/api/screener returned $API. The page still works -- it falls back to the exported dataset and says the live view is unavailable."
+            head -c 600 /tmp/api.json || true
+          fi

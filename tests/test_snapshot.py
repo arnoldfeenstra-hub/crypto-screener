@@ -105,7 +105,9 @@ class TestCompleteness:
         )
         present, expected = sparse.completeness()
         assert 0 < present < expected
-        assert expected == 40  # feature leaves, not the identity columns
+        # Feature leaves only, not the identity columns. Grew from 40 to 54 at
+        # schema version 2: market.fdv_usd plus the 13-field mindshare group.
+        assert expected == 54
 
     def test_a_richer_row_scores_higher(self):
         sparse = build(mcap_usd=None, holder_count=600)
