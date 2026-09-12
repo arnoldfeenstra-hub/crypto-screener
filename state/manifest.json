@@ -1,18 +1,21 @@
 {
   "schema_version": 3,
-  "updated_at": "2026-09-12T19:09:30+00:00",
+  "updated_at": "2026-09-12T19:38:17+00:00",
   "rows": {
-    "snapshots": 13,
-    "trigger_events": 13,
+    "snapshots": 14,
+    "trigger_events": 14,
     "labels": 0,
-    "outcome_observations": 26,
-    "scores": 26,
+    "outcome_observations": 40,
+    "scores": 40,
     "social_observations": 0,
-    "safety_observations": 13
+    "safety_observations": 14
   },
   "appended_last_run": {
-    "outcome_observations": 13,
-    "scores": 13
+    "snapshots": 1,
+    "trigger_events": 1,
+    "outcome_observations": 14,
+    "scores": 14,
+    "safety_observations": 1
   },
   "note": "Append-only journal of the Phase 0 dataset. Rebuilt into DuckDB at the start of each collector run and appended to at the end. Never edit or reorder these files: the dead tokens are the dataset."
 }
