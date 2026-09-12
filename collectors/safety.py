@@ -229,6 +229,28 @@ class SafetyReport:
         return row
 
 
+def from_row(row: dict[str, Any]) -> SafetyReport:
+    """Rebuild a report from a stored ``safety_observations`` row.
+
+    The inverse of :meth:`SafetyReport.to_row`, so a scoring run can reuse what an
+    earlier run established rather than re-asking a free shared API the same
+    question every half hour. Only fields the dataclass declares are read; a
+    column added later cannot break this.
+    """
+    known = {f.name for f in fields(SafetyReport)}
+    values = {k: v for k, v in row.items() if k in known}
+    labels = row.get("risk_labels")
+    if isinstance(labels, str):
+        try:
+            labels = json.loads(labels)
+        except json.JSONDecodeError:
+            labels = []
+    values["risk_labels"] = tuple(labels or ())
+    values.setdefault("source", "stored")
+    values.setdefault("collected_at_ms", row.get("ts") or 0)
+    return SafetyReport(**values)
+
+
 def merge(first: SafetyReport | None, second: SafetyReport | None) -> SafetyReport | None:
     """Combine two reports on the same token.
 

@@ -52,6 +52,7 @@ from typing import Any
 
 from collectors.config import load_config
 from collectors.safety import SafetyReport, SafetySource
+from collectors.safety import from_row as safety_from_row
 from collectors.schema import now_ms
 from collectors.store import Store
 from filters.hard_filters import Verdict, apply
@@ -65,6 +66,20 @@ PHASE = "1"
 PAPER_MODE_ONLY = True
 DEFAULT_MODEL = "claude-opus-5"
 NO_EDGE_THRESHOLD = 55.0
+
+# How long a stored safety verdict is reused before it is looked up again.
+#
+# Both numbers in this trade-off are real. Safety is not static -- a mint authority
+# gets revoked, an LP gets pulled -- so a verdict has a shelf life. But the
+# collector re-scores its recent snapshots every cycle, and re-asking a keyless,
+# rate-limited, free API the same question every half hour is both slow and rude:
+# at 30 requests a minute, 200 tokens is minutes of throttled traffic per run,
+# repeated forever.
+#
+# Six hours keeps the answers fresh enough to catch a rug that happened since, and
+# turns a per-cycle sweep into a per-token one. Every refresh still appends a new
+# row, so the history of what changed and when is kept in full.
+SAFETY_MAX_AGE_MS = 6 * 60 * 60 * 1000
 
 # WEIGHTS_VERSION, PROMPT_PATH, prompt_version and system_prompt are imported above
 # and re-exported here. They moved to scoring/pillars.py and scoring/prompt_meta.py
@@ -272,6 +287,7 @@ class ScoringRunner:
         narrator: NarrativeClient | None = None,
         model: str = DEFAULT_MODEL,
         safety_source: SafetySource | None = None,
+        safety_max_age_ms: int = SAFETY_MAX_AGE_MS,
     ) -> None:
         if not paper_mode:
             raise NotImplementedError(
@@ -286,7 +302,13 @@ class ScoringRunner:
         # Optional, and additive like the narrator: without it the filters answer
         # "unknown" exactly as they did before, which excludes rather than passes.
         self.safety_source = safety_source
+        self.safety_max_age_ms = safety_max_age_ms
+        # Everything used for scoring this batch, reused and fresh together...
         self.last_safety_reports: dict[tuple[str, str], SafetyReport] = {}
+        # ...and only the part that was actually looked up, which is the part that
+        # gets appended. Writing back a reused verdict every cycle would grow the
+        # table without recording anything new.
+        self.last_safety_fetched: dict[tuple[str, str], SafetyReport] = {}
         self.prompt_version = prompt_version()
 
     def score_one(
@@ -356,27 +378,48 @@ class ScoringRunner:
         }
 
     def fetch_safety(
-        self, candidates: Sequence[dict[str, Any]]
+        self,
+        candidates: Sequence[dict[str, Any]],
+        known: dict[tuple[str, str], SafetyReport] | None = None,
+        *,
+        as_of_ms: int | None = None,
     ) -> dict[tuple[str, str], SafetyReport]:
-        """Look up safety for a whole batch at once, or return nothing.
+        """Safety for the batch: what is already known, plus what needs asking.
+
+        ``known`` is what earlier runs established, read back from the store. A
+        verdict younger than :data:`SAFETY_MAX_AGE_MS` is reused; anything older or
+        missing is looked up again. ``self.last_safety_fetched`` holds only the
+        fresh ones, so a reused verdict is not written to the table a second time.
 
         A failure here is not fatal and must not be: unknown excludes, so a
         degraded safety fetch makes the screener more conservative, never less.
         """
+        known = dict(known or {})
+        self.last_safety_fetched = {}
         if self.safety_source is None:
-            return {}
-        tokens = [
-            (c["chain"], c["contract"])
-            for c in candidates
-            if c.get("chain") and c.get("contract")
-        ]
-        if not tokens:
-            return {}
+            return known
+
+        now = as_of_ms if as_of_ms is not None else now_ms()
+        stale: list[tuple[str, str]] = []
+        for candidate in candidates:
+            key = (candidate.get("chain"), candidate.get("contract"))
+            if not key[0] or not key[1]:
+                continue
+            existing = known.get(key)
+            if existing is None or now - existing.collected_at_ms >= self.safety_max_age_ms:
+                stale.append(key)
+
+        if not stale:
+            return known
         try:
-            return self.safety_source.fetch(tokens)
+            fresh = self.safety_source.fetch(stale)
         except Exception:
-            log.exception("safety lookup failed; every filter stays unmeasured")
-            return {}
+            log.exception("safety lookup failed; those filters stay unmeasured")
+            return known
+
+        self.last_safety_fetched = fresh
+        known.update(fresh)
+        return known
 
     def score_batch(
         self,
@@ -384,11 +427,12 @@ class ScoringRunner:
         *,
         regime: str | None = None,
         safety: dict[str, Any] | None = None,
+        known_safety: dict[tuple[str, str], SafetyReport] | None = None,
     ) -> ScoredBatch:
         # One id for the whole batch: a ranking is read from a run, and two runs can
         # land in the same millisecond.
         run_id = str(uuid.uuid4())
-        reports = self.fetch_safety(candidates)
+        reports = self.fetch_safety(candidates, known_safety)
         self.last_safety_reports = reports
         rows = []
         for candidate in candidates:
@@ -414,9 +458,13 @@ class ScoringRunner:
             raise ValueError("a Store is required to score stored snapshots")
         rows = self.store.recent_snapshots(limit)
         candidates = [candidate_from_row(row) for row in rows]
-        batch = self.score_batch(candidates, regime=regime)
+        known_safety = {
+            key: safety_from_row(row)
+            for key, row in self.store.latest_safety_by_token().items()
+        }
+        batch = self.score_batch(candidates, regime=regime, known_safety=known_safety)
         self.store.append_scores(batch.rows)
-        if self.last_safety_reports:
+        if self.last_safety_fetched:
             # Stored as its own append-only observation, never written back onto the
             # snapshot: the lookup happened after the snapshot was taken, and the
             # change over time is itself worth keeping.
@@ -424,7 +472,7 @@ class ScoringRunner:
                 (row["chain"], row["contract"]): row["snapshot_id"] for row in rows
             }
             self.store.append_safety_observations(
-                self.last_safety_reports.values(), snapshot_ids
+                self.last_safety_fetched.values(), snapshot_ids
             )
         return batch
 

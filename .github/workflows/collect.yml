@@ -22,6 +22,12 @@
 #     is not missing hours, a small always-on host is the better home; this
 #     workflow is the version that needs no infrastructure.
 #
+# IMPORTANT: GitHub runs `schedule` triggers only from the repository's DEFAULT
+# branch. While this file lives on a feature branch it will never fire on its own,
+# no matter what the cron says -- the collector simply does nothing and there is no
+# error anywhere to notice. Merge to the default branch, or drive it by hand from
+# the Actions tab (Run workflow), which works on any branch.
+#
 # It cannot trade and holds no credentials: DexScreener, GoPlus and RugCheck are
 # all keyless, and the only secret in use is the token GitHub provides for the
 # commit.

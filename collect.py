@@ -113,7 +113,11 @@ def run_cycle(
         scored = runner.run(limit=score_limit, regime=regime)
         summary["scored"] = {
             "rows": len(scored.rows),
-            "safety_measured": len(runner.last_safety_reports),
+            "safety_known": len(runner.last_safety_reports),
+            # Only the tokens actually looked up this cycle. The rest reused a
+            # verdict an earlier run established, which is why a steady-state cycle
+            # costs a handful of requests rather than a sweep of the whole table.
+            "safety_fetched": len(runner.last_safety_fetched),
             **scored.exclusion_summary(),
         }
 

@@ -29,6 +29,11 @@
 # What gets deployed is decided by .vercelignore: the static page in web/ and the
 # one stdlib-only Python function in api/. The build happens on Vercel's side, so
 # this workflow is doing exactly what a Git-integration deploy would do.
+#
+# Note on the daily run below: GitHub fires `schedule` only from the repository's
+# DEFAULT branch. The `push` trigger works from any branch, so deploys-on-push are
+# live as soon as this file is pushed; the daily publish of the collector's data
+# starts only once this reaches the default branch.
 
 name: deploy
 

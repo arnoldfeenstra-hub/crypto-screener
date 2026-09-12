@@ -24,6 +24,7 @@ from collect import run_cycle
 from collectors import journal
 from collectors.metrics import TokenMetrics
 from collectors.safety import SafetyReport
+from collectors.schema import now_ms
 from collectors.store import Store
 
 TS = 1788912000000
@@ -297,9 +298,84 @@ class TestCycle:
             with_safety=True,
             safety_source=StubSafety({("solana", "A"): report}),
         )
-        assert summary["scored"]["safety_measured"] == 1
+        assert summary["scored"]["safety_fetched"] == 1
         assert summary["totals"]["safety_observations"] == 1
         assert summary["scored"]["excluded_total"] == 0
+
+    def test_a_second_cycle_reuses_the_verdict_instead_of_asking_again(self, tmp_path):
+        """Re-asking a keyless rate-limited API the same question every half hour
+        is both slow and rude. A stored verdict is reused until it is stale, and a
+        reused verdict is not written to the table a second time."""
+        # Collected just now, so the second cycle finds it fresh. A verdict has a
+        # shelf life -- see the stale case below.
+        report = SafetyReport(
+            chain="solana",
+            contract="A",
+            source="goplus",
+            collected_at_ms=now_ms(),
+            honeypot=False,
+            mint_revoked=True,
+        )
+
+        asked: list[list] = []
+
+        class Counting(StubSafety):
+            def fetch(self, tokens):
+                asked.append(list(tokens))
+                return super().fetch(tokens)
+
+        tokens = [tradeable("solana", "A", "$A", 300_000.0)]
+        source = Counting({("solana", "A"): report})
+        first = cycle(tmp_path, tokens, with_safety=True, safety_source=source)
+        second = cycle(tmp_path, tokens, with_safety=True, safety_source=source)
+
+        assert first["scored"]["safety_fetched"] == 1
+        assert second["scored"]["safety_fetched"] == 0
+        assert second["scored"]["safety_known"] == 1
+        # One row, not two: nothing new was established the second time.
+        assert second["totals"]["safety_observations"] == 1
+        # Not "asked for an empty list" -- the second cycle does not reach the
+        # source at all, so a rate-limited API sees no request.
+        assert len(asked) == 1
+
+    def test_a_stale_verdict_is_looked_up_again(self, tmp_path):
+        """Safety is not static: a mint authority gets revoked, an LP gets pulled.
+
+        A verdict older than the refresh window is re-asked, and the new answer is
+        appended beside the old one rather than replacing it -- the change over
+        time is itself the observation.
+        """
+        from scoring.runner import SAFETY_MAX_AGE_MS
+
+        old_report = SafetyReport(
+            chain="solana",
+            contract="A",
+            source="goplus",
+            collected_at_ms=now_ms() - SAFETY_MAX_AGE_MS - 60_000,
+            mint_revoked=True,
+        )
+        fresh_report = SafetyReport(
+            chain="solana",
+            contract="A",
+            source="goplus",
+            collected_at_ms=now_ms(),
+            mint_revoked=False,  # the authority came back
+        )
+        tokens = [tradeable("solana", "A", "$A", 300_000.0)]
+        cycle(
+            tmp_path,
+            tokens,
+            with_safety=True,
+            safety_source=StubSafety({("solana", "A"): old_report}),
+        )
+        second = cycle(
+            tmp_path,
+            tokens,
+            with_safety=True,
+            safety_source=StubSafety({("solana", "A"): fresh_report}),
+        )
+        assert second["scored"]["safety_fetched"] == 1
+        assert second["totals"]["safety_observations"] == 2
 
     def test_the_web_export_is_written_when_asked(self, tmp_path):
         out = tmp_path / "screener-data.json"

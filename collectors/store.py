@@ -380,6 +380,27 @@ class Store:
         ).fetchone()
         return dict(zip(columns, row, strict=True)) if row else None
 
+    def latest_safety_by_token(self) -> dict[tuple[str, str], dict[str, Any]]:
+        """The most recent safety row for every token that has one.
+
+        Lets a scoring run reuse what was already established instead of asking a
+        free shared API the same question every half hour. Earlier rows stay where
+        they are -- this is a read.
+        """
+        columns = [name for name, _ in SAFETY_OBSERVATION_COLUMNS]
+        qualified = ", ".join(f"s.{name}" for name in columns)
+        rows = self._con.execute(
+            f"SELECT {qualified} FROM safety_observations s JOIN ("
+            "  SELECT chain, contract, max(ts) AS latest FROM safety_observations "
+            "  GROUP BY chain, contract"
+            ") m ON s.chain = m.chain AND s.contract = m.contract AND s.ts = m.latest"
+        ).fetchall()
+        out: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in rows:
+            record = dict(zip(columns, row, strict=True))
+            out[(record["chain"], record["contract"])] = record
+        return out
+
     def safety_observation_count(self) -> int:
         row = self._con.execute("SELECT count(*) FROM safety_observations").fetchone()
         return int(row[0]) if row else 0

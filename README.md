@@ -48,6 +48,16 @@ Run that on a schedule and Phase 0 actually accumulates. `.github/workflows/coll
 does it every 30 minutes and commits the journal back to the repo; read the cost note at
 the top of that file before leaving it on for a private repo.
 
+⚠️ **GitHub runs `schedule` triggers only from the default branch.** While the workflow
+sits on a feature branch the cron never fires, the collector does nothing, and there is no
+error anywhere to notice. Merge to `main`, or drive it by hand from the Actions tab
+(*Run workflow*), which works on any branch.
+
+A steady-state cycle is cheap: safety verdicts are read back from the store and reused for
+six hours, so a run asks GoPlus about new tokens and stale ones only, not about all two
+hundred rows it re-scores. Every refresh still appends a new row — the change over time is
+itself the observation.
+
 The individual steps still exist if you want them:
 
 ```bash
