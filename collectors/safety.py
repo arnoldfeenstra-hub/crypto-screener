@@ -30,6 +30,16 @@ irreversible, and the 30-day question does not arise -- while "locked, expiry
 unknown" stays ``None``. Reading a locker balance as a 30-day lock would be
 inventing the one number the filter is actually about.
 
+**"Honeypot" is answered per chain, not skipped off EVM.** GoPlus has no
+``is_honeypot`` for Solana, and treating that as unknown left ``check_sellability``
+unanswerable for every Solana token -- which is most of the sample, so the screener
+could rank nothing at all. The question is answerable; the mechanics just differ.
+On an SPL mint a sale is blocked by the ``non_transferable`` extension or by a
+``transfer_hook`` program that can reject the transfer, and a report that covers
+the mint and shows neither has *measured* that it is sellable. Same for tax:
+``transfer_fee: {}`` on a real report means the fee extension is off -- a measured
+zero, not a missing measurement.
+
 **A holder count from a safety API never reaches the trigger.** GoPlus reports
 ``holder_count`` on EVM and not on Solana. Feeding it into the trigger would make
 the 500-holder condition fireable on one chain and not another -- a chain-dependent
@@ -140,6 +150,11 @@ NON_HOLDER_TAGS = (
 
 TOP_HOLDER_COUNT = 10
 
+# The share of LP that has to be locked or burned for `check_liquidity_lock` to
+# pass without an expiry. Kept here as well as in `filters.hard_filters` so this
+# module needs no import from the filter layer; a test asserts the two agree.
+LP_SECURED_PCT = 95.0
+
 
 class SafetyError(RuntimeError):
     """A safety lookup failed after retries."""
@@ -172,6 +187,11 @@ class SafetyReport:
     # Liquidity lock
     lp_burned: bool | None = None
     lp_locked_pct: float | None = None
+    # The per-pool evidence `lp_locked_pct` was aggregated from, retained rather
+    # than discarded: a Solana token routinely has several pools, and only the
+    # pool-level rows can tell "unlocked everywhere" from "one dust pool drags the
+    # aggregate down". Evidence, not a measurement -- see `measured_fields`.
+    lp_markets: tuple[dict[str, Any], ...] = ()
 
     # Concentration and ownership
     top10_ex_lp_pct: float | None = None
@@ -196,7 +216,15 @@ class SafetyReport:
             1
             for f in fields(self)
             if f.name
-            not in ("chain", "contract", "source", "collected_at_ms", "risk_labels", "error")
+            not in (
+                "chain",
+                "contract",
+                "source",
+                "collected_at_ms",
+                "risk_labels",
+                "lp_markets",
+                "error",
+            )
             and getattr(self, f.name) is not None
         )
 
@@ -215,6 +243,7 @@ class SafetyReport:
             "freeze_active": self.freeze_active,
             "lp_burned": self.lp_burned,
             "top10_ex_lp_pct": self.top10_ex_lp_pct,
+            "lp_locked_pct": self.lp_locked_pct,
             "upgradeable": self.upgradeable,
             "admin_renounced": self.admin_renounced,
             "deployer_prior_rugs": self.deployer_prior_rugs,
@@ -224,6 +253,7 @@ class SafetyReport:
     def to_row(self, snapshot_id: str | None = None) -> dict[str, Any]:
         row = asdict(self)
         row["risk_labels"] = json.dumps(list(self.risk_labels))
+        row["lp_markets"] = json.dumps(list(self.lp_markets))
         row["snapshot_id"] = snapshot_id
         row["ts"] = self.collected_at_ms
         return row
@@ -246,6 +276,15 @@ def from_row(row: dict[str, Any]) -> SafetyReport:
         except json.JSONDecodeError:
             labels = []
     values["risk_labels"] = tuple(labels or ())
+    markets = row.get("lp_markets")
+    if isinstance(markets, str):
+        try:
+            markets = json.loads(markets)
+        except json.JSONDecodeError:
+            markets = []
+    if not isinstance(markets, list):
+        markets = []
+    values["lp_markets"] = tuple(m for m in markets if isinstance(m, dict))
     values.setdefault("source", "stored")
     values.setdefault("collected_at_ms", row.get("ts") or 0)
     return SafetyReport(**values)
@@ -306,6 +345,7 @@ def merge(first: SafetyReport | None, second: SafetyReport | None) -> SafetyRepo
         first,
         source="+".join(sources),
         deployer_address=first.deployer_address or second.deployer_address,
+        lp_markets=first.lp_markets or second.lp_markets,
         collected_at_ms=max(first.collected_at_ms, second.collected_at_ms),
         risk_labels=tuple(sorted(set(first.risk_labels) | set(second.risk_labels))),
         error=first.error or second.error,
@@ -522,16 +562,57 @@ def parse_goplus_solana(
         mintable = _flag((data.get("mintable") or {}).get("status"))
         freezable = _flag((data.get("freezable") or {}).get("status"))
 
-        # A non-transferable mint cannot be sold at all. That is the Solana shape of
-        # the honeypot question, and it is the one thing here that maps to it.
+        # Is this a substantive report, or an envelope with nothing in it? The
+        # distinction decides whether an absent field means "no" or "not checked",
+        # and getting it wrong in the permissive direction is how a screen starts
+        # passing tokens it never examined.
+        answered = mintable is not None or freezable is not None
+
+        # Sellability, Solana-shaped.
+        #
+        # GoPlus has no `is_honeypot` off Solana, and until this was written that
+        # left check_sellability permanently unanswerable for every Solana token --
+        # which is to say for almost the whole sample. But "can this be sold" IS
+        # answerable here; it just has different mechanics. What can block a
+        # transfer on an SPL mint:
+        #
+        #   * the Token-2022 `non_transferable` extension -- an outright block;
+        #   * a `transfer_hook` -- a program that runs on every transfer and can
+        #     reject it;
+        #   * a live freeze authority -- handled by check_freeze_authority, not
+        #     double-counted here.
+        #
+        # A hook is treated as a honeypot rather than as a note, for the same
+        # reason `transfer_pausable` maps to freeze_active on EVM above: it is an
+        # unaudited program holding the power to refuse your sell, which is exactly
+        # what the filter exists to catch. Some legitimate Token-2022 tokens will
+        # be excluded by this. That is the safe direction of the error.
         non_transferable = _flag(data.get("non_transferable"))
+        has_hook = bool(data.get("transfer_hook"))
+        blockers = [non_transferable, True if has_hook else None]
+        measured = [b for b in blockers if b is not None]
+        if measured:
+            honeypot = any(measured)
+        elif answered:
+            # The report covered this mint and none of the blockers are present.
+            # That is a measured "sellable", not an unknown.
+            honeypot = False
+        else:
+            honeypot = None
 
         transfer_fee = data.get("transfer_fee")
         fee_pct = None
-        if isinstance(transfer_fee, dict) and transfer_fee:
-            fee_pct = _number(transfer_fee.get("transfer_fee_percent"))
-            if fee_pct is None:
-                fee_pct = _percent_from_fraction(transfer_fee.get("transfer_fee"))
+        if isinstance(transfer_fee, dict):
+            if transfer_fee:
+                fee_pct = _number(transfer_fee.get("transfer_fee_percent"))
+                if fee_pct is None:
+                    fee_pct = _percent_from_fraction(transfer_fee.get("transfer_fee"))
+            elif answered:
+                # `transfer_fee: {}` on a real report means the Token-2022
+                # transfer-fee extension is not enabled -- a measured zero, not a
+                # missing measurement. Reading it as unknown left every Solana
+                # token's tax permanently unanswerable and so permanently excluded.
+                fee_pct = 0.0
 
         risks = [
             name
@@ -548,18 +629,43 @@ def parse_goplus_solana(
             if _flag(value) is True
         ]
 
+        # The creator, and GoPlus's own verdict on them.
+        #
+        # `creators[].malicious` is the Solana answer to check_deployer_history.
+        # It was there all along and this parser was ignoring it, which is why
+        # deployer_history came back unknown for every Solana token in the first
+        # live run -- while the EVM rows, which take a whole extra address-security
+        # request to answer, were fine. One flag, already in the response.
+        #
+        # A creator list with the flag present and clear is a measured zero, not an
+        # absence: GoPlus looked at this wallet and said no.
         creators = data.get("creators")
         creator = None
+        prior_rugs = None
         if isinstance(creators, list) and creators:
-            first = creators[0]
-            creator = first.get("address") if isinstance(first, dict) else first
+            flags = []
+            for entry in creators:
+                if isinstance(entry, dict):
+                    if creator is None and entry.get("address"):
+                        creator = entry["address"]
+                    flag = _flag(entry.get("malicious"))
+                    if flag is not None:
+                        flags.append(flag)
+                elif creator is None:
+                    creator = entry
+            if flags:
+                prior_rugs = sum(1 for f in flags if f)
 
         out[str(mint)] = SafetyReport(
             chain="solana",
             contract=str(mint),
             source="goplus",
             collected_at_ms=collected,
-            sells_failing=non_transferable,
+            honeypot=honeypot,
+            # An outright non-transferable mint is the one case where the sell does
+            # not merely risk failing -- it cannot be attempted.
+            sells_failing=non_transferable if non_transferable is not None
+            else (False if answered else None),
             # A transfer fee is charged on both sides on Solana.
             buy_tax_pct=fee_pct,
             sell_tax_pct=fee_pct,
@@ -571,13 +677,72 @@ def parse_goplus_solana(
             # Solana programs are not EVM proxies; hard_filters already answers the
             # proxy question from the chain registry, so nothing is asserted here.
             deployer_address=str(creator) if creator else None,
-            # deployer_prior_rugs stays None on Solana: GoPlus address security
-            # covers EVM addresses only, and there is no keyless equivalent. Unknown
-            # excludes, which is the correct and conservative answer -- it is not a
-            # claim that the deployer is clean.
+            # From creators[].malicious above. GoPlus address security is EVM-only,
+            # but the Solana response carries its own per-creator verdict, so this
+            # is answered without a second request.
+            deployer_prior_rugs=prior_rugs,
             risk_labels=tuple(risks),
         )
     return out
+
+
+def _rugcheck_lp(
+    markets: Any,
+) -> tuple[bool | None, float | None, tuple[dict[str, Any], ...]]:
+    """``(lp_burned, lp_locked_pct, per-pool evidence)`` from RugCheck ``markets``.
+
+    A Solana token usually has more than one pool, and the two obvious ways to
+    collapse them are both wrong in a way that matters:
+
+    * **min of the pool percentages** -- what this did until the pool rows showed
+      up. A token whose real pool is burned and which also has a $40 Meteora pool
+      with unlocked LP reads as 0% locked, and ``check_liquidity_lock`` rejects it
+      on "no LP locked or burned". That is a measurement the data does not
+      support, asserted with the confidence of one that is.
+    * **any pool burned** -- the mirror image, and the dangerous direction: a
+      burned dust pool would pass a token whose actual liquidity is pullable.
+
+    The honest aggregate is liquidity-weighted, and RugCheck's USD fields are not
+    verified from here well enough to divide by. So this answers only where the
+    weighting cannot change the verdict -- every pool secured, or every pool
+    unsecured -- and returns ``None`` when the pools disagree. Unknown excludes,
+    which is the safe direction, and the per-pool rows are kept in ``lp_markets``
+    so a later weighted rule can be written against recorded evidence rather than
+    against a schema doc.
+    """
+    if not isinstance(markets, list):
+        return None, None, ()
+
+    rows: list[dict[str, Any]] = []
+    for market in markets:
+        lp = market.get("lp") if isinstance(market, dict) else None
+        if not isinstance(lp, dict):
+            continue
+        kind = market.get("marketType") or market.get("marketTypeName")
+        rows.append(
+            {
+                "market": str(kind) if kind else None,
+                "locked_pct": _number(lp.get("lpLockedPct")),
+                "burned": _flag(lp.get("lpBurned")),
+                "locked_usd": _number(lp.get("lpLockedUSD")),
+            }
+        )
+
+    evidence = tuple(rows)
+    burn_flags = [row["burned"] for row in rows if row["burned"] is not None]
+    # True only when every pool that answered says burned. One burned pool among
+    # several says nothing about the rest, and `check_liquidity_lock` passes
+    # outright on `lp_burned is True`.
+    burned = True if burn_flags and all(burn_flags) else None
+
+    pcts = [row["locked_pct"] for row in rows if row["locked_pct"] is not None]
+    if not pcts:
+        return burned, None, evidence
+    if all(pct >= LP_SECURED_PCT for pct in pcts):
+        return burned, min(pcts), evidence
+    if all(pct <= 0.0 for pct in pcts):
+        return burned, 0.0, evidence
+    return burned, None, evidence
 
 
 def parse_rugcheck(
@@ -597,19 +762,7 @@ def parse_rugcheck(
     if "freezeAuthority" in payload:
         freeze_active = bool(payload.get("freezeAuthority"))
 
-    locked_pcts = []
-    burned = None
-    markets = payload.get("markets")
-    if isinstance(markets, list):
-        for market in markets:
-            lp = (market or {}).get("lp") if isinstance(market, dict) else None
-            if not isinstance(lp, dict):
-                continue
-            pct = _number(lp.get("lpLockedPct"))
-            if pct is not None:
-                locked_pcts.append(pct)
-            if _flag(lp.get("lpBurned")) is True:
-                burned = True
+    burned, locked_pct, lp_markets = _rugcheck_lp(payload.get("markets"))
 
     top10 = None
     holders = payload.get("topHolders")
@@ -640,7 +793,8 @@ def parse_rugcheck(
         mint_revoked=mint_revoked,
         freeze_active=freeze_active,
         lp_burned=burned,
-        lp_locked_pct=min(locked_pcts) if locked_pcts else None,
+        lp_locked_pct=locked_pct,
+        lp_markets=lp_markets,
         top10_ex_lp_pct=top10,
         holder_count=int(total_holders) if total_holders is not None else None,
         rugged=payload.get("rugged") if isinstance(payload.get("rugged"), bool) else None,
@@ -804,9 +958,7 @@ class SafetySource:
                 )
         return reports
 
-    def fetch(
-        self, tokens: Sequence[tuple[str, str]]
-    ) -> dict[tuple[str, str], SafetyReport]:
+    def fetch(self, tokens: Sequence[tuple[str, str]]) -> dict[tuple[str, str], SafetyReport]:
         """``{(chain, contract): report}`` for whatever could be established."""
         out: dict[tuple[str, str], SafetyReport] = {}
         by_chain: dict[str, list[str]] = {}
@@ -815,8 +967,11 @@ class SafetySource:
 
         for chain, contracts in by_chain.items():
             if chain not in GOPLUS_CHAIN_IDS and chain not in GOPLUS_NATIVE_PATHS:
-                log.info("no safety source for chain %s; %d tokens stay unmeasured",
-                         chain, len(contracts))
+                log.info(
+                    "no safety source for chain %s; %d tokens stay unmeasured",
+                    chain,
+                    len(contracts),
+                )
                 continue
             for batch in [
                 contracts[i : i + MAX_ADDRESSES_PER_REQUEST]

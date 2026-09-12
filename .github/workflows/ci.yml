@@ -1,0 +1,71 @@
+# Lint and the test suite, on every push and every pull request.
+#
+# This repository had neither until now: 583 tests and a ruff config, run only
+# when someone remembered to run them locally. The two workflows that did exist
+# are a data collector and a deploy, and neither one fails on a broken test -- so
+# a push that breaks scoring would have gone green, been committed to by the
+# hourly collector, and been published.
+#
+# It costs nothing on the collector's schedule. collect.yml commits with
+# GITHUB_TOKEN, and a push made with that token never starts another workflow, so
+# the ~24 data commits a day do not run this. Only pushes a person makes do.
+#
+# The suite needs no network: tests/conftest.py blocks urllib and requests
+# outright, so a test that tried to reach DexScreener or GoPlus fails here the
+# same way it fails locally, rather than passing on a runner that has egress.
+#
+# `push` and `pull_request` both fire on a branch with a PR open, and that is
+# deliberate rather than a missed de-dupe. They run different commits: `push`
+# tests the branch tip, `pull_request` tests the tip merged into the base. Those
+# differ exactly when it matters -- when the base moved -- and at ~30 seconds a
+# run the second one is the cheapest check in the repository. Narrowing `push`
+# to the default branch would remove the duplicate and with it the only coverage
+# a branch gets before its PR exists.
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      # The collector's own output. It cannot change behaviour, and the hourly
+      # commits that carry it do not trigger workflows anyway.
+      - "state/**"
+      - "web/screener-data.json"
+  pull_request:
+  workflow_dispatch:
+
+# A second push supersedes the first; the older run's answer is about code that
+# no longer exists.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # From pyproject's own [dev] extra rather than a list repeated here, so a
+      # dependency the project declares but does not actually have is a failure
+      # in CI rather than a surprise on a fresh checkout.
+      - name: Install
+        run: python -m pip install --quiet -e ".[dev]"
+
+      - name: Lint
+        run: ruff check --output-format=github .
+
+      - name: Tests
+        run: python -m pytest -q

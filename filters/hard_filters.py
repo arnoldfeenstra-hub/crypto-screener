@@ -49,6 +49,10 @@ FILTER_NAMES = (
 
 TRANSFER_TAX_MAX_PCT = 5.0
 LP_LOCK_MIN_DAYS = 30
+# Share of LP that must sit in a locker or burn address to satisfy the lock
+# requirement when no expiry is obtainable. See check_liquidity_lock for why this
+# threshold exists and what it gives up.
+LP_LOCK_MIN_PCT = 95.0
 TOP10_EX_LP_MAX_PCT = 35.0
 LIQUIDITY_MIN_PCT_OF_FDV = 2.0
 
@@ -100,6 +104,9 @@ class FilterInput:
     # Liquidity lock
     lp_burned: bool | None = None
     lp_locked_until_ms: int | None = None
+    # Share of LP held in a locker or burn address. The keyless safety sources
+    # report this but never an expiry; see check_liquidity_lock.
+    lp_locked_pct: float | None = None
 
     # Concentration and depth
     top10_ex_lp_pct: float | None = None
@@ -251,6 +258,33 @@ def check_liquidity_lock(data: FilterInput) -> FilterResult:
                 name, f"LP lock expires in {remaining_days:.1f}d < {LP_LOCK_MIN_DAYS}d"
             )
         return _ok(name, f"LP locked for {remaining_days:.0f}d")
+    if data.lp_locked_pct is not None:
+        # No keyless source reports a lock *expiry*, which is what the 30-day rule
+        # above actually asks about. Holding out for it meant this filter answered
+        # "unknown" for 12 of the 13 tokens in the first live run, so nothing could
+        # ever be ranked -- the filter was not screening, it was abstaining.
+        #
+        # A measured share is weaker evidence than a dated lock and it is not
+        # nothing: 97% of LP sitting in a locker cannot be pulled today, and is a
+        # different object from LP that is wholly unlocked. So a high share passes,
+        # and the reason string says plainly that the expiry was never measured.
+        #
+        # What this gives up: a lock that expires next week reads the same as one
+        # that expires next year. That is a real loss and the honest way to close
+        # it is a source that reports the expiry, not a lower threshold here.
+        if data.lp_locked_pct >= LP_LOCK_MIN_PCT:
+            return _ok(
+                name,
+                f"{data.lp_locked_pct:.0f}% of LP locked or burned; expiry not "
+                "reported by any available source",
+            )
+        if data.lp_locked_pct <= 0:
+            return _reject(name, "no LP locked or burned")
+        return _unknown(
+            name,
+            f"only {data.lp_locked_pct:.0f}% of LP locked, under the "
+            f"{LP_LOCK_MIN_PCT:.0f}% needed without an expiry; lock duration",
+        )
     if data.lp_burned is False:
         return _reject(name, "LP neither burned nor locked")
     return _unknown(name, "LP burn and lock status")
