@@ -116,6 +116,11 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                     "telegram": snap["socials_declared_telegram"],
                     "x": snap["socials_declared_x"],
                     "website": snap["socials_declared_website"],
+                    # The addresses, so the page can link rather than only assert
+                    # that a community exists. Null for rows snapshotted before
+                    # schema 5, which kept the flag and dropped the link.
+                    "telegram_url": snap["telegram_url"],
+                    "x_url": snap["x_url"],
                 },
                 # Mindshare (collectors/mindshare.py). The raw components and the
                 # universe totals ship alongside the derived share so the page can

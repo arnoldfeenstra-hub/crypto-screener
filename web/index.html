@@ -108,6 +108,8 @@
   .pill.bad { color: var(--bad); border-color: currentColor; }
   .pill.unk { color: var(--dim); }
   .pill.chain { color: var(--accent); border-color: currentColor; font-weight: 600; }
+  a.pill.link { text-decoration: none; }
+  a.pill.link:hover { border-color: currentColor; color: var(--ink); }
   .null { color: var(--dim); font-style: italic; }
   .mono { font-family: var(--mono); font-size: 12px; }
   .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
@@ -292,12 +294,32 @@ function renderVerdict(d) {
   document.getElementById('verdict-text').textContent = c.explanation;
 }
 
+// Link targets come from DexScreener, which is to say from whoever deployed the
+// token. Only an absolute http(s) URL is ever rendered as a link; anything else
+// -- a javascript: href above all -- is dropped and the pill stays plain text.
+// esc() handles the quoting; this decides whether a link is allowed at all,
+// which quoting cannot.
+const safeHref = url => {
+  if (typeof url !== 'string' || !url) return null;
+  try {
+    const u = new URL(url);
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+  } catch (e) { return null; }
+};
+
 function socialPills(s) {
+  const d = s || {};
+  const links = { telegram: safeHref(d.telegram_url), x: safeHref(d.x_url) };
   return ['telegram', 'x', 'website'].map(k => {
-    const v = (s || {})[k];
+    const v = d[k];
     const cls = v === true ? '' : v === false ? 'bad' : 'unk';
     const mark = v === true ? '✓' : v === false ? '✕' : '?';
-    return `<span class="pill ${cls}">${k[0].toUpperCase()}${mark}</span>`;
+    const body = `${k[0].toUpperCase()}${mark}`;
+    // A declared link the collector kept is worth clicking. One it never saw --
+    // every row from before schema 5 -- is still a pill, just not a link.
+    return links[k]
+      ? `<a class="pill ${cls} link" href="${esc(links[k])}" target="_blank" rel="noopener noreferrer nofollow">${body}</a>`
+      : `<span class="pill ${cls}">${body}</span>`;
   }).join(' ');
 }
 

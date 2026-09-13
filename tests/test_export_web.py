@@ -14,11 +14,13 @@ cannot overstate what it is showing. Two claims have to survive every future edi
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from collectors.schema import Market, Snapshot
 from collectors.store import Store
 from export_web import build_payload
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 T0 = 1788912000000
 
 
@@ -114,3 +116,50 @@ class TestPayloadShape:
         blob = json.dumps(payload, default=str).lower()
         for word in ("bitquery_token", "bearer", "api_key", "x_bearer", "password"):
             assert word not in blob
+
+
+class TestDeclaredLinks:
+    """The page links to a token's community; the link comes from DexScreener,
+    which is to say from whoever deployed the token."""
+
+    def test_the_declared_addresses_reach_the_exported_dataset(self):
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(
+                    chain="solana",
+                    contract="Tok1",
+                    trigger="mcap_250k",
+                    source="dexscreener",
+                    ticker="$T1",
+                    ts=T0,
+                    market=Market(mcap_usd=300_000.0),
+                    telegram_url="https://t.me/realgroup",
+                    x_url="https://x.com/realacct",
+                )
+            )
+            payload = build_payload(store)
+        socials = payload["tokens"][0]["socials_declared"]
+        assert socials["telegram_url"] == "https://t.me/realgroup"
+        assert socials["x_url"] == "https://x.com/realacct"
+
+    def test_a_row_with_no_declared_address_exports_null_not_a_guess(self):
+        """Every snapshot taken before schema 5 is this row: the flag was kept and
+        the address was dropped. Null is the truth; a link built from the ticker
+        would point at a stranger's channel."""
+        with store_with("dexscreener") as store:
+            payload = build_payload(store)
+        socials = payload["tokens"][0]["socials_declared"]
+        assert socials["telegram_url"] is None
+        assert socials["x_url"] is None
+
+    def test_the_page_refuses_to_render_a_link_it_cannot_vouch_for(self):
+        """A javascript: href in a table of memecoin links is exactly the attack
+        this page would otherwise hand its reader. The guard is in web/index.html,
+        so this asserts the guard is there and that nothing renders an href
+        without it."""
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "const safeHref" in page
+        assert "u.protocol === 'http:' || u.protocol === 'https:'" in page
+        # The only href built from token data goes through it.
+        assert 'href="${esc(links[k])}"' in page
+        assert "rel=\"noopener noreferrer nofollow\"" in page

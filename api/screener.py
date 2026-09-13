@@ -191,6 +191,8 @@ def build_live_payload(
                     "telegram": snapshot.socials_declared.telegram,
                     "x": snapshot.socials_declared.x,
                     "website": snapshot.socials_declared.website,
+                    "telegram_url": snapshot.telegram_url,
+                    "x_url": snapshot.x_url,
                 },
                 "mindshare": mindshare_group,
                 "safety": (
