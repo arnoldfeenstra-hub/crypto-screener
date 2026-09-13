@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-13T10:20:57+00:00",
+  "generated_at": "2026-09-13T12:19:45+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -53,9 +53,9 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 35,
-    "outcome_observations": 459,
-    "social_observations": 0,
-    "labelled_snapshots": 33,
+    "outcome_observations": 487,
+    "social_observations": 100,
+    "labelled_snapshots": 34,
     "excluded_on_evidence": 29,
     "excluded_as_unmeasured": 6,
     "safety_checked": 35,
@@ -151,7 +151,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 5.024137915495796,
@@ -243,7 +245,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.22271523076130548,
@@ -334,7 +338,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.2284266821434353,
@@ -429,7 +435,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 2.8819250226154973,
@@ -524,7 +532,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 3.9497315579878567,
@@ -611,7 +621,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.6463844627653472,
@@ -702,7 +714,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 3.297187085367169,
@@ -793,7 +807,9 @@
       "socials_declared": {
         "telegram": false,
         "x": false,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.26796985030871584,
@@ -884,7 +900,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 2.4467427451316497,
@@ -977,7 +995,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.5688109864818227,
@@ -1071,7 +1091,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 3.148023668181215,
@@ -1164,7 +1186,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.29654987472879946,
@@ -1254,7 +1278,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.5798628462722164,
@@ -1347,7 +1373,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.8795084292983995,
@@ -1436,7 +1464,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.5632535652306465,
@@ -1528,7 +1558,9 @@
       "socials_declared": {
         "telegram": false,
         "x": false,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 3.408836733390104,
@@ -1618,7 +1650,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.9969521025209251,
@@ -1708,7 +1742,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.695645245371154,
@@ -1796,7 +1832,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.73635487300109,
@@ -1884,7 +1922,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.0460817030386376,
@@ -1975,7 +2015,9 @@
       "socials_declared": {
         "telegram": false,
         "x": false,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 7.623217751601449,
@@ -2068,7 +2110,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.9066648741051024,
@@ -2158,7 +2202,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 5.961897361345262,
@@ -2248,7 +2294,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.1679026692163663,
@@ -2338,7 +2386,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.20810989882676964,
@@ -2431,7 +2481,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.6444741399815443,
@@ -2523,7 +2575,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 2.4853967983748477,
@@ -2613,7 +2667,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 3.7458900016863,
@@ -2705,7 +2761,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 7.289207873831629,
@@ -2797,7 +2855,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": false
+        "website": false,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 5.047628289508223,
@@ -2889,7 +2949,9 @@
       "socials_declared": {
         "telegram": true,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 27.45917051580311,
@@ -2979,7 +3041,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 0.7824509415274539,
@@ -3070,7 +3134,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 2.330081035919904,
@@ -3159,7 +3225,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 1.2339266579204975,
@@ -3249,7 +3317,9 @@
       "socials_declared": {
         "telegram": false,
         "x": true,
-        "website": true
+        "website": true,
+        "telegram_url": null,
+        "x_url": null
       },
       "mindshare": {
         "share_pct": 3.3918675008681767,
