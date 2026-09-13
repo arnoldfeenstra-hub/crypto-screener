@@ -85,8 +85,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      # From pyproject's own dependency list, not a subset hand-copied here. The
+      # hand-copied version was `pip install duckdb`, and it broke the moment
+      # collect.py grew an import of a module that uses requests: the workflow
+      # installed what someone remembered, and the code needed what it needed.
+      # tests/test_chains_and_live.py asserts this stays true.
       - name: Install dependencies
-        run: python -m pip install --quiet duckdb
+        run: python -m pip install --quiet -e .
 
       - name: Collect
         id: collect
