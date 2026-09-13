@@ -1,17 +1,17 @@
 {
   "schema_version": 3,
-  "updated_at": "2026-09-12T23:37:34+00:00",
+  "updated_at": "2026-09-13T00:17:11+00:00",
   "rows": {
     "snapshots": 24,
     "trigger_events": 24,
-    "labels": 130,
-    "outcome_observations": 193,
-    "scores": 194,
+    "labels": 154,
+    "outcome_observations": 216,
+    "scores": 218,
     "social_observations": 0,
     "safety_observations": 24
   },
   "appended_last_run": {
-    "labels": 20,
+    "labels": 24,
     "outcome_observations": 23,
     "scores": 24
   },
