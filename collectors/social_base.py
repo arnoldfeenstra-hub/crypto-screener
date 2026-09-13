@@ -57,6 +57,15 @@ class SocialObservation:
     source: str = "unknown"
     error: str | None = None
 
+    # The token's real age when this reading was taken, which is not the same as
+    # ``offset_minutes``. A missed offset stays due, so turning a collector on for
+    # the first time fills t+0 for tokens that are already a day old. Recording
+    # both makes such a row say so on its face, instead of leaving a reader to
+    # join back to the snapshot and work out that this "t+0" count was taken 20
+    # hours late. A row whose two numbers are far apart is not comparable with one
+    # where they agree, and the dataset's whole design is that rows are comparable.
+    age_minutes: int | None = None
+
     def to_row(self) -> dict[str, Any]:
         return {
             "observation_id": self.observation_id,
@@ -79,6 +88,7 @@ class SocialObservation:
             "unique_speakers": self.unique_speakers,
             "source": self.source,
             "error": self.error,
+            "age_minutes": self.age_minutes,
         }
 
 

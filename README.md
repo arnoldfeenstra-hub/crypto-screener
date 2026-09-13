@@ -20,7 +20,7 @@ tokens whether or not a collector has ever run.
 | 0.0 live source (DexScreener, keyless, multi-chain) | Built |
 | 0.1 trigger watcher | Built |
 | 0.2 snapshot writer | Built |
-| 0.3 social collectors (X + Telegram) | Built |
+| 0.3 social collectors (X + Telegram) | Telegram runs on the schedule, keyless. X is built but unscheduled: it needs `X_BEARER_TOKEN` |
 | 0.4 outcome tracker | Built |
 | 0.5 on-chain backfill | Built |
 | 0.6 mindshare (share-of-attention variable) | Built, weight 0.00 in the composite |
@@ -193,9 +193,13 @@ on its own and says on the page that the live view is unavailable.
 
 ## The other collectors
 
+`collect.py` already runs the Telegram one every cycle -- it needs no credentials, and the
+member-count series it builds cannot be reconstructed later, so it is on by default and
+`--no-social` turns it off. The rest are run by hand.
+
 ```bash
 python -m collectors.social_tg                  # no key needed (public t.me previews)
-python -m collectors.social_x                   # needs X_BEARER_TOKEN
+python -m collectors.social_x                   # needs X_BEARER_TOKEN, not on the schedule
 cp .env.example .env                            # BITQUERY_TOKEN, for the Bitquery source
 python -m collectors.bitquery --probe           # verify its queries against the live schema
 python -m collectors.trigger_watcher --source bitquery --chain solana

@@ -302,17 +302,46 @@ class TestRugCheck:
         assert report.lp_locked_pct is None
         assert "lp_locked_pct" not in report.to_filter_fields()
 
-    def test_a_burned_main_pool_beside_an_open_dust_pool_is_not_a_rejection(self):
+    def test_a_burned_main_pool_beside_an_open_dust_pool_is_weighted_not_rejected(self):
         """The case that made 11 of 13 real tokens reject on liquidity_lock.
 
         min() across pools read this as 0% locked, which `check_liquidity_lock`
         rejects outright on "no LP locked or burned". It is not a measured zero:
-        one pool holds $412k of burned LP and the other holds nothing.
+        $412k of the token's $413k sits in a burned pool and the other pool holds
+        nothing. The weighted share says 99.7%, which is the truth about this
+        token's liquidity.
         """
         report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
-        assert report.lp_locked_pct is None
+        assert report.lp_locked_pct == pytest.approx(99.71, abs=0.01)
+        assert report.lp_total_usd == pytest.approx(413200.0)
+        # One burned pool among two says nothing about the other, and the filter
+        # passes outright on lp_burned.
         assert report.lp_burned is None
-        assert report.to_filter_fields().keys().isdisjoint({"lp_locked_pct", "lp_burned"})
+
+    def test_disagreeing_pools_with_no_denominator_stay_unknown(self):
+        """Without totalMarketLiquidity there is nothing to divide by, and a
+        share invented from the pools alone is the bug this replaced."""
+        payload = dict(DATA["rugcheck_dust_pool_unlocked"])
+        payload.pop("totalMarketLiquidity")
+        assert parse_rugcheck(payload, "DustMint").lp_locked_pct is None
+
+    def test_disagreeing_pools_with_a_pool_missing_its_dollars_stay_unknown(self):
+        """A numerator summed over some of the pools is not the secured share."""
+        import copy
+
+        payload = copy.deepcopy(DATA["rugcheck_dust_pool_unlocked"])
+        payload["markets"][1]["lp"].pop("lpLockedUSD")
+        assert parse_rugcheck(payload, "DustMint").lp_locked_pct is None
+
+    def test_a_ratio_that_cannot_be_a_percentage_is_refused(self):
+        """If locked dollars exceed total liquidity by more than rounding, the two
+        fields are not in the units this assumes. A units mismatch must not become
+        a passing score."""
+        import copy
+
+        payload = copy.deepcopy(DATA["rugcheck_dust_pool_unlocked"])
+        payload["totalMarketLiquidity"] = 1_000.0  # against $412k "locked"
+        assert parse_rugcheck(payload, "DustMint").lp_locked_pct is None
 
     def test_a_single_burned_pool_cannot_pass_the_whole_token(self):
         """The mirror of the same bug, and the dangerous direction.

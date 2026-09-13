@@ -127,13 +127,23 @@ class TelegramCollector:
         self.client = client
 
     def collect_one(
-        self, snapshot: dict[str, Any], offset_minutes: int
+        self,
+        snapshot: dict[str, Any],
+        offset_minutes: int,
+        *,
+        age_minutes: int | None = None,
     ) -> SocialObservation:
-        handle = extract_handle(snapshot.get("telegram") or snapshot.get("ticker"))
+        # Only a declared address. The ticker is NOT a fallback: extract_handle
+        # happily turns "PAIRZ" into the handle "PAIRZ", and t.me/PAIRZ is a real
+        # page belonging to someone else. Polling it would write a stranger's
+        # member count into this token's row -- a fabricated measurement, which is
+        # worse than the null it replaces.
+        handle = extract_handle(snapshot.get("telegram_url") or snapshot.get("telegram"))
         base = {
             "snapshot_id": snapshot["snapshot_id"],
             "platform": PLATFORM,
             "offset_minutes": offset_minutes,
+            "age_minutes": age_minutes,
             "handle": handle,
             "source": "t.me_preview",
         }
@@ -162,7 +172,7 @@ class TelegramCollector:
             age = int((as_of - snapshot["ts"]) // 60_000)
             done = self.store.social_offsets_collected(snapshot["snapshot_id"], PLATFORM)
             for offset in due_offsets(age, done):
-                observation = self.collect_one(snapshot, offset)
+                observation = self.collect_one(snapshot, offset, age_minutes=age)
                 self.store.append_social_observations([observation])
                 written.append(observation)
         return written

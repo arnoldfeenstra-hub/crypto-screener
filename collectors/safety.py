@@ -192,6 +192,9 @@ class SafetyReport:
     # pool-level rows can tell "unlocked everywhere" from "one dust pool drags the
     # aggregate down". Evidence, not a measurement -- see `measured_fields`.
     lp_markets: tuple[dict[str, Any], ...] = ()
+    # The denominator the share above was computed over. Kept for the same reason
+    # as the pool rows: a ratio whose divisor is gone cannot be checked.
+    lp_total_usd: float | None = None
 
     # Concentration and ownership
     top10_ex_lp_pct: float | None = None
@@ -223,6 +226,7 @@ class SafetyReport:
                 "collected_at_ms",
                 "risk_labels",
                 "lp_markets",
+                "lp_total_usd",
                 "error",
             )
             and getattr(self, f.name) is not None
@@ -687,7 +691,7 @@ def parse_goplus_solana(
 
 
 def _rugcheck_lp(
-    markets: Any,
+    markets: Any, total_liquidity_usd: float | None = None
 ) -> tuple[bool | None, float | None, tuple[dict[str, Any], ...]]:
     """``(lp_burned, lp_locked_pct, per-pool evidence)`` from RugCheck ``markets``.
 
@@ -702,13 +706,20 @@ def _rugcheck_lp(
     * **any pool burned** -- the mirror image, and the dangerous direction: a
       burned dust pool would pass a token whose actual liquidity is pullable.
 
-    The honest aggregate is liquidity-weighted, and RugCheck's USD fields are not
-    verified from here well enough to divide by. So this answers only where the
-    weighting cannot change the verdict -- every pool secured, or every pool
-    unsecured -- and returns ``None`` when the pools disagree. Unknown excludes,
-    which is the safe direction, and the per-pool rows are kept in ``lp_markets``
-    so a later weighted rule can be written against recorded evidence rather than
-    against a schema doc.
+    The honest aggregate is liquidity-weighted, and it is now computable. The
+    first live run to record ``lp_markets`` showed what these tokens actually look
+    like: one pool holding $36k-$140k of LP at 98-100% locked, surrounded by five
+    to eleven empty Meteora and Raydium pools at 0%. Five of eight rows were being
+    rejected outright on that shape. ``lpLockedUSD`` is populated and real, and
+    ``totalMarketLiquidity`` is the denominator it belongs over.
+
+    So: where the pools agree the weighting cannot change the verdict and the
+    agreed value is reported. Where they disagree, the secured share is the locked
+    dollars over the token's total market liquidity -- but only when every pool
+    that reported a percentage also reported its dollars, and only when the ratio
+    lands inside [0, 100.5]. A ratio outside that means the two fields are not in
+    the units this assumes, and the answer is ``None`` rather than a number built
+    on a guess about a schema. Unknown excludes, which is the safe direction.
     """
     if not isinstance(markets, list):
         return None, None, ()
@@ -735,13 +746,26 @@ def _rugcheck_lp(
     # outright on `lp_burned is True`.
     burned = True if burn_flags and all(burn_flags) else None
 
-    pcts = [row["locked_pct"] for row in rows if row["locked_pct"] is not None]
+    measured = [row for row in rows if row["locked_pct"] is not None]
+    pcts = [row["locked_pct"] for row in measured]
     if not pcts:
         return burned, None, evidence
     if all(pct >= LP_SECURED_PCT for pct in pcts):
         return burned, min(pcts), evidence
     if all(pct <= 0.0 for pct in pcts):
         return burned, 0.0, evidence
+
+    # The pools disagree. Weight by dollars, or abstain.
+    if (
+        total_liquidity_usd is not None
+        and total_liquidity_usd > 0
+        and all(row["locked_usd"] is not None for row in measured)
+    ):
+        share = 100.0 * sum(row["locked_usd"] for row in measured) / total_liquidity_usd
+        # A hair over 100 is rounding between two RugCheck figures; far over it is
+        # a units mismatch, and a units mismatch must not become a passing score.
+        if 0.0 <= share <= 100.5:
+            return burned, min(share, 100.0), evidence
     return burned, None, evidence
 
 
@@ -762,7 +786,8 @@ def parse_rugcheck(
     if "freezeAuthority" in payload:
         freeze_active = bool(payload.get("freezeAuthority"))
 
-    burned, locked_pct, lp_markets = _rugcheck_lp(payload.get("markets"))
+    total_liquidity = _number(payload.get("totalMarketLiquidity"))
+    burned, locked_pct, lp_markets = _rugcheck_lp(payload.get("markets"), total_liquidity)
 
     top10 = None
     holders = payload.get("topHolders")
@@ -795,6 +820,7 @@ def parse_rugcheck(
         lp_burned=burned,
         lp_locked_pct=locked_pct,
         lp_markets=lp_markets,
+        lp_total_usd=total_liquidity,
         top10_ex_lp_pct=top10,
         holder_count=int(total_holders) if total_holders is not None else None,
         rugged=payload.get("rugged") if isinstance(payload.get("rugged"), bool) else None,

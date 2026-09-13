@@ -180,13 +180,18 @@ class XCollector:
         self.client = client
 
     def collect_one(
-        self, snapshot: dict[str, Any], offset_minutes: int
+        self,
+        snapshot: dict[str, Any],
+        offset_minutes: int,
+        *,
+        age_minutes: int | None = None,
     ) -> SocialObservation:
         """One observation. A failure becomes a row with ``error``, never a zero."""
         base = {
             "snapshot_id": snapshot["snapshot_id"],
             "platform": PLATFORM,
             "offset_minutes": offset_minutes,
+            "age_minutes": age_minutes,
             "handle": snapshot.get("ticker"),
             "source": "x_api_v2",
         }
@@ -209,7 +214,7 @@ class XCollector:
             age = int((as_of - snapshot["ts"]) // 60_000)
             done = self.store.social_offsets_collected(snapshot["snapshot_id"], PLATFORM)
             for offset in due_offsets(age, done):
-                observation = self.collect_one(snapshot, offset)
+                observation = self.collect_one(snapshot, offset, age_minutes=age)
                 self.store.append_social_observations([observation])
                 written.append(observation)
         return written

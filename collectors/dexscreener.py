@@ -204,9 +204,40 @@ def _link_flags(entries: Any) -> tuple[bool, bool, bool]:
     three, and a guessed ``False`` would corrupt exactly the column most likely to
     carry signal.
     """
+    flags, _ = _classify_links(entries)
+    return flags
+
+
+def _link_urls(entries: Any) -> tuple[str | None, str | None]:
+    """``(telegram_url, x_url)`` -- the addresses behind the first two flags.
+
+    The booleans are the feature; these are where the forward social series has to
+    be collected from. Nothing else in the pipeline knows a token's Telegram group,
+    and `collectors/social_tg.py` cannot guess it: a handle derived from a ticker
+    is a different channel, usually someone else's.
+
+    The first link of each kind wins. A token listing two Telegram links is
+    listing a group and a backup, and there is no basis in the response for
+    preferring the second.
+    """
+    _, urls = _classify_links(entries)
+    return urls
+
+
+def _classify_links(
+    entries: Any,
+) -> tuple[tuple[bool, bool, bool], tuple[str | None, str | None]]:
+    """Flags and addresses from one link list, in a single pass.
+
+    One pass rather than two so a flag can never be True while its address is
+    None for the same entry -- which would look exactly like a token whose
+    Telegram link could not be read.
+    """
     telegram = x_declared = website = False
+    telegram_url: str | None = None
+    x_url: str | None = None
     if not isinstance(entries, list):
-        return telegram, x_declared, website
+        return (telegram, x_declared, website), (telegram_url, x_url)
     for entry in entries:
         if isinstance(entry, str):
             url, kind = entry, ""
@@ -218,11 +249,13 @@ def _link_flags(entries: Any) -> tuple[bool, bool, bool]:
         blob = f"{kind} {url}".lower()
         if "t.me" in blob or "telegram" in blob:
             telegram = True
+            telegram_url = telegram_url or (url or None)
         elif "twitter.com" in blob or "x.com" in blob or "twitter" in blob:
             x_declared = True
+            x_url = x_url or (url or None)
         elif url.startswith("http"):
             website = True
-    return telegram, x_declared, website
+    return (telegram, x_declared, website), (telegram_url, x_url)
 
 
 def declared_socials(pair: dict[str, Any]) -> tuple[bool | None, bool | None, bool | None]:
@@ -243,6 +276,16 @@ def declared_socials(pair: dict[str, Any]) -> tuple[bool | None, bool | None, bo
     return tg_a or tg_b, x_a or x_b, web_a or web_b
 
 
+def declared_social_urls(pair: dict[str, Any]) -> tuple[str | None, str | None]:
+    """``(telegram_url, x_url)`` declared on one pair's profile."""
+    info = pair.get("info")
+    if not isinstance(info, dict):
+        return None, None
+    tg_a, x_a = _link_urls(info.get("socials"))
+    tg_b, x_b = _link_urls(info.get("websites"))
+    return tg_a or tg_b, x_a or x_b
+
+
 def parse_discovery(entries: Any, *, kind: str) -> list[dict[str, Any]]:
     """Normalise a ``token-profiles`` or ``token-boosts`` response.
 
@@ -261,6 +304,7 @@ def parse_discovery(entries: Any, *, kind: str) -> list[dict[str, Any]]:
         if not address or not chain:
             continue
         telegram, x_declared, website = _link_flags(entry.get("links"))
+        telegram_url, x_url = _link_urls(entry.get("links"))
         has_links = isinstance(entry.get("links"), list)
         out.append(
             {
@@ -271,6 +315,8 @@ def parse_discovery(entries: Any, *, kind: str) -> list[dict[str, Any]]:
                 "boost_total": _as_float(entry.get("totalAmount")),
                 "description": entry.get("description"),
                 # No link list means nothing was read, so the triple stays unknown.
+                "telegram_url": telegram_url,
+                "x_url": x_url,
                 "declared_telegram": telegram if has_links else None,
                 "declared_x": x_declared if has_links else None,
                 "declared_website": website if has_links else None,
@@ -313,6 +359,8 @@ class PairAggregate:
     declared_telegram: bool | None = None
     declared_x: bool | None = None
     declared_website: bool | None = None
+    telegram_url: str | None = None
+    x_url: str | None = None
 
 
 def _sum_optional(values: Iterable[float | None]) -> float | None:
@@ -380,6 +428,7 @@ def parse_pairs(payload: Any) -> dict[tuple[str, str], PairAggregate]:
                     sells.append(s)
 
         socials = [declared_socials(p) for p in pairs]
+        link_urls = [declared_social_urls(p) for p in pairs]
         # Any pool carrying a profile answers for the token; only if none does is
         # the triple unknown.
         triple = tuple(_any_known(socials, index) for index in range(3))
@@ -411,6 +460,8 @@ def parse_pairs(payload: Any) -> dict[tuple[str, str], PairAggregate]:
             declared_telegram=triple[0],
             declared_x=triple[1],
             declared_website=triple[2],
+            telegram_url=next((u[0] for u in link_urls if u[0]), None),
+            x_url=next((u[1] for u in link_urls if u[1]), None),
         )
     return out
 
@@ -430,7 +481,7 @@ def to_metrics(
     observed = observed_at_ms if observed_at_ms is not None else now_ms()
     discovery = discovery or {}
 
-    def _pick(field_name: str) -> bool | None:
+    def _pick(field_name: str) -> Any:
         # A pool profile is the better witness; the discovery endpoint's link list
         # is the fallback. Neither is allowed to turn an unknown into a False.
         primary = getattr(aggregate, field_name)
@@ -463,6 +514,8 @@ def to_metrics(
         declared_telegram=_pick("declared_telegram"),
         declared_x=_pick("declared_x"),
         declared_website=_pick("declared_website"),
+        telegram_url=_pick("telegram_url"),
+        x_url=_pick("x_url"),
         listings=["dex"],
         raw={"dex_ids": list(aggregate.dex_ids), "discovery": discovery.get("discovery")},
     )

@@ -72,6 +72,23 @@ class StubPrices:
         return {key: self.found[key] for key in tokens if key in self.found}
 
 
+class StubTelegram:
+    """Stands in for the t.me preview page."""
+
+    def __init__(self, pages=None, error: Exception | None = None):
+        self.pages = pages or {}
+        self.error = error
+        self.asked: list[str] = []
+
+    def fetch(self, handle: str):
+        self.asked.append(handle)
+        if self.error:
+            raise self.error
+        if handle not in self.pages:
+            return {"exists": False, "members": None, "online": None}
+        return self.pages[handle]
+
+
 class StubSafety:
     def __init__(self, reports=None):
         self.reports = reports or {}
@@ -83,6 +100,10 @@ class StubSafety:
 def cycle(tmp_path, tokens, **kwargs):
     kwargs.setdefault("price_source", StubPrices())
     kwargs.setdefault("with_safety", False)
+    # Off unless a test asks for it, so the default path builds no live preview
+    # client. tests/conftest.py would block the request anyway; not making it is
+    # better than having it blocked.
+    kwargs.setdefault("with_social", False)
     return run_cycle(
         chain_names=kwargs.pop("chain_names", ["solana", "bnb"]),
         state_dir=tmp_path / "state",
@@ -407,3 +428,157 @@ class TestCycle:
             observations = store.outcome_observations(snapshot_id)
         assert observations
         assert all(o.mcap_usd == 900_000.0 for o in observations)
+
+
+# ---------------------------------------------------------------------------
+# The forward social series
+# ---------------------------------------------------------------------------
+
+
+class TestSocialCollection:
+    """The one part of the dataset that cannot be reconstructed later.
+
+    On-chain history is backfillable; a Telegram member count at a past timestamp
+    is archived nowhere (BUILD_BRIEF.md section 1). So the properties that matter
+    are that a declared channel is actually polled, and that an undeclared one
+    never gets a guessed handle.
+    """
+
+    def social_token(
+        self, contract: str, ticker: str, telegram: str | None, *, observed_at_ms=None
+    ):
+        return token(
+            "solana",
+            contract,
+            # The snapshot's ts is the observation time, and the offsets are
+            # measured from it. Default to now so these exercise the steady state:
+            # a token that just fired is due for t+0 and nothing else.
+            observed_at_ms=observed_at_ms or now_ms(),
+            ticker=ticker,
+            mcap_usd=400_000.0,
+            fdv_usd=480_000.0,
+            liquidity_usd=60_000.0,
+            volume_24h_usd=800_000.0,
+            txns_24h=1500,
+            first_seen_at_ms=now_ms() - 3_600_000,
+            declared_telegram=telegram is not None,
+            telegram_url=telegram,
+            listings=["dex"],
+        )
+
+    def test_a_declared_channel_is_polled_and_its_count_stored(self, tmp_path):
+        client = StubTelegram({"realgroup": {"exists": True, "members": 8412, "online": 91}})
+        summary = cycle(
+            tmp_path,
+            [self.social_token("SoL1", "AAA", "https://t.me/realgroup")],
+            with_social=True,
+            telegram_client=client,
+        )
+        assert client.asked == ["realgroup"]
+        assert summary["social_tg"]["with_counts"] == 1
+
+        rows = journal.read_rows("social_observations", tmp_path / "state")
+        assert [r["members"] for r in rows] == [8412]
+        assert [r["handle"] for r in rows] == ["realgroup"]
+        assert rows[0]["error"] is None
+
+    def test_a_token_with_no_telegram_never_gets_a_handle_invented(self, tmp_path):
+        """`extract_handle` turns the ticker "PAIRZ" into the handle "PAIRZ", and
+        t.me/PAIRZ is a real page belonging to somebody else. Polling it would
+        write a stranger's member count into this token's row."""
+        client = StubTelegram()
+        summary = cycle(
+            tmp_path,
+            [self.social_token("SoL2", "PAIRZ", None)],
+            with_social=True,
+            telegram_client=client,
+        )
+        assert client.asked == []
+        assert summary["social_tg"]["no_handle"] == 1
+
+        rows = journal.read_rows("social_observations", tmp_path / "state")
+        assert rows and all(r["handle"] is None for r in rows)
+        assert all(r["members"] is None for r in rows)
+        assert all("no telegram handle" in r["error"] for r in rows)
+
+    def test_the_declared_address_reaches_the_snapshot(self, tmp_path):
+        cycle(
+            tmp_path,
+            [self.social_token("SoL3", "BBB", "https://t.me/realgroup")],
+            with_social=True,
+            telegram_client=StubTelegram(),
+        )
+        snapshots = journal.read_rows("snapshots", tmp_path / "state")
+        assert [s["telegram_url"] for s in snapshots] == ["https://t.me/realgroup"]
+
+    def test_a_failed_preview_is_a_row_with_an_error_not_a_zero(self, tmp_path):
+        """A count of zero and a failed lookup are different facts. Storing the
+        second as the first is the imputation hard rule 3 forbids."""
+        from collectors.social_tg import TelegramError
+
+        cycle(
+            tmp_path,
+            [self.social_token("SoL4", "CCC", "https://t.me/realgroup")],
+            with_social=True,
+            telegram_client=StubTelegram(error=TelegramError("HTTP 429")),
+        )
+        rows = journal.read_rows("social_observations", tmp_path / "state")
+        assert rows and all(r["members"] is None for r in rows)
+        assert all("429" in r["error"] for r in rows)
+
+    def test_an_observation_records_the_age_it_was_really_taken_at(self, tmp_path):
+        """A missed offset stays due, so switching this on fills t+0 for tokens
+        that are already old. The row has to say so, or a reader compares a
+        day-old reading against a genuine t+0 one."""
+        cycle(
+            tmp_path,
+            [self.social_token("SoL5", "DDD", "https://t.me/realgroup")],
+            with_social=True,
+            telegram_client=StubTelegram(
+                {"realgroup": {"exists": True, "members": 12, "online": 1}}
+            ),
+        )
+        rows = journal.read_rows("social_observations", tmp_path / "state")
+        assert rows
+        for row in rows:
+            assert row["age_minutes"] is not None
+            assert row["age_minutes"] >= row["offset_minutes"]
+
+    def test_switching_it_on_late_fills_every_missed_offset_and_says_so(self, tmp_path):
+        """A missed offset stays due, which is right -- a late count beats a hole.
+
+        But four readings taken in the same minute are not a t+0/+1h/+6h/+24h
+        series, and nothing downstream should mistake them for one. They are
+        filed under the offsets they were scheduled for and counted as late.
+        """
+        client = StubTelegram(
+            {"realgroup": {"exists": True, "members": 5000, "online": 40}}
+        )
+        summary = cycle(
+            tmp_path,
+            [
+                self.social_token(
+                    "SoL7", "FFF", "https://t.me/realgroup", observed_at_ms=TS
+                )
+            ],
+            with_social=True,
+            telegram_client=client,
+        )
+        assert summary["social_tg"]["observations"] == 4
+        assert summary["social_tg"]["late"] == 4
+
+        rows = journal.read_rows("social_observations", tmp_path / "state")
+        assert sorted(r["offset_minutes"] for r in rows) == [0, 60, 360, 1440]
+        # Every one of them was actually taken at the same, much later, age.
+        assert all(r["age_minutes"] > 1440 for r in rows)
+
+    def test_the_collector_skips_the_whole_step_when_asked(self, tmp_path):
+        client = StubTelegram()
+        summary = cycle(
+            tmp_path,
+            [self.social_token("SoL6", "EEE", "https://t.me/realgroup")],
+            with_social=False,
+            telegram_client=client,
+        )
+        assert "social_tg" not in summary
+        assert client.asked == []

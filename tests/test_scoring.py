@@ -386,6 +386,72 @@ class TestAgainstTheStore:
             # The ranking reads only the newest run, not both mixed together.
             assert len(store.latest_scores()) == 1
 
+    def test_the_collected_telegram_series_reaches_the_score(self):
+        """Collecting the series and never reading it would be the same as not
+        collecting it. The counts are stored raw, one row per offset; the ratio
+        and the growth rate pillar B wants are derived here, at read time."""
+        from collectors.social_base import SocialObservation
+
+        with Store() as store:
+            snap = Snapshot(
+                chain="solana", contract="Tok1", trigger="mcap_250k", source="test",
+                ticker="$TEST", market=Market(mcap_usd=400_000.0, liquidity_usd=40_000.0),
+            )
+            store.append_snapshot(snap)
+            store.append_social_observations(
+                [
+                    SocialObservation(
+                        snapshot_id=snap.snapshot_id, platform="telegram",
+                        offset_minutes=0, members=4_000, online=120,
+                        exists=True, source="t.me_preview", age_minutes=0,
+                    ),
+                    SocialObservation(
+                        snapshot_id=snap.snapshot_id, platform="telegram",
+                        offset_minutes=360, members=6_000, online=210,
+                        exists=True, source="t.me_preview", age_minutes=361,
+                    ),
+                ]
+            )
+            batch = ScoringRunner(store).run(limit=10, regime="neutral")
+
+        packet = batch.rows[0]["input_snapshot"]
+        packet = json.loads(packet) if isinstance(packet, str) else packet
+        tg = packet["social_tg"]
+        assert tg["members"] == 6_000
+        # 4,000 -> 6,000 over the first six hours.
+        assert tg["member_growth_6h_pct"] == pytest.approx(50.0)
+        # The public preview cannot see who spoke, so this stays null rather than
+        # becoming a zero.
+        assert tg["unique_speakers_24h"] is None
+
+    def test_a_derivation_never_overwrites_what_the_snapshot_measured(self):
+        """The snapshot's value was measured at the trigger. A later derivation
+        fills gaps; it does not get to replace a measurement."""
+        from collectors.schema import SocialTG
+        from collectors.social_base import SocialObservation
+
+        with Store() as store:
+            snap = Snapshot(
+                chain="solana", contract="Tok1", trigger="mcap_250k", source="test",
+                market=Market(mcap_usd=400_000.0),
+                social_tg=SocialTG(members=999),
+            )
+            store.append_snapshot(snap)
+            store.append_social_observations(
+                [
+                    SocialObservation(
+                        snapshot_id=snap.snapshot_id, platform="telegram",
+                        offset_minutes=0, members=4_000, exists=True,
+                        source="t.me_preview",
+                    )
+                ]
+            )
+            batch = ScoringRunner(store).run(limit=10)
+
+        packet = batch.rows[0]["input_snapshot"]
+        packet = json.loads(packet) if isinstance(packet, str) else packet
+        assert packet["social_tg"]["members"] == 999
+
     def test_candidate_packet_has_the_step_4_shape(self):
         with Store() as store:
             snap = Snapshot(
