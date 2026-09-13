@@ -25,7 +25,14 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
-# 4 adds safety_observations.lp_markets: the per-pool LP rows that lp_locked_pct
+# 5 adds snapshots.telegram_url and snapshots.x_url -- the declared link
+# addresses, not just the booleans saying they exist. Without them the forward
+# social series has nowhere to point: collectors/social_tg.py needs the channel,
+# and a handle guessed from a ticker is a different channel, usually someone
+# else's. They are lookup addresses, so they are deliberately outside
+# FEATURE_GROUPS: a token with no Telegram has a measured False on the feature
+# and nothing missing, and counting the empty address as a missing field would
+# penalise it twice. 4 adds safety_observations.lp_markets: the per-pool LP rows that lp_locked_pct
 # is aggregated from. A Solana token has several pools, and the aggregate alone
 # cannot tell "unlocked everywhere" from "one dust pool drags it down" -- which
 # decides whether check_liquidity_lock rejects the token. Rows written under 3
@@ -37,7 +44,7 @@ from typing import Any
 # take version 2 rows. Store.open refuses it by name rather than failing on the
 # insert. Phase 0 has no production database yet; if one exists, start a new file
 # and keep the old one -- the old rows are still the graveyard.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Groups whose leaf fields count toward the Data Completeness modifier in
 # prompts/score.md. Identity and bookkeeping columns are excluded: they are always
@@ -263,6 +270,13 @@ class Snapshot:
     ticker: str | None = None
     supersedes: str | None = None  # corrections are new rows, never edits
 
+    # Where the token says its community is. Not features -- `socials_declared`
+    # holds those -- but the addresses the forward social series is collected
+    # from, kept on the row because the snapshot is the only thing that survives
+    # the poll that saw them.
+    telegram_url: str | None = None
+    x_url: str | None = None
+
     # Both crossing flags are kept even though ``trigger`` names only one. The
     # section 4 enum has no "both" member, and dropping the second flag would be a
     # small act of data loss on the one field the whole cohort design rests on.
@@ -321,6 +335,8 @@ class Snapshot:
             "ticker": self.ticker,
             "chain": self.chain,
             "contract": self.contract,
+            "telegram_url": self.telegram_url,
+            "x_url": self.x_url,
             "age_at_trigger_minutes": self.age_at_trigger_minutes,
         }
         for group_name in FEATURE_GROUPS:
@@ -355,6 +371,8 @@ class Snapshot:
             "ticker": self.ticker,
             "chain": self.chain,
             "contract": self.contract,
+            "telegram_url": self.telegram_url,
+            "x_url": self.x_url,
             "age_at_trigger_minutes": self.age_at_trigger_minutes,
             "regime": self.regime,
             "listings": json.dumps(self.listings) if self.listings is not None else None,
@@ -455,6 +473,8 @@ SNAPSHOT_COLUMNS: list[tuple[str, str]] = [
     ("ticker", "VARCHAR"),
     ("chain", "VARCHAR"),
     ("contract", "VARCHAR"),
+    ("telegram_url", "VARCHAR"),
+    ("x_url", "VARCHAR"),
     ("age_at_trigger_minutes", "BIGINT"),
     ("regime", "VARCHAR"),
     ("listings", "JSON"),
@@ -519,6 +539,9 @@ SOCIAL_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
     ("unique_speakers", "BIGINT"),
     ("source", "VARCHAR"),
     ("error", "VARCHAR"),
+    # Real age at collection, against the offset it is filed under. See
+    # collectors/social_base.SocialObservation.
+    ("age_minutes", "BIGINT"),
 ]
 
 # One scored candidate. Hard rule 6: the score and the full input snapshot that

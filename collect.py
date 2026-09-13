@@ -5,7 +5,7 @@ running it: every command in the repo did one step and expected a human to run t
 next. This is the whole loop as a single entrypoint, so a cron line or a GitHub
 Actions schedule is enough to actually accumulate the dataset.
 
-    journal -> database -> poll -> re-price -> label -> score -> export -> journal
+    journal -> database -> poll -> re-price -> label -> social -> score -> export -> journal
 
 The first and last steps are what make it schedulable. State lives in an
 append-only JSONL journal (``collectors/journal.py``) that git can hold, is
@@ -41,6 +41,8 @@ from collectors.config import load_config
 from collectors.dexscreener import DexScreenerClient, DexScreenerFeed, DexScreenerPriceSource
 from collectors.outcomes import OutcomeTracker
 from collectors.safety import SafetySource
+from collectors.social_base import OFFSET_TOLERANCE_MINUTES
+from collectors.social_tg import TelegramCollector, TelegramPreviewClient
 from collectors.store import Store
 from collectors.trigger_watcher import TriggerWatcher
 from scoring.runner import ScoringRunner
@@ -58,12 +60,14 @@ def run_cycle(
     db_path: str | Path = DEFAULT_WORKING_DB,
     regime: str | None = None,
     with_safety: bool = True,
+    with_social: bool = True,
     max_tokens_per_poll: int = 120,
     score_limit: int = 200,
     export_to: str | Path | None = None,
     feed: Any = None,
     price_source: Any = None,
     safety_source: Any = None,
+    telegram_client: Any = None,
 ) -> dict[str, Any]:
     """Run one full cycle and return a summary. Every source is injectable for tests."""
     started = time.time()
@@ -104,6 +108,48 @@ def run_cycle(
             log.exception("re-pricing failed")
             summary["reprice"] = {"error": True}
         summary["labels_written"] = len(tracker.refresh_labels())
+
+        # The forward social series, and the reason this runs on the same schedule
+        # as everything else rather than on its own: it is the only part of the
+        # dataset that cannot be reconstructed later. On-chain history is
+        # backfillable from Bitquery, Dune or Helius; a Telegram member count at
+        # 14:00 last Tuesday is archived nowhere (BUILD_BRIEF.md section 1). An
+        # hour this does not run is an hour that stays empty forever, which is why
+        # a failure here is logged and swallowed rather than allowed to end the
+        # cycle -- and why a failed poll is written as a row with `error` set
+        # instead of skipped. The gap is data too.
+        #
+        # No credentials: t.me serves a public preview carrying the member count.
+        # That is also its limit -- message rate and unique speakers need a real
+        # client, and prompts/score.md pillar B cares about the speaker ratio far
+        # more than about raw membership. This collects the number that is free.
+        if with_social:
+            collector = TelegramCollector(
+                store, client=telegram_client or TelegramPreviewClient()
+            )
+            try:
+                written = collector.run(limit=score_limit)
+            except Exception:
+                log.exception("telegram collection failed")
+                written = []
+            late = sum(
+                1
+                for o in written
+                if o.age_minutes is not None
+                and o.age_minutes - o.offset_minutes > OFFSET_TOLERANCE_MINUTES
+            )
+            summary["social_tg"] = {
+                "observations": len(written),
+                "with_counts": sum(1 for o in written if o.error is None),
+                "no_handle": sum(
+                    1 for o in written if o.error and "no telegram handle" in o.error
+                ),
+                # Filed under an offset they missed. Expected on the first cycle
+                # after this is switched on, because every existing snapshot is
+                # already past t+0; a steady stream of them later means the
+                # schedule is slipping.
+                "late": late,
+            }
 
         runner = ScoringRunner(
             store,
@@ -167,6 +213,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--no-safety", action="store_true", help="skip the GoPlus/RugCheck lookups"
     )
+    parser.add_argument(
+        "--no-social",
+        action="store_true",
+        help=(
+            "skip the Telegram preview poll. Nothing else replaces it: member "
+            "counts at a past timestamp are archived nowhere, so a skipped cycle "
+            "is a permanent hole in the series."
+        ),
+    )
     parser.add_argument("--max-tokens-per-poll", type=int, default=120)
     parser.add_argument("--score-limit", type=int, default=200)
     parser.add_argument(
@@ -200,6 +255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             db_path=args.db,
             regime=args.regime,
             with_safety=not args.no_safety,
+            with_social=not args.no_social,
             max_tokens_per_poll=args.max_tokens_per_poll,
             score_limit=args.score_limit,
             export_to=args.export,

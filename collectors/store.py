@@ -486,10 +486,21 @@ class Store:
     def snapshots_for_labelling(self) -> list[dict[str, Any]]:
         """Snapshots with the baseline the label maths needs."""
         rows = self._con.execute(
-            "SELECT snapshot_id, chain, contract, ticker, ts, market_mcap_usd "
-            "FROM snapshots ORDER BY ts"
+            "SELECT snapshot_id, chain, contract, ticker, ts, market_mcap_usd, "
+            "telegram_url, x_url FROM snapshots ORDER BY ts"
         ).fetchall()
-        keys = ("snapshot_id", "chain", "contract", "ticker", "ts", "market_mcap_usd")
+        keys = (
+            "snapshot_id",
+            "chain",
+            "contract",
+            "ticker",
+            "ts",
+            "market_mcap_usd",
+            # The social collectors poll these. A snapshot row is the only record
+            # of where the token said its community was.
+            "telegram_url",
+            "x_url",
+        )
         return [dict(zip(keys, row, strict=True)) for row in rows]
 
     def outcome_observations(self, snapshot_id: str) -> list[Any]:

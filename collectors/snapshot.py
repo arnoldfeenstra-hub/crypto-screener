@@ -145,6 +145,8 @@ def build_snapshot(
             x=metrics.declared_x,
             website=metrics.declared_website,
         ),
+        telegram_url=metrics.telegram_url,
+        x_url=metrics.x_url,
         trends=Trends(),
         lineage=Lineage(),
     )

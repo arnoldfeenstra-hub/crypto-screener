@@ -89,6 +89,13 @@ class TokenMetrics:
     declared_x: bool | None = None
     declared_website: bool | None = None
 
+    # The declared links themselves, not just whether they exist. The booleans
+    # above are the feature; these are the addresses the forward social series has
+    # to be collected from, and nothing else in the pipeline knows where the
+    # token's Telegram group is. See collectors/social_tg.py.
+    telegram_url: str | None = None
+    x_url: str | None = None
+
     listings: list[str] | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
