@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-13T06:45:20+00:00",
+  "generated_at": "2026-09-13T07:11:01+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -53,13 +53,13 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 31,
-    "outcome_observations": 362,
+    "outcome_observations": 368,
     "social_observations": 0,
     "labelled_snapshots": 30,
-    "excluded_on_evidence": 12,
-    "excluded_as_unmeasured": 19,
+    "excluded_on_evidence": 11,
+    "excluded_as_unmeasured": 20,
     "safety_checked": 31,
-    "safety_observations": 68
+    "safety_observations": 70
   },
   "calibration": {
     "verdict": "not_ready",
@@ -628,7 +628,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789261815978,
+        "collected_at_ms": 1789283460016,
         "honeypot": null,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
@@ -636,8 +636,8 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 36.92,
-        "holder_count": 2204,
+        "top10_ex_lp_pct": 30.89,
+        "holder_count": 2201,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -653,9 +653,7 @@
       "score": null,
       "rank": null,
       "excluded": true,
-      "rejected_by": [
-        "concentration"
-      ],
+      "rejected_by": [],
       "indeterminate_on": [
         "sellability",
         "liquidity_lock",
@@ -2084,16 +2082,16 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789260283367,
+        "collected_at_ms": 1789283457601,
         "honeypot": false,
         "buy_tax_pct": 1.0,
-        "sell_tax_pct": 0.9900000000000001,
+        "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": false,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 17.194081290795946,
-        "holder_count": 2551,
+        "top10_ex_lp_pct": 16.89053646437269,
+        "holder_count": 2589,
         "deployer_address": "0x3127b292720b1523dbfd030c28f43f959b41e025",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -2108,7 +2106,9 @@
       "rejected_by": [
         "liquidity_lock"
       ],
-      "indeterminate_on": [],
+      "indeterminate_on": [
+        "sellability"
+      ],
       "pillar_scores": {
         "attention_velocity": null,
         "community_depth": null,
