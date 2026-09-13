@@ -89,18 +89,36 @@ jobs:
       - name: Verify the function needs no third-party packages
         run: |
           python - <<'PY'
-          import importlib.util, sys
+          import importlib, importlib.util, sys
+
+          # find_spec, not find_module: 3.12 removed the find_module fallback,
+          # so the earlier version of this step blocked nothing and passed on
+          # every push for as long as the workflow has pinned 3.12.
+          class Blocked(ImportError):
+              pass
 
           class Blocker:
-              def find_module(self, name, path=None):
+              def find_spec(self, name, path=None, target=None):
                   if name.split(".")[0] in {"duckdb", "requests", "numpy", "pandas"}:
-                      raise ImportError(
+                      raise Blocked(
                           f"api/screener.py imports {name}, which is not installed on "
                           "Vercel. The function must stay stdlib-only."
                       )
                   return None
 
           sys.meta_path.insert(0, Blocker())
+
+          # Prove the blocker blocks before trusting what it lets through. Nothing
+          # is pip-installed on this runner, so a plain ImportError proves nothing
+          # -- an absent package raises that too. Only Blocked does.
+          try:
+              importlib.import_module("duckdb")
+          except Blocked:
+              pass
+          except ImportError:
+              raise SystemExit("the import blocker is not blocking; this check is vacuous")
+          else:
+              raise SystemExit("the import blocker is not blocking; this check is vacuous")
           spec = importlib.util.spec_from_file_location("screener_api", "api/screener.py")
           module = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(module)

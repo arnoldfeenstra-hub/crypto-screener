@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -628,17 +630,37 @@ class TestTheDeployedPage:
 
         .github/workflows/deploy.yml runs the same check before deploying.
         """
-        import importlib.util
-        import sys
+        import importlib
+
+        class Blocked(ImportError):
+            """Distinct from ModuleNotFoundError on purpose -- see below."""
 
         class Blocker:
-            def find_module(self, name, path=None):
+            # find_spec, not find_module. Python 3.12 removed the find_module
+            # fallback, so a finder defining only find_module is skipped in
+            # silence, and this test passed for nothing on the 3.12 both
+            # workflows pin.
+            def find_spec(self, name, path=None, target=None):
                 if name.split(".")[0] in {"duckdb", "requests", "numpy", "pandas"}:
-                    raise ImportError(f"api/screener.py imports {name}")
+                    raise Blocked(f"api/screener.py imports {name}")
                 return None
 
         blocker = Blocker()
         sys.meta_path.insert(0, blocker)
+        # Prove the blocker blocks before trusting what it lets through. It has to
+        # be a Blocked rather than any ImportError: a plain ImportError is what an
+        # absent package raises too, so catching that would pass on a runner where
+        # duckdb simply is not installed. Popping the cache matters for the same
+        # reason -- import_module returns a cached module without ever consulting
+        # meta_path, which is exactly how this check first came back green.
+        cached = sys.modules.pop("duckdb", None)
+        try:
+            with pytest.raises(Blocked):
+                importlib.import_module("duckdb")
+        finally:
+            if cached is not None:
+                sys.modules["duckdb"] = cached
+
         try:
             spec = importlib.util.spec_from_file_location(
                 "screener_api_isolated", REPO_ROOT / "api" / "screener.py"
@@ -693,3 +715,103 @@ class TestTheDeployedPage:
         ignored = (REPO_ROOT / ".vercelignore").read_text(encoding="utf-8").split("\n")
         assert "pyproject.toml" in ignored
         assert "api/" not in ignored
+
+
+class TestTheCollectorCanActuallyStart:
+    """The failure this class exists for: the hourly collector died on
+
+        File "collect.py", line 45, in <module>
+          from collectors.social_tg import TelegramCollector, TelegramPreviewClient
+        File "collectors/social_tg.py", line 40, in <module>
+          import requests
+        ModuleNotFoundError: No module named 'requests'
+
+    Nothing could have caught it. The suite runs with every package installed, so
+    an import that is missing on the runner passes here. ci.yml is no help for the
+    same reason. And collect.yml installed a hand-copied subset of the project's
+    dependencies, so the workflow installed what someone remembered rather than
+    what the code imports.
+    """
+
+    def _third_party_imports(self, entry: Path) -> set[str]:
+        """Third-party packages that must exist for ``entry`` to start.
+
+        Two deliberate choices:
+
+        * It follows the repo's own modules rather than reading the entrypoint's
+          import list, because the import that broke the collector was three
+          files deep -- collect.py -> social_tg -> requests.
+        * Only imports at module scope count. An import inside a function or
+          behind a try/except runs when that path runs, and scoring/runner.py
+          has exactly one: `anthropic`, loaded lazily for the optional narration
+          feature and guarded. Requiring that as a hard dependency would make
+          every collector run install an SDK it never calls.
+        """
+        import ast
+
+        local = {p.stem for p in REPO_ROOT.glob("*.py")} | {
+            d.name for d in REPO_ROOT.iterdir() if (d / "__init__.py").exists()
+        }
+        seen_files: set[Path] = set()
+        third_party: set[str] = set()
+        queue = [entry]
+        while queue:
+            path = queue.pop()
+            if path in seen_files or not path.exists():
+                continue
+            seen_files.add(path)
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in tree.body:  # module scope only -- see the docstring
+                if isinstance(node, ast.Import):
+                    names = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    names = [node.module] if node.level == 0 and node.module else []
+                else:
+                    continue
+                for name in names:
+                    root = name.split(".")[0]
+                    if root in sys.stdlib_module_names:
+                        continue
+                    if root not in local:
+                        third_party.add(root)
+                        continue
+                    # A repo module: follow it.
+                    parts = name.split(".")
+                    queue.append(REPO_ROOT.joinpath(*parts).with_suffix(".py"))
+                    queue.append(REPO_ROOT.joinpath(*parts, "__init__.py"))
+        return third_party
+
+    def test_every_package_the_collector_imports_is_declared(self):
+        import tomllib
+
+        declared = {
+            # "requests>=2.31" -> "requests"
+            re.split(r"[<>=!\[ ]", dep)[0].strip().replace("-", "_").lower()
+            for dep in tomllib.loads(
+                (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+            )["project"]["dependencies"]
+        }
+        needed = {name.lower() for name in self._third_party_imports(REPO_ROOT / "collect.py")}
+        missing = needed - declared
+        assert not missing, (
+            f"collect.py transitively imports {sorted(missing)}, which pyproject does "
+            "not declare. The scheduled collector installs the declared dependencies "
+            "and will die on startup with ModuleNotFoundError."
+        )
+
+    def test_the_collector_workflow_installs_what_the_project_declares(self):
+        """A hand-copied package list drifts from the code silently, and the only
+        symptom is a scheduled job that stops collecting."""
+        import yaml
+
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
+        )
+        installs = " ".join(
+            str(step.get("run", "")) for step in workflow["jobs"]["collect"]["steps"]
+        )
+        assert "pip install" in installs
+        assert "-e ." in installs, (
+            "collect.yml installs named packages instead of the project. The list "
+            "will drift from the imports again; it already did once."
+        )
