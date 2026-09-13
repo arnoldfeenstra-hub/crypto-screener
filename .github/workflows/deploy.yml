@@ -10,10 +10,10 @@
 #   Needs three repository secrets    | Needs no secrets, one click in the UI
 #   Deploys when *this file* says so  | Deploys on every push to the repo
 #   The collector's data commits do   | The collector's data commits each
-#   NOT trigger it (a push made with  | trigger a build -- ~48 a day, against
-#   GITHUB_TOKEN never starts another | a Hobby limit of 100. Add "[skip ci]"
-#   workflow), so the daily schedule  | to collect.yml's commit message if you
-#   below is what publishes new data  | want to suppress that.
+#   NOT trigger it (a push made with  | trigger a build -- ~24 a day at the
+#   GITHUB_TOKEN never starts another | current hourly cron, against a Hobby
+#   workflow), so the daily schedule  | limit of 100. Add "[skip ci]" to
+#   below is what publishes new data  | collect.yml's commit message to stop it.
 #
 # Setup for this workflow, in the repository's Settings -> Secrets and variables
 # -> Actions:

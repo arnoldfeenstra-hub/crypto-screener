@@ -45,8 +45,13 @@ python -m collect --summary-only          # what the journal holds
 ```
 
 Run that on a schedule and Phase 0 actually accumulates. `.github/workflows/collect.yml`
-does it every 30 minutes and commits the journal back to the repo; read the cost note at
-the top of that file before leaving it on for a private repo.
+does it **hourly** and commits the journal back to the repo.
+
+Hourly rather than half-hourly to fit a private repository's 2,000 free Actions minutes a
+month (~1,450 against ~2,900). That is a real trade-off and worth knowing: tokens cross
+$250k and die inside an hour, so an hourly poll misses some of them, and a token never
+observed is not in the graveyard. On a public repository, where minutes are unlimited,
+change the cron to `*/30 * * * *`.
 
 ⚠️ **GitHub runs `schedule` triggers only from the default branch.** While the workflow
 sits on a feature branch the cron never fires, the collector does nothing, and there is no

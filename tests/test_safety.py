@@ -20,19 +20,27 @@ from pathlib import Path
 import pytest
 
 from collectors.safety import (
+    LP_SECURED_PCT,
     GoPlusClient,
     RugCheckClient,
     SafetyReport,
     SafetySource,
+    from_row,
     merge,
     parse_goplus_address_security,
     parse_goplus_evm,
     parse_goplus_solana,
     parse_rugcheck,
 )
-from collectors.schema import now_ms
+from collectors.schema import SAFETY_OBSERVATION_COLUMNS, now_ms
 from collectors.store import Store
-from filters.hard_filters import Outcome, apply
+from filters.hard_filters import (
+    LP_LOCK_MIN_PCT,
+    FilterInput,
+    Outcome,
+    apply,
+    check_liquidity_lock,
+)
 from scoring.candidate import filter_input_from_candidate
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "safety_responses.json"
@@ -188,11 +196,84 @@ class TestGoPlusSolana:
     def test_the_raydium_pool_is_not_counted_as_a_holder(self):
         assert self.report().top10_ex_lp_pct == pytest.approx(10.0)
 
-    def test_deployer_history_is_unknown_on_solana_not_clean(self):
-        """GoPlus address security covers EVM only, and unknown must stay unknown."""
+    def test_deployer_history_is_answered_from_the_creators_flag(self):
+        """GoPlus address security is EVM-only, but the Solana response carries its
+        own per-creator verdict. Ignoring it is why deployer_history came back
+        unknown for every Solana token in the first live run."""
         report = self.report()
         assert report.deployer_address is not None
+        assert report.deployer_prior_rugs == 0  # checked and clear, not unchecked
+
+    def test_a_malicious_creator_is_counted(self):
+        report = parse_goplus_solana(DATA["goplus_solana_malicious_creator"])[
+            "BadMint1111111111111111111111111111111111"
+        ]
+        assert report.deployer_prior_rugs == 1
+
+    def test_a_creator_list_without_the_flag_leaves_history_unknown(self):
+        payload = {"result": {"M": {"mintable": {"status": "0"},
+                                    "creators": [{"address": "C"}]}}}
+        report = parse_goplus_solana(payload)["M"]
+        assert report.deployer_address == "C"
         assert report.deployer_prior_rugs is None
+
+    def test_a_clean_mint_is_measured_sellable_not_left_unknown(self):
+        """The gap the first live run exposed.
+
+        GoPlus has no is_honeypot off EVM, and treating that as unknown made
+        check_sellability unanswerable for every Solana token -- 12 of the 13 real
+        tokens in the first collector run. The question is answerable from the SPL
+        mechanics that actually block a sale.
+        """
+        report = self.report()
+        assert report.honeypot is False
+        assert report.sells_failing is False
+
+    def test_an_absent_transfer_fee_extension_is_a_measured_zero(self):
+        """`transfer_fee: {}` on a real report means the extension is off."""
+        report = self.report()
+        assert report.buy_tax_pct == 0.0
+        assert report.sell_tax_pct == 0.0
+
+    def test_a_transfer_hook_is_treated_as_a_honeypot(self):
+        """An unaudited program that can refuse your sell is what the filter is for.
+
+        Some legitimate Token-2022 tokens are excluded by this. That is the safe
+        direction of the error, and the same reasoning that maps EVM
+        transfer_pausable onto freeze_active.
+        """
+        report = parse_goplus_solana(DATA["goplus_solana_hooked"])[
+            "HookMint1111111111111111111111111111111111"
+        ]
+        assert report.honeypot is True
+
+    def test_a_non_transferable_mint_cannot_be_sold(self):
+        report = parse_goplus_solana(DATA["goplus_solana_non_transferable"])[
+            "FrozenMint11111111111111111111111111111111"
+        ]
+        assert report.honeypot is True
+        assert report.sells_failing is True
+
+    def test_a_transfer_fee_is_read_as_a_tax_on_both_sides(self):
+        report = parse_goplus_solana(DATA["goplus_solana_taxed"])[
+            "TaxMint1111111111111111111111111111111111"
+        ]
+        assert report.buy_tax_pct == pytest.approx(9.5)
+        assert report.sell_tax_pct == pytest.approx(9.5)
+
+    def test_an_envelope_covering_nothing_stays_unknown(self):
+        """The guard that matters most: absence of evidence is not a pass.
+
+        A report that answered none of the structural questions must not have its
+        silence read as "no blockers found".
+        """
+        report = parse_goplus_solana(DATA["goplus_solana_empty_report"])[
+            "BareMint111111111111111111111111111111111"
+        ]
+        assert report.honeypot is None
+        assert report.sells_failing is None
+        assert report.buy_tax_pct is None
+        assert report.to_filter_fields() == {}
 
     def test_proxy_risk_is_not_asserted_on_solana(self):
         """The chain registry answers that; a second answer here could disagree."""
@@ -210,10 +291,74 @@ class TestRugCheck:
         assert report.mint_revoked is True
         assert report.freeze_active is True
 
-    def test_the_least_locked_market_is_the_one_reported(self):
-        """A token is only as locked as its thinnest escape route."""
+    def test_pools_that_disagree_leave_the_lock_unmeasured(self):
+        """The fixture has a burned pool at 100% and a second at 84.2%.
+
+        Collapsing those with min() would assert 84.2% -- a number that describes
+        neither pool and that no weighting was applied to produce. Unknown is the
+        answer the evidence supports, and unknown excludes.
+        """
         report = parse_rugcheck(DATA["rugcheck_report"], SOL_MINT)
-        assert report.lp_locked_pct == pytest.approx(84.2)
+        assert report.lp_locked_pct is None
+        assert "lp_locked_pct" not in report.to_filter_fields()
+
+    def test_a_burned_main_pool_beside_an_open_dust_pool_is_not_a_rejection(self):
+        """The case that made 11 of 13 real tokens reject on liquidity_lock.
+
+        min() across pools read this as 0% locked, which `check_liquidity_lock`
+        rejects outright on "no LP locked or burned". It is not a measured zero:
+        one pool holds $412k of burned LP and the other holds nothing.
+        """
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert report.lp_locked_pct is None
+        assert report.lp_burned is None
+        assert report.to_filter_fields().keys().isdisjoint({"lp_locked_pct", "lp_burned"})
+
+    def test_a_single_burned_pool_cannot_pass_the_whole_token(self):
+        """The mirror of the same bug, and the dangerous direction.
+
+        `check_liquidity_lock` passes outright on ``lp_burned is True``, so reading
+        "any pool burned" as burned would pass a token whose actual liquidity is
+        still pullable.
+        """
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert report.lp_burned is not True
+
+    def test_when_every_pool_is_secured_the_weakest_of_them_is_reported(self):
+        report = parse_rugcheck(DATA["rugcheck_every_pool_secured"], "SafeMint")
+        assert report.lp_locked_pct == pytest.approx(98.4)
+        # One pool burned, one merely locked, so "burned" is not the token's state.
+        assert report.lp_burned is None
+
+    def test_when_every_pool_is_open_that_is_a_measured_zero(self):
+        report = parse_rugcheck(DATA["rugcheck_rugged"], "RugMint")
+        assert report.lp_locked_pct == 0.0
+
+    def test_the_pool_rows_are_retained_as_evidence(self):
+        """Without these the aggregate cannot be second-guessed after the fact, and
+        the raw response is not stored anywhere."""
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert [m["market"] for m in report.lp_markets] == ["raydium", "meteora"]
+        assert [m["locked_pct"] for m in report.lp_markets] == [100.0, 0.0]
+        assert [m["burned"] for m in report.lp_markets] == [True, False]
+        assert report.lp_markets[0]["locked_usd"] == pytest.approx(412000.0)
+
+    def test_pool_evidence_does_not_inflate_data_completeness(self):
+        """`lp_markets` is evidence for a measurement, not a measurement of its
+        own. Counting it would make an unmeasured lock look like a measured one."""
+        with_pools = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        assert with_pools.lp_markets
+        assert with_pools.measured_fields == replace(with_pools, lp_markets=()).measured_fields
+
+    def test_a_token_with_no_pools_at_all_is_unknown_not_zero(self):
+        report = parse_rugcheck({"mint": "x", "markets": []}, "x")
+        assert report.lp_locked_pct is None
+        assert report.lp_markets == ()
+
+    def test_the_secured_threshold_matches_the_filter_that_reads_it(self):
+        """Two constants, one question. Drift would mean the collector answers
+        "secured" for a share the filter does not accept."""
+        assert LP_SECURED_PCT == LP_LOCK_MIN_PCT
 
     def test_a_rugged_flag_is_carried_even_though_no_filter_reads_it(self):
         report = parse_rugcheck(DATA["rugcheck_rugged"], "RugMint")
@@ -232,7 +377,7 @@ class TestRugCheck:
 
 class TestAddressSecurity:
     def test_a_checked_clean_wallet_is_a_real_zero(self):
-        """"Checked and clean" is what lets check_deployer_history pass at all."""
+        """ "Checked and clean" is what lets check_deployer_history pass at all."""
         count, labels = parse_goplus_address_security(DATA["goplus_address_clean"], "0xa")
         assert count == 0
         assert labels == ()
@@ -324,6 +469,23 @@ def candidate(chain="bnb", contract=CLEAN_EVM, **market):
 
 
 class TestFiltersActuallyAnswerNow:
+    def test_a_real_solana_token_now_clears_every_filter(self):
+        """The whole point, on the chain that is most of the sample.
+
+        The first live run scored zero of thirteen. This is the end state that run
+        could not reach: a real Solana response, parsed, clearing all eight.
+        """
+        report = parse_goplus_solana(DATA["goplus_solana"])[SOL_MINT]
+        verdict = apply(
+            filter_input_from_candidate(
+                candidate(chain="solana", contract=SOL_MINT), **report.to_filter_fields()
+            )
+        )
+        # freeze_authority is live on this fixture, so it is a rejection on
+        # evidence -- which is the filter working, not abstaining.
+        assert verdict.indeterminate_on == []
+        assert verdict.rejected_by == ["freeze_authority"]
+
     def test_a_clean_report_clears_every_filter(self):
         """Before this module existed, no row could ever reach this state."""
         report = replace(
@@ -353,18 +515,78 @@ class TestFiltersActuallyAnswerNow:
         assert "deployer_history" in verdict.rejected_by
         assert verdict.indeterminate_on == []
 
-    def test_a_locked_but_undated_lp_leaves_exactly_that_filter_unmeasured(self):
+    def test_a_locked_but_undated_lp_now_passes_on_its_measured_share(self):
+        """Version 4 of prompts/score.md, and the one weakening in it.
+
+        97% of LP in a locker with no stated expiry used to leave this filter
+        unmeasured, which excluded the row. It now passes on the share, and the
+        reason says the expiry was never measured. A lock expiring next week reads
+        the same as one expiring next year -- that is the cost.
+        """
         report = replace(
             parse_goplus_evm(DATA["goplus_evm_locked_no_expiry"], "bnb")[LOCKED_EVM],
             deployer_prior_rugs=0,
         )
+        assert report.lp_locked_pct == pytest.approx(97.0)
         verdict = apply(
             filter_input_from_candidate(
                 candidate(contract=LOCKED_EVM), **report.to_filter_fields()
             )
         )
-        assert verdict.indeterminate_on == ["liquidity_lock"]
+        assert verdict.indeterminate_on == []
         assert verdict.rejected_by == []
+        assert verdict.passed
+
+    def test_a_high_locked_share_passes_when_no_expiry_exists(self):
+        """The deliberate weakening, and the shape of it.
+
+        No keyless source reports a lock expiry, so holding out for one made this
+        filter abstain on 12 of 13 real tokens. A measured share is weaker evidence
+        than a dated lock and is not nothing.
+        """
+        result = check_liquidity_lock(FilterInput(lp_locked_pct=97.0))
+        assert result.outcome is Outcome.PASS
+        assert "expiry not reported" in result.reason
+
+    def test_a_partial_lock_is_not_enough_without_an_expiry(self):
+        result = check_liquidity_lock(FilterInput(lp_locked_pct=60.0))
+        assert result.outcome is Outcome.UNKNOWN
+
+    def test_no_lock_at_all_is_still_a_rejection(self):
+        assert check_liquidity_lock(FilterInput(lp_locked_pct=0.0)).outcome is Outcome.REJECT
+
+    def test_a_dated_lock_still_wins_over_the_share_fallback(self):
+        """The fallback must not override the real rule when an expiry exists."""
+        soon = FilterInput(
+            evaluated_at_ms=0, lp_locked_until_ms=5 * 86_400_000, lp_locked_pct=99.0
+        )
+        assert check_liquidity_lock(soon).outcome is Outcome.REJECT
+
+    def test_a_real_solana_token_now_clears_sellability(self):
+        """End to end on the chain that is most of the sample.
+
+        Before this, sellability was unanswerable on Solana and every Solana row
+        was excluded as unmeasured no matter how clean it was.
+        """
+        report = parse_goplus_solana(DATA["goplus_solana"])[SOL_MINT]
+        verdict = apply(
+            filter_input_from_candidate(
+                candidate(chain="solana", contract=SOL_MINT), **report.to_filter_fields()
+            )
+        )
+        assert "sellability" not in verdict.indeterminate_on
+        assert "sellability" not in verdict.rejected_by
+
+    def test_a_taxed_solana_token_is_rejected_on_evidence(self):
+        report = parse_goplus_solana(DATA["goplus_solana_taxed"])[
+            "TaxMint1111111111111111111111111111111111"
+        ]
+        verdict = apply(
+            filter_input_from_candidate(
+                candidate(chain="solana", contract="TaxMint"), **report.to_filter_fields()
+            )
+        )
+        assert "sellability" in verdict.rejected_by
 
     def test_no_report_leaves_the_row_exactly_as_it_was_before(self):
         verdict = apply(filter_input_from_candidate(candidate()))
@@ -427,7 +649,11 @@ class TestSafetySource:
         found = self.source().fetch([("solana", SOL_MINT)])
         report = found[("solana", SOL_MINT)]
         assert "rugcheck" in report.source
-        assert report.lp_locked_pct == pytest.approx(84.2)
+        # RugCheck's pools disagree, so it measures no share; GoPlus sees the
+        # incinerator holding all of the LP on the pool it does cover. An unknown
+        # never overwrites a measurement, so the measurement stands.
+        assert report.lp_locked_pct == pytest.approx(100.0)
+        assert report.rugged is False
 
     def test_a_chain_with_no_safety_source_is_left_unmeasured(self):
         """Robinhood Chain today. Unknown excludes, so this is the safe direction."""
@@ -450,8 +676,27 @@ class TestSafetySource:
 
 
 class TestStorage:
+    def test_the_pool_rows_survive_a_write_and_read_back(self):
+        """`lp_markets` is only worth collecting if it reaches the journal, which
+        is what the next run replays the parser against."""
+        report = parse_rugcheck(DATA["rugcheck_dust_pool_unlocked"], "DustMint")
+        names = [name for name, _ in SAFETY_OBSERVATION_COLUMNS]
+        with Store() as store:
+            store.append_safety_observations([report])
+            values = store._con.execute(
+                f"SELECT {', '.join(names)} FROM safety_observations"
+            ).fetchall()[0]
+        stored = dict(zip(names, values, strict=True))
+        assert from_row(stored).lp_markets == report.lp_markets
+
+    def test_a_row_written_before_the_column_existed_still_loads(self):
+        """Schema 3 rows carry no `lp_markets` key. Absent means the collector did
+        not retain it, which is not the same as a token with no pools -- but both
+        read as "nothing to replay", and neither may crash the restore."""
+        assert from_row({"chain": "solana", "contract": "x", "ts": 1}).lp_markets == ()
+
     def test_a_safety_row_is_appended_and_never_replaces_an_earlier_one(self):
-        """"Live when we looked, revoked an hour later" is a real sequence of events."""
+        """ "Live when we looked, revoked an hour later" is a real sequence of events."""
         with Store() as store:
             first = SafetyReport(
                 chain="bnb",

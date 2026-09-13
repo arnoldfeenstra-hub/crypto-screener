@@ -667,6 +667,27 @@ class TestTheDeployedPage:
         # reach the deployed page.
         assert "schedule" in triggers
 
+    def test_a_workflow_runs_the_tests_on_every_push(self):
+        """The suite is only a check if something runs it without being asked.
+
+        Neither other workflow fails on a broken test: collect.yml gathers data
+        and deploy.yml publishes. Without this one a push that broke scoring would
+        go green, be committed on top of by the hourly collector, and ship.
+        """
+        import yaml
+
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        )
+        triggers = workflow.get("on", workflow.get(True))
+        assert "push" in triggers
+        assert "pull_request" in triggers
+
+        steps = workflow["jobs"]["test"]["steps"]
+        commands = " ".join(str(step.get("run", "")) for step in steps)
+        assert "ruff check" in commands
+        assert "pytest" in commands
+
     def test_the_deploy_excludes_the_dependency_manifest(self):
         """The function is stdlib-only; an install step could only add failure modes."""
         ignored = (REPO_ROOT / ".vercelignore").read_text(encoding="utf-8").split("\n")

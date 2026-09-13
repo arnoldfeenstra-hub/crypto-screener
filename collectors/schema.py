@@ -25,14 +25,19 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
-# 3 adds the `safety_observations` table (collectors/safety.py). 2 added
+# 4 adds safety_observations.lp_markets: the per-pool LP rows that lp_locked_pct
+# is aggregated from. A Solana token has several pools, and the aggregate alone
+# cannot tell "unlocked everywhere" from "one dust pool drags it down" -- which
+# decides whether check_liquidity_lock rejects the token. Rows written under 3
+# restore with it NULL, which is the truth: the collector did not retain it then.
+# 3 added the `safety_observations` table (collectors/safety.py). 2 added
 # market.fdv_usd and the whole `mindshare` group. All additive, but
 # DuckDB tables are created once and never altered here (append-only, and
 # store.py may contain no ALTER), so a database written under version 1 cannot
 # take version 2 rows. Store.open refuses it by name rather than failing on the
 # insert. Phase 0 has no production database yet; if one exists, start a new file
 # and keep the old one -- the old rows are still the graveyard.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Groups whose leaf fields count toward the Data Completeness modifier in
 # prompts/score.md. Identity and bookkeeping columns are excluded: they are always
@@ -593,6 +598,7 @@ SAFETY_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
     ("freeze_active", "BOOLEAN"),
     ("lp_burned", "BOOLEAN"),
     ("lp_locked_pct", "DOUBLE"),
+    ("lp_markets", "JSON"),
     ("top10_ex_lp_pct", "DOUBLE"),
     ("holder_count", "BIGINT"),
     ("upgradeable", "BOOLEAN"),

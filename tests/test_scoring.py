@@ -350,7 +350,7 @@ class TestPromptWiring:
         assert "Hard filters run first" in text
 
     def test_the_prompt_version_is_read_from_the_file(self):
-        assert prompt_version() == 3
+        assert prompt_version() == 4
 
     def test_the_no_edge_threshold_matches_the_prompt(self):
         assert NO_EDGE_THRESHOLD == 55.0
