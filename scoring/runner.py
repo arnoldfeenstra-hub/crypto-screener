@@ -54,6 +54,7 @@ from collectors.config import load_config
 from collectors.safety import SafetyReport, SafetySource
 from collectors.safety import from_row as safety_from_row
 from collectors.schema import now_ms
+from collectors.social_base import derive_tg_metrics, derive_x_metrics
 from collectors.store import Store
 from filters.hard_filters import Verdict, apply
 from scoring.candidate import candidate_from_row, filter_input_from_candidate
@@ -453,11 +454,42 @@ class ScoringRunner:
             row["rank"] = position
         return ScoredBatch(regime=regime, rows=rows)
 
+    def _with_social(self, candidate: dict[str, Any]) -> dict[str, Any]:
+        """Fold the forward social series into a candidate, at read time.
+
+        The series lives in its own append-only table, one row per (snapshot,
+        platform, offset), and is deliberately stored as raw counts. Pillar B
+        wants a speaker ratio and a growth rate, which are formulas -- and a
+        formula stored is a formula frozen: changing it later would split the
+        dataset into eras that cannot be compared. Deriving here means a changed
+        formula re-reads every row ever collected (BUILD_BRIEF.md section 3).
+
+        It fills gaps only. A value the snapshot already carries was measured at
+        the trigger, and a derivation must not quietly replace a measurement.
+        """
+        if self.store is None:
+            return candidate
+        snapshot_id = candidate.get("snapshot_id")
+        if not snapshot_id:
+            return candidate
+        observations = self.store.social_observations(snapshot_id)
+        if not observations:
+            return candidate
+
+        merged = dict(candidate)
+        for key, derive in (("social_tg", derive_tg_metrics), ("social_x", derive_x_metrics)):
+            group = dict(merged.get(key) or {})
+            for name, value in derive(observations).items():
+                if value is not None and group.get(name) is None:
+                    group[name] = value
+            merged[key] = group
+        return merged
+
     def run(self, *, limit: int = 50, regime: str | None = None) -> ScoredBatch:
         if self.store is None:
             raise ValueError("a Store is required to score stored snapshots")
         rows = self.store.recent_snapshots(limit)
-        candidates = [candidate_from_row(row) for row in rows]
+        candidates = [self._with_social(candidate_from_row(row)) for row in rows]
         known_safety = {
             key: safety_from_row(row)
             for key, row in self.store.latest_safety_by_token().items()
