@@ -25,7 +25,9 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
-# 5 adds snapshots.telegram_url and snapshots.x_url -- the declared link
+# 5 adds safety_observations.lp_total_usd -- the denominator lp_locked_pct is
+# weighted over when a token's pools disagree -- and snapshots.telegram_url and
+# snapshots.x_url: the declared link
 # addresses, not just the booleans saying they exist. Without them the forward
 # social series has nowhere to point: collectors/social_tg.py needs the channel,
 # and a handle guessed from a ticker is a different channel, usually someone
@@ -622,6 +624,7 @@ SAFETY_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
     ("lp_burned", "BOOLEAN"),
     ("lp_locked_pct", "DOUBLE"),
     ("lp_markets", "JSON"),
+    ("lp_total_usd", "DOUBLE"),
     ("top10_ex_lp_pct", "DOUBLE"),
     ("holder_count", "BIGINT"),
     ("upgradeable", "BOOLEAN"),
