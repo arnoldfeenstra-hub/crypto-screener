@@ -106,8 +106,12 @@ class TestCompleteness:
         present, expected = sparse.completeness()
         assert 0 < present < expected
         # Feature leaves only, not the identity columns. Grew from 40 to 54 at
-        # schema version 2: market.fdv_usd plus the 13-field mindshare group.
-        assert expected == 54
+        # schema version 2 (market.fdv_usd plus the 13-field mindshare group) and
+        # from 54 to 65 at version 7 (the 11-field momentum group). The number is
+        # asserted rather than computed because it is the denominator of
+        # data_completeness on every row: it must not move without somebody
+        # deciding that it should.
+        assert expected == 65
 
     def test_a_richer_row_scores_higher(self):
         sparse = build(mcap_usd=None, holder_count=600)

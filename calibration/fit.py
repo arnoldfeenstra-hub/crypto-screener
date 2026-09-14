@@ -44,9 +44,10 @@ PUBLISHED_CONCORDANCE_BENCHMARK = 0.858
 # fitted coefficient comes out of normalised_pillar_weights() alongside the other
 # five, which is the moment its weight stops being a guess.
 #
-# One caution carried from prompts/score.md: mindshare and onchain_structure both
+# Two cautions carried from prompts/score.md: mindshare and onchain_structure both
 # read 24h volume, so their coefficients are collinear and must not be read
-# independently.
+# independently; and momentum_flow reads the same volume over shorter windows, so
+# it is collinear with both.
 FEATURE_NAMES = (
     "attention_velocity",
     "community_depth",
@@ -54,6 +55,7 @@ FEATURE_NAMES = (
     "onchain_structure",
     "asymmetry_timing",
     "mindshare",
+    "momentum_flow",
 )
 
 

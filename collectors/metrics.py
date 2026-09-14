@@ -61,8 +61,19 @@ class TokenMetrics:
     # these into a share of the observed universe at read time.
     txns_24h: int | None = None
     txns_6h: int | None = None
+    txns_1h: int | None = None
     buys_24h: int | None = None
     sells_24h: int | None = None
+    buys_1h: int | None = None
+    sells_1h: int | None = None
+    # Price changes as the source reported them. Together with the 1h and 6h
+    # volume fields above, these are what makes the `momentum` snapshot group
+    # answerable; without them the only readable rate of change is a 6h-over-24h
+    # trade-count ratio, which saturates at 4.0 for any token younger than six
+    # hours and is an age proxy rather than a momentum measurement.
+    price_change_5m_pct: float | None = None
+    price_change_1h_pct: float | None = None
+    price_change_6h_pct: float | None = None
     price_change_24h_pct: float | None = None
     pair_count: int | None = None
     boosts_active: float | None = None

@@ -195,6 +195,10 @@ def build_live_payload(
                     "x_url": snapshot.x_url,
                 },
                 "mindshare": mindshare_group,
+                # Schema 7's momentum group, live. Same raw fields the collector
+                # stores, so the live table and a stored row show the same
+                # numbers and the page has one renderer for both.
+                "momentum": candidate.get("momentum") or {},
                 "safety": (
                     {
                         "source": report.source,
@@ -289,6 +293,20 @@ def build_live_payload(
             }
             for name in resolved
         ],
+        "momentum": {
+            "prior_weight_in_composite": WEIGHTS.get("momentum_flow", 0.0),
+            "definition": (
+                "The shape of the last hour rather than the level of the last day: "
+                "the buy/sell split over 1h and 24h, 1h volume against the 6h rate, "
+                "and the per-window price change."
+            ),
+            "caveat": (
+                "Weight 0.00 in the composite -- collected and shown, fitted by "
+                "nobody yet. Window ratios are dropped when the token is younger "
+                "than the longer window, because they pin at the window ratio and "
+                "measure age instead."
+            ),
+        },
         "mindshare": {
             "method_version": mindshare_mod.METHOD_VERSION,
             "component_weights": mindshare_mod.COMPONENT_WEIGHTS,

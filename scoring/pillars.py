@@ -14,8 +14,9 @@ to the weights that produced it.
 What a Phase 0 row actually scores
 ----------------------------------
 Pillars A (attention), B (community) and C (lineage) read social, trend and meta
-fields that no collector fills yet, so they come back ``None`` -- not zero. Only D
-(on-chain structure) and E (asymmetry) resolve. The composite is renormalised over
+fields that no collector fills yet, so they come back ``None`` -- not zero. D
+(on-chain structure), E (asymmetry), F (mindshare) and G (momentum) resolve from
+what DexScreener answers. The composite is renormalised over
 the pillars that resolved, so it reads as "of what can be seen", and is then
 multiplied by data completeness, which drags it down to reflect how little that is.
 Both numbers are reported separately so the distinction stays visible.
@@ -44,6 +45,23 @@ from typing import Any
 # side effect of adding a column.
 MINDSHARE_PRIOR_WEIGHT = 0.0
 
+# Momentum's prior weight, and why it is also zero.
+#
+# Same rule, same answer. calibration/backtest.py measured the one rate-of-change
+# feature the old schema could express -- a 6h-over-24h trade-count ratio -- and
+# found it worth nothing: its apparent AUC of 0.70 collapsed to 0.50 inside a
+# single age stratum, because for a token younger than six hours txns_6h equals
+# txns_24h and the ratio pins at exactly 4.0. It was age wearing a disguise.
+#
+# The fields this pillar reads are new and were chosen so the same question can be
+# asked without that artefact: a buy/sell split is a ratio inside one window and
+# cannot saturate on age at all. Whether they carry signal is unmeasured, and a
+# prior invented in the commit that invents the feature is not a prior. So the
+# pillar is computed, stored, displayed, sorted on and handed to calibration, and
+# it moves no score until Phase 2 fits it. tests/test_momentum_pillar.py asserts
+# the composite is numerically identical with the pillar present and absent.
+MOMENTUM_PRIOR_WEIGHT = 0.0
+
 # prompts/score.md step 2. Uncalibrated priors -- replace with fitted coefficients.
 WEIGHTS: dict[str, float] = {
     "attention_velocity": 0.28,
@@ -52,13 +70,15 @@ WEIGHTS: dict[str, float] = {
     "onchain_structure": 0.22,
     "asymmetry_timing": 0.15,
     "mindshare": MINDSHARE_PRIOR_WEIGHT,
+    "momentum_flow": MOMENTUM_PRIOR_WEIGHT,
 }
 
 # Bumped whenever WEIGHTS changes -- in value or in shape. Stored on every scored
 # row so a score can be traced to the numbers that produced it. It lives here,
 # beside the vector it names, so the two cannot be edited apart. v2 added the
-# `mindshare` key at weight 0.0; the five original weights are untouched.
-WEIGHTS_VERSION = "priors-v2"
+# `mindshare` key at weight 0.0 and v3 the `momentum_flow` key, also at 0.0; the
+# five original weights are untouched and the composite is unchanged by both.
+WEIGHTS_VERSION = "priors-v3"
 
 REGIME_MULTIPLIERS = {"hot": 1.0, "neutral": 1.0, "cold": 1.0}
 # In a cold tape, compress toward the midpoint rather than scaling: score.md says
@@ -76,6 +96,16 @@ SPEAKER_RATIO_FLOOR = 0.02
 # Boost share over trade share. Above this, more of the token's visibility was
 # bought than traded -- the mindshare is manufactured, and the pillar says so.
 PAID_TILT_FLAG = 2.0
+
+# Buys over buys+sells inside one window. 0.5 is balanced; these are the anchors
+# the pillar scales between, not thresholds anything is rejected on.
+BUY_PRESSURE_FLOOR = 0.40
+BUY_PRESSURE_CEILING = 0.65
+# A window ratio at or above this is pinned by construction rather than measured:
+# a token younger than the longer window has identical counts in both, so the
+# ratio equals the window ratio exactly. The pillar drops the component and says
+# so rather than scoring the artefact.
+WINDOW_SATURATION_EPSILON = 1e-9
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
@@ -391,6 +421,131 @@ def mindshare(candidate: dict[str, Any]) -> PillarScore:
     )
 
 
+def _pressure(buys: Any, sells: Any) -> float | None:
+    """Buys over total trades in one window. ``None`` unless both sides are known.
+
+    A missing sell count is not zero sells. Treating it as zero would report
+    perfect buy pressure for a pool that simply did not answer, which is the
+    single most flattering way to be wrong about a token.
+    """
+    if buys is None or sells is None:
+        return None
+    try:
+        b, s = float(buys), float(sells)
+    except (TypeError, ValueError):
+        return None
+    total = b + s
+    return b / total if total > 0 else None
+
+
+def _window_ratio(
+    short: Any, short_hours: float, long: Any, long_hours: float
+) -> tuple[float | None, bool]:
+    """``(short rate / long rate, saturated)`` for two nested windows.
+
+    The second element is the part that matters. The short window is contained in
+    the long one, so a token younger than the long window has identical figures in
+    both and the ratio equals ``long_hours / short_hours`` exactly -- 4.0 for
+    6h-in-24h, 6.0 for 1h-in-6h. That is arithmetic about the token's age, not a
+    measurement of its momentum, and calibration/backtest.py showed it reading as
+    a strong signal precisely because it is an age proxy. Flagged here so the
+    caller can drop it rather than score it.
+    """
+    short_rate = _ratio(short, short_hours)
+    long_rate = _ratio(long, long_hours)
+    if short_rate is None or long_rate is None or long_rate <= 0:
+        return None, False
+    ratio = short_rate / long_rate
+    ceiling = long_hours / short_hours
+    return ratio, ratio >= ceiling - WINDOW_SATURATION_EPSILON
+
+
+def momentum_flow(candidate: dict[str, Any]) -> PillarScore:
+    """Pillar G -- the shape of the last hour, not the level of the last day.
+
+    prompts/score.md step 2 opens Pillar A with "measure acceleration, not volume"
+    and closes the non-negotiables with "rate of change beats level". Until the
+    `momentum` schema group existed there was nothing on a snapshot row to measure
+    it *with*: every market field was a 24h level, and the only ratio available
+    between two windows saturated on age.
+
+    Four components, each a ratio the source's own numbers support:
+
+    * **Buy pressure**, over an hour and over a day. A ratio inside one window,
+      so it cannot be pinned by the token being young -- which is exactly what
+      disqualified the old trade-count acceleration.
+    * **Pressure trend**: the hour's buy pressure against the day's. Rising is a
+      bid arriving; falling at a high level is the distribution shape Pillar A
+      describes and Pillar D's cohort flow would confirm if it were collected.
+    * **Volume acceleration**, 1h against 6h, *dropped when saturated*.
+    * **Price slope**: the hour's move against the six-hour average hourly move.
+
+    Weighted 0.00 into the composite -- see :data:`MOMENTUM_PRIOR_WEIGHT`.
+    """
+    m = candidate.get("momentum") or {}
+    notes: list[str] = []
+
+    pressure_1h = _pressure(m.get("buys_1h"), m.get("sells_1h"))
+    pressure_24h = _pressure(m.get("buys_24h"), m.get("sells_24h"))
+    buy_1h = _scale(pressure_1h, BUY_PRESSURE_FLOOR, BUY_PRESSURE_CEILING)
+    buy_24h = _scale(pressure_24h, BUY_PRESSURE_FLOOR, BUY_PRESSURE_CEILING)
+
+    trend = None
+    if pressure_1h is not None and pressure_24h is not None:
+        delta = pressure_1h - pressure_24h
+        trend = _scale(delta, -0.15, 0.15)
+        if delta <= -0.10 and pressure_24h >= 0.55:
+            notes.append(
+                f"buy pressure fell from {pressure_24h:.2f} (24h) to {pressure_1h:.2f} "
+                "(1h) -- selling into the day's bid"
+            )
+
+    accel_ratio, saturated = _window_ratio(
+        m.get("volume_1h_usd"), 1.0, m.get("volume_6h_usd"), 6.0
+    )
+    acceleration = None
+    if saturated:
+        notes.append(
+            "1h and 6h volume are identical -- the token is younger than six hours, "
+            "so the acceleration is pinned by arithmetic and is not scored"
+        )
+    elif accel_ratio is not None:
+        acceleration = _scale(accel_ratio, 0.3, 3.0)
+        if accel_ratio < 0.5:
+            notes.append(
+                f"hourly volume is {accel_ratio:.2f}x the 6h rate -- attention is draining"
+            )
+
+    slope = None
+    change_1h = m.get("price_change_1h_pct")
+    change_6h = m.get("price_change_6h_pct")
+    if change_1h is not None and change_6h is not None:
+        # The six-hour figure is a cumulative move; a sixth of it is its average
+        # hour. Above that average the last hour is the fastest part of the move.
+        hourly_average = change_6h / 6.0
+        slope = _scale(change_1h - hourly_average, -10.0, 10.0)
+        if change_6h > 25 and change_1h < 0:
+            notes.append(
+                f"up {change_6h:.0f}% over 6h and down {change_1h:.1f}% in the last "
+                "hour -- the move is rolling over"
+            )
+    elif change_1h is not None:
+        slope = _scale(change_1h, -10.0, 10.0)
+
+    return PillarScore(
+        "momentum_flow",
+        _mean([buy_1h, buy_24h, trend, acceleration, slope]),
+        {
+            "buy_pressure_1h": buy_1h,
+            "buy_pressure_24h": buy_24h,
+            "pressure_trend": trend,
+            "volume_acceleration": acceleration,
+            "price_slope": slope,
+        },
+        tuple(notes),
+    )
+
+
 PILLARS = (
     attention_velocity,
     community_depth,
@@ -398,6 +553,7 @@ PILLARS = (
     onchain_structure,
     asymmetry_timing,
     mindshare,
+    momentum_flow,
 )
 
 

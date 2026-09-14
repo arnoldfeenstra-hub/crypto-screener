@@ -34,7 +34,12 @@ from collectors.config import load_config
 from collectors.mindshare import COMPONENT_WEIGHTS as MINDSHARE_COMPONENT_WEIGHTS
 from collectors.mindshare import METHOD_VERSION as MINDSHARE_METHOD_VERSION
 from collectors.store import Store
-from scoring.pillars import MINDSHARE_PRIOR_WEIGHT, WEIGHTS, composite
+from scoring.pillars import (
+    MINDSHARE_PRIOR_WEIGHT,
+    MOMENTUM_PRIOR_WEIGHT,
+    WEIGHTS,
+    composite,
+)
 from scoring.runner import WEIGHTS_VERSION, prompt_version
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -142,6 +147,24 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                     "universe_volume_24h_usd": snap["mindshare_universe_volume_24h_usd"],
                     "universe_boost_total": snap["mindshare_universe_boost_total"],
                 },
+                # The momentum group (schema 7). Raw, as stored; the page derives
+                # the buy-pressure and acceleration ratios it displays, from the
+                # same numbers scoring/pillars.py derives them from. Null on every
+                # row written before schema 7, which is the truth about those rows
+                # rather than a zero standing in for one.
+                "momentum": {
+                    "volume_1h_usd": snap["momentum_volume_1h_usd"],
+                    "volume_6h_usd": snap["momentum_volume_6h_usd"],
+                    "txns_1h": snap["momentum_txns_1h"],
+                    "buys_1h": snap["momentum_buys_1h"],
+                    "sells_1h": snap["momentum_sells_1h"],
+                    "buys_24h": snap["momentum_buys_24h"],
+                    "sells_24h": snap["momentum_sells_24h"],
+                    "price_change_5m_pct": snap["momentum_price_change_5m_pct"],
+                    "price_change_1h_pct": snap["momentum_price_change_1h_pct"],
+                    "price_change_6h_pct": snap["momentum_price_change_6h_pct"],
+                    "price_change_24h_pct": snap["momentum_price_change_24h_pct"],
+                },
                 # The safety lookup behind the filter verdicts, if one was made.
                 # Null here means the checks were never run, which is why the row
                 # reads "excluded as unmeasured" rather than "rejected".
@@ -232,6 +255,22 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             }
             for name, count in chain_counts.items()
         ],
+        "momentum": {
+            "prior_weight_in_composite": MOMENTUM_PRIOR_WEIGHT,
+            "definition": (
+                "The shape of the last hour rather than the level of the last day: "
+                "the buy/sell split over 1h and 24h, 1h volume against the 6h rate, "
+                "and the per-window price change. Stored raw and derived at read "
+                "time."
+            ),
+            "caveat": (
+                "Weight 0.00 in the composite. A ratio between two nested windows "
+                "saturates -- a token younger than the long window has identical "
+                "counts in both -- so those components are dropped when pinned "
+                "rather than scored. The buy/sell split is a ratio inside one "
+                "window and does not saturate."
+            ),
+        },
         "mindshare": {
             "method_version": MINDSHARE_METHOD_VERSION,
             "component_weights": MINDSHARE_COMPONENT_WEIGHTS,

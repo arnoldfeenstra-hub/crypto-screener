@@ -9,8 +9,9 @@ until one of those changes, this is the module that puts real rows in the databa
 
 What it can and cannot see
 --------------------------
-It reports market cap, FDV, liquidity, volume, transaction counts, pool age and
-declared socials. It does **not** report holder counts, mint or freeze authority,
+It reports market cap, FDV, liquidity, volume and transaction counts over four
+windows (5m, 1h, 6h, 24h) with the buy/sell split, per-window price change, pool
+age and declared socials. It does **not** report holder counts, mint or freeze authority,
 deployer history, or bundling. Those stay ``None`` -- hard rule 3 -- with two
 consequences worth stating plainly rather than discovering later:
 
@@ -349,8 +350,16 @@ class PairAggregate:
     volume_1h_usd: float | None = None
     txns_24h: int | None = None
     txns_6h: int | None = None
+    txns_1h: int | None = None
     buys_24h: int | None = None
     sells_24h: int | None = None
+    buys_1h: int | None = None
+    sells_1h: int | None = None
+    # Price changes as DexScreener reports them, per window. Read from the deepest
+    # pool rather than summed -- a percentage is not additive across pools.
+    price_change_5m_pct: float | None = None
+    price_change_1h_pct: float | None = None
+    price_change_6h_pct: float | None = None
     price_change_24h_pct: float | None = None
     boosts_active: float | None = None
     pair_count: int = 0
@@ -412,20 +421,34 @@ def parse_pairs(payload: Any) -> dict[tuple[str, str], PairAggregate]:
         created = [_as_int(p.get("pairCreatedAt")) for p in pairs]
         created_known = [c for c in created if c is not None and c > 0]
 
-        txn_windows: dict[str, list[int | None]] = {"h24": [], "h6": []}
-        buys: list[int | None] = []
-        sells: list[int | None] = []
+        # h1 joins h24 and h6 because a 6h-over-24h ratio is the only rate of
+        # change the earlier windows could express, and it saturates: a token
+        # younger than six hours has txns_6h == txns_24h by construction, so the
+        # ratio pins at 4.0 and measures age instead of momentum. The hour window
+        # moves that boundary in by five hours; the buy/sell split does not
+        # saturate at all, because it is a ratio between two counts over the same
+        # window rather than between two windows.
+        txn_windows: dict[str, list[int | None]] = {"h24": [], "h6": [], "h1": []}
+        splits: dict[str, tuple[list[int | None], list[int | None]]] = {
+            "h24": ([], []),
+            "h1": ([], []),
+        }
         for pair in pairs:
-            for window in ("h24", "h6"):
+            for window in ("h24", "h6", "h1"):
                 block = _get(pair, "txns", window)
                 if not isinstance(block, dict):
                     txn_windows[window].append(None)
+                    if window in splits:
+                        splits[window][0].append(None)
+                        splits[window][1].append(None)
                     continue
                 b, s = _as_int(block.get("buys")), _as_int(block.get("sells"))
                 txn_windows[window].append(None if b is None and s is None else (b or 0) + (s or 0))
-                if window == "h24":
-                    buys.append(b)
-                    sells.append(s)
+                if window in splits:
+                    splits[window][0].append(b)
+                    splits[window][1].append(s)
+        buys, sells = splits["h24"]
+        buys_1h, sells_1h = splits["h1"]
 
         socials = [declared_socials(p) for p in pairs]
         link_urls = [declared_social_urls(p) for p in pairs]
@@ -449,8 +472,14 @@ def parse_pairs(payload: Any) -> dict[tuple[str, str], PairAggregate]:
             volume_1h_usd=_sum_optional(_as_float(_get(p, "volume", "h1")) for p in pairs),
             txns_24h=_as_int(_sum_optional(txn_windows["h24"])),
             txns_6h=_as_int(_sum_optional(txn_windows["h6"])),
+            txns_1h=_as_int(_sum_optional(txn_windows["h1"])),
             buys_24h=_as_int(_sum_optional(buys)),
             sells_24h=_as_int(_sum_optional(sells)),
+            buys_1h=_as_int(_sum_optional(buys_1h)),
+            sells_1h=_as_int(_sum_optional(sells_1h)),
+            price_change_5m_pct=_as_float(_get(primary, "priceChange", "m5")),
+            price_change_1h_pct=_as_float(_get(primary, "priceChange", "h1")),
+            price_change_6h_pct=_as_float(_get(primary, "priceChange", "h6")),
             price_change_24h_pct=_as_float(_get(primary, "priceChange", "h24")),
             boosts_active=_sum_optional(_as_float(_get(p, "boosts", "active")) for p in pairs),
             pair_count=len(pairs),
@@ -504,8 +533,14 @@ def to_metrics(
         volume_1h_usd=aggregate.volume_1h_usd,
         txns_24h=aggregate.txns_24h,
         txns_6h=aggregate.txns_6h,
+        txns_1h=aggregate.txns_1h,
         buys_24h=aggregate.buys_24h,
         sells_24h=aggregate.sells_24h,
+        buys_1h=aggregate.buys_1h,
+        sells_1h=aggregate.sells_1h,
+        price_change_5m_pct=aggregate.price_change_5m_pct,
+        price_change_1h_pct=aggregate.price_change_1h_pct,
+        price_change_6h_pct=aggregate.price_change_6h_pct,
         price_change_24h_pct=aggregate.price_change_24h_pct,
         pair_count=aggregate.pair_count,
         boosts_active=aggregate.boosts_active,

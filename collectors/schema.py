@@ -25,6 +25,17 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
+# 7 adds the `momentum` group: the short-window trade and price fields DexScreener
+# has always returned and this repo has always thrown away at the snapshot
+# boundary. The parser read `volume.h1`, `volume.h6`, `txns.h1`, the buy/sell
+# split and `priceChange` and kept none of them past TokenMetrics, so every
+# question about *rate of change* -- which prompts/score.md step 2 calls the whole
+# point ("rate of change beats level") -- had to be answered from 24h levels. The
+# fields are stored raw, exactly as reported, and every derivation from them
+# happens at read time (scoring/pillars.py::momentum_flow), because derived
+# formulas change and raw counts do not. Adding them raises fields_expected from
+# 54 to 65, so data_completeness on a version 7 row is not comparable with a
+# version 6 one -- schema_version is on every row for exactly this.
 # 6 adds safety_observations.source_fields: which top-level keys each source
 # actually returned. The parsers are total, so an unrecognised shape degrades to
 # None -- correct, and silent. Twice a field has been absent from a live response
@@ -50,13 +61,14 @@ from typing import Any
 # take version 2 rows. Store.open refuses it by name rather than failing on the
 # insert. Phase 0 has no production database yet; if one exists, start a new file
 # and keep the old one -- the old rows are still the graveyard.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # Groups whose leaf fields count toward the Data Completeness modifier in
 # prompts/score.md. Identity and bookkeeping columns are excluded: they are always
 # present, so counting them would inflate completeness toward 1.0 for every row.
 FEATURE_GROUPS = (
     "market",
+    "momentum",
     "holders",
     "authorities",
     "deployer",
@@ -128,6 +140,51 @@ class Market:
     # neither as FDV, so this stays None on those rows rather than copying mcap
     # across, which would quietly turn the filter into a different filter.
     fdv_usd: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Momentum:
+    """Short-window trade and price facts, as the source reported them.
+
+    ``market`` holds levels -- what the token is worth and how much traded in a
+    day. This group holds the shape of the last few hours, which is a different
+    question and the one prompts/score.md step 2 says matters most: "Rate of
+    change beats level. A token at 400 mentions/hr up from 40 is a different
+    object than a token flat at 400."
+
+    Three rules govern what is in here.
+
+    * **Raw, never derived.** ``buys_1h`` and ``sells_1h``, not an imbalance
+      ratio; ``volume_1h_usd`` and ``volume_6h_usd``, not an acceleration.
+      BUILD_BRIEF.md section 3 item 3 -- the formula will be revised and the
+      counts will not, so a revision must not strand the rows already written.
+      :mod:`scoring.pillars` derives at read time.
+    * **Percent changes are stored as reported.** ``price_change_1h_pct`` is a
+      measurement DexScreener makes, not an arithmetic step this repo performs,
+      and it cannot be reconstructed afterwards from anything else on the row.
+    * **Absent stays absent.** A pool that reports no ``m5`` block has unknown
+      five-minute activity, not zero five-minute activity. The parser never
+      turns one into the other.
+
+    A caution for whoever fits these. Trade-*count* ratios saturate: a token
+    younger than six hours has ``txns_6h == txns_24h`` by construction, so a
+    6h-over-24h acceleration pins at exactly 4.0 for every young token and
+    silently becomes an age proxy. ``calibration/backtest.py`` measures that
+    saturation and reports it; the 1h and 5m windows exist partly so the same
+    question can be asked at a resolution where fewer rows are pinned.
+    """
+
+    volume_1h_usd: float | None = None
+    volume_6h_usd: float | None = None
+    txns_1h: int | None = None
+    buys_1h: int | None = None
+    sells_1h: int | None = None
+    buys_24h: int | None = None
+    sells_24h: int | None = None
+    price_change_5m_pct: float | None = None
+    price_change_1h_pct: float | None = None
+    price_change_6h_pct: float | None = None
+    price_change_24h_pct: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +298,7 @@ class Lineage:
 
 _GROUP_TYPES: dict[str, type] = {
     "market": Market,
+    "momentum": Momentum,
     "holders": Holders,
     "authorities": Authorities,
     "deployer": Deployer,
@@ -294,6 +352,7 @@ class Snapshot:
     regime: str | None = None  # hot | neutral | cold
     listings: list[str] | None = None
     market: Market = field(default_factory=Market)
+    momentum: Momentum = field(default_factory=Momentum)
     holders: Holders = field(default_factory=Holders)
     authorities: Authorities = field(default_factory=Authorities)
     deployer: Deployer = field(default_factory=Deployer)
@@ -406,6 +465,17 @@ _GROUP_COLUMN_TYPES: dict[str, str] = {
     "market_volume_24h_usd": "DOUBLE",
     "market_price_usd": "DOUBLE",
     "market_fdv_usd": "DOUBLE",
+    "momentum_volume_1h_usd": "DOUBLE",
+    "momentum_volume_6h_usd": "DOUBLE",
+    "momentum_txns_1h": "BIGINT",
+    "momentum_buys_1h": "BIGINT",
+    "momentum_sells_1h": "BIGINT",
+    "momentum_buys_24h": "BIGINT",
+    "momentum_sells_24h": "BIGINT",
+    "momentum_price_change_5m_pct": "DOUBLE",
+    "momentum_price_change_1h_pct": "DOUBLE",
+    "momentum_price_change_6h_pct": "DOUBLE",
+    "momentum_price_change_24h_pct": "DOUBLE",
     "holders_count": "BIGINT",
     "holders_growth_6h_pct": "DOUBLE",
     "holders_top10_ex_lp_pct": "DOUBLE",

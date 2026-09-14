@@ -46,6 +46,9 @@ def candidate_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "fdv_usd": grouped["market"].get("fdv_usd"),
         "liquidity_usd": grouped["market"].get("liquidity_usd"),
         "volume_24h_usd": grouped["market"].get("volume_24h_usd"),
+        # Raw short-window counts, passed straight through. The pillar derives the
+        # imbalance and acceleration ratios; nothing is divided on this side.
+        "momentum": grouped["momentum"],
         "holders": grouped["holders"],
         "authorities": grouped["authorities"],
         "deployer": grouped["deployer"],

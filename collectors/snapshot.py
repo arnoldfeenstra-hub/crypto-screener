@@ -58,6 +58,7 @@ from collectors.schema import (
     Launch,
     Lineage,
     Market,
+    Momentum,
     Snapshot,
     SocialsDeclared,
     SocialTG,
@@ -114,6 +115,23 @@ def build_snapshot(
             volume_24h_usd=clean(metrics.volume_24h_usd),
             price_usd=clean(metrics.price_usd),
             fdv_usd=clean(metrics.fdv_usd),
+        ),
+        # Raw short-window counts and the per-window price changes, copied across
+        # exactly as reported. Nothing is divided here: a ratio computed at write
+        # time would freeze one formula into rows that can never be recomputed,
+        # and scoring/pillars.py derives the same quantities at read time.
+        momentum=Momentum(
+            volume_1h_usd=clean(metrics.volume_1h_usd),
+            volume_6h_usd=clean(metrics.volume_6h_usd),
+            txns_1h=metrics.txns_1h,
+            buys_1h=metrics.buys_1h,
+            sells_1h=metrics.sells_1h,
+            buys_24h=metrics.buys_24h,
+            sells_24h=metrics.sells_24h,
+            price_change_5m_pct=clean(metrics.price_change_5m_pct),
+            price_change_1h_pct=clean(metrics.price_change_1h_pct),
+            price_change_6h_pct=clean(metrics.price_change_6h_pct),
+            price_change_24h_pct=clean(metrics.price_change_24h_pct),
         ),
         holders=Holders(
             count=metrics.holder_count,
