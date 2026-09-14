@@ -178,6 +178,9 @@ class XCollector:
     def __init__(self, store: Store, client: XClient | None = None) -> None:
         self.store = store
         self.client = client
+        # Due offsets that a budget stopped this cycle from asking about. Not
+        # written anywhere: a poll that never happened is not an observation.
+        self.skipped_for_budget = 0
 
     def collect_one(
         self,
@@ -203,18 +206,59 @@ class XCollector:
                 build_query(snapshot.get("ticker"), snapshot.get("contract")), window
             )
         except (XError, ValueError) as exc:
+            # The anticipated failures. Their messages already say what happened
+            # ("rate limited, resets in 60s"), so they are recorded verbatim.
             return SocialObservation(**base, error=str(exc)[:200])
+        except Exception as exc:
+            # Everything else, and deliberately so. The client is an injection
+            # point ("any object with search_recent"), and an unanticipated
+            # failure from it is where narrow catching costs most: the exception
+            # escapes the loop, every remaining snapshot in the cycle is skipped,
+            # and the hour passes with no row anywhere saying so. This data cannot
+            # be backfilled, so a gap has to become a row -- the module's own
+            # opening rule, "a failed poll is recorded as a row with `error` set
+            # rather than skipped. The gap is data too." The type is kept in the
+            # message because an unexpected exception's text usually is not
+            # self-describing.
+            return SocialObservation(**base, error=f"{type(exc).__name__}: {exc}"[:200])
         counts = parse_search(payload, window)
         return SocialObservation(**base, exists=counts["mentions_window"] > 0, **counts)
 
-    def run(self, *, as_of_ms: int | None = None, limit: int = 200) -> list[SocialObservation]:
+    def run(
+        self,
+        *,
+        as_of_ms: int | None = None,
+        limit: int = 200,
+        max_searches: int | None = None,
+    ) -> list[SocialObservation]:
+        """Collect every due offset, up to ``max_searches`` actual API calls.
+
+        The budget is not a nicety. Unlike every other source in this repo, X
+        search is metered and billed: the paid tiers cap *posts read per month*,
+        one search returns up to 100 of them, and this runs hourly. An unbudgeted
+        first cycle over a backlog of snapshots can spend a month's quota before
+        anyone reads the log.
+
+        Hitting the cap stops the loop rather than writing error rows for the
+        remainder. An error row means "we asked and it failed", which is a real
+        observation about the token; a row saying the same about a poll that was
+        never attempted would put the collector's own rate limit into the dataset
+        as if it were a fact about the token. The count that was skipped is
+        returned to the caller instead, which is where a budget belongs.
+        """
         as_of = as_of_ms if as_of_ms is not None else now_ms()
         written: list[SocialObservation] = []
+        self.skipped_for_budget = 0
+        searches = 0
         for snapshot in self.store.snapshots_for_labelling()[:limit]:
             age = int((as_of - snapshot["ts"]) // 60_000)
             done = self.store.social_offsets_collected(snapshot["snapshot_id"], PLATFORM)
             for offset in due_offsets(age, done):
+                if max_searches is not None and searches >= max_searches:
+                    self.skipped_for_budget += 1
+                    continue
                 observation = self.collect_one(snapshot, offset, age_minutes=age)
+                searches += 1
                 self.store.append_social_observations([observation])
                 written.append(observation)
         return written
@@ -233,6 +277,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--db", help="DuckDB path (default: SCREENER_DB_PATH)")
     parser.add_argument("--limit", type=int, default=200)
+    parser.add_argument(
+        "--max-searches",
+        type=int,
+        default=int(os.environ.get("X_MAX_SEARCHES_PER_CYCLE", "0")) or None,
+        help=(
+            "stop after this many API calls (default: X_MAX_SEARCHES_PER_CYCLE, "
+            "or unlimited). X search is the one metered source in this repo."
+        ),
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args(argv)
 
@@ -250,11 +303,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     with Store(args.db or str(config.db_path)) as store:
-        written = XCollector(store, client).run(limit=args.limit)
+        collector = XCollector(store, client)
+        written = collector.run(limit=args.limit, max_searches=args.max_searches)
         payload = {
             "observations_written": len(written),
             "with_counts": sum(1 for o in written if o.error is None),
             "with_errors": sum(1 for o in written if o.error is not None),
+            "skipped_for_budget": collector.skipped_for_budget,
             "offsets": list(OFFSETS_MINUTES),
         }
     print(json.dumps(payload, indent=2))

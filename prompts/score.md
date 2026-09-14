@@ -1,12 +1,42 @@
 # Memecoin Screener — Ranking Prompt
 
-`prompt_version: 4` — bump this on every edit and write it into every scored row.
+`prompt_version: 5` — bump this on every edit and write it into every scored row.
 
 Drop the SYSTEM block into your model call. Feed one `candidate` object per token.
 
 **Status: uncalibrated priors.** The weights below are informed guesses plus two effects that
 have been measured against a real graveyard (see "Evidence-backed priors"). Everything else is
 placeholder until Phase 2 of `BUILD_BRIEF.md` replaces it with fitted coefficients.
+
+**Version 5 changes — the first pillar added because something was *measured*, and
+one prior flagged as suspect.**
+
+`calibration/backtest.py` now runs every collected feature against the forward
+labels. It is not a calibration — the Phase 0 gate is not met and no weight below has
+moved — but two of its results changed this file.
+
+- **Pillar G (Momentum & flow) is added at weight 0.00.** Step 2 has always opened
+  Pillar A with "measure acceleration, not volume" and closed the non-negotiables with
+  "rate of change beats level", and until schema 7 there was nothing on a snapshot row
+  to measure it with: every market field was a 24h level. The one ratio available
+  between two windows, `(txns_6h/6) / (txns_24h/24)`, scores AUC 0.70 against a
+  1.5x-in-6h outcome and is worth **nothing** — a token younger than six hours has
+  `txns_6h == txns_24h`, so it pins at exactly 4.0 (39 of 76 rows sat on that value)
+  and reads 0.500 inside a single age band. It was age wearing a disguise. Pillar G
+  reads fields chosen so the same question survives that check, and drops its own
+  window ratios when they pin.
+- **The declared-socials prior in Pillar C is flagged.** In the collected sample the
+  surge rate *falls* as declared socials rise (1 social: 0.56, three: 0.15), the
+  opposite sign to the published 17.4x graduation lift. Both can be true: the
+  published figure is measured over the launch population, and this sample is
+  conditioned on already being above $250k, which is conditioning on a collider. The
+  weighting below is **unchanged** — a sample of 85 with three tokens in one cell does
+  not overturn 832,941 launches — but do not carry the lift into this lifecycle point
+  as though it had been verified here. See `docs/x-investigation.md` §2.
+- **One feature survives every check** against a 1.5x-in-6h outcome: top-10
+  concentration excluding LP, *lower being better*, out-of-sample AUC 0.74 with 1% tie
+  mass and the same direction in every age band. It is already a hard filter at 35%;
+  as a graded signal it is a lead, not an edge, and carries no weight.
 
 **Version 4 changes — a deliberate weakening of one hard filter, stated plainly.**
 The first live collection run scored **zero of thirteen** real tokens. Every one was
@@ -47,6 +77,12 @@ From a published survival analysis of 832,941 pump.fun launches (Kaplan-Meier + 
 Two things follow. First, `socials_declared` is the single best-evidenced feature available and
 it is free — weight it accordingly inside Lineage/Community. Second, the ceiling here is low:
 the strongest known signal takes you from ~0.1% to ~1.9%. Score honestly against that.
+
+**A third thing follows that the version 5 note spells out: these figures are about
+graduation from the launch population, and this screener samples tokens that have already
+graduated.** 92% of the tokens collected so far declare an X account, so the feature is
+near-constant here and ranks nothing (AUC 0.46, 92% tie mass). Do not read the lift as though
+it had been reproduced at this lifecycle point.
 
 ---
 
@@ -154,6 +190,36 @@ Three cautions for whoever fits this in Phase 2:
    DexScreener. `universe_size` is stored on every row, and shares from different universes are
    not comparable.
 
+### G. Momentum & flow — weight 0.00 (collected, not yet weighted)
+
+The shape of the last hour rather than the level of the last day. Computed by
+`scoring/pillars.py::momentum_flow` from the schema 7 `momentum` group, which stores
+raw counts and derives nothing at write time.
+
+- **Buy pressure**, over an hour and over a day: `buys / (buys + sells)` inside one
+  window. A ratio *inside* a window, so unlike the trade-count acceleration it cannot
+  be pinned by the token being young. This is the component to watch.
+- **Pressure trend**: the hour's buy pressure against the day's. Rising is a bid
+  arriving. Falling at a high level is the distribution signature Pillar A describes
+  and Pillar D's cohort flow would confirm if anything collected it.
+- **Volume acceleration**: 1h volume against the 6h hourly rate — **dropped, not
+  scored, when the two windows are identical**, because a token younger than six hours
+  has all of its volume in both and the ratio is arithmetic about its age.
+- **Price slope**: the last hour's move against the six-hour average hourly move. Up
+  60% over six hours and down in the last hour is a move rolling over.
+
+Three cautions for whoever fits this in Phase 2:
+
+1. **It is collinear with Pillar D's turnover and with Pillar F**, which both read
+   volume. Fit them together or drop one.
+2. **Any ratio between two nested windows saturates.** The check that caught the first
+   one is in `calibration/backtest.py` and runs on every feature: tie mass at the modal
+   value, and AUC inside each age band. A pooled figure that collapses in its strata is
+   measuring the stratum.
+3. **Nothing here has been fitted.** Weight 0.00 is not a claim that momentum is
+   worthless; it is a refusal to invent a prior in the same commit that invents the
+   feature.
+
 ### Modifiers (applied after weighting)
 
 - **Data completeness**: multiply by `(fields_present / fields_expected)`. Never compensate for a missing field with a guess.
@@ -179,7 +245,8 @@ Three cautions for whoever fits this in Phase 2:
         "lineage_meta_fit": 0,
         "onchain_structure": 0,
         "asymmetry_timing": 0,
-        "mindshare": 0
+        "mindshare": 0,
+        "momentum_flow": 0
       },
       "modifiers_applied": [],
       "thesis": "One sentence. What specifically is asymmetric here.",
@@ -219,6 +286,11 @@ Three cautions for whoever fits this in Phase 2:
                  "txns_24h": 0, "txns_6h": 0, "boost_amount": 0.0, "boost_total": 0.0,
                  "boosts_active": 0.0, "pair_count": 0, "universe_txns_24h": 0,
                  "universe_volume_24h_usd": 0.0, "universe_boost_total": 0.0 },
+  "momentum": { "volume_1h_usd": 0, "volume_6h_usd": 0,
+                "txns_1h": 0, "buys_1h": 0, "sells_1h": 0,
+                "buys_24h": 0, "sells_24h": 0,
+                "price_change_5m_pct": 0.0, "price_change_1h_pct": 0.0,
+                "price_change_6h_pct": 0.0, "price_change_24h_pct": 0.0 },
   "social_x": { "mentions_6h": 0, "mentions_24h": 0, "unique_authors_24h": 0,
                 "follower_weighted_reach": 0, "tier1_organic_engagements": 0,
                 "reply_to_post_ratio": 0.0 },

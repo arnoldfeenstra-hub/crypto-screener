@@ -350,7 +350,10 @@ class TestPromptWiring:
         assert "Hard filters run first" in text
 
     def test_the_prompt_version_is_read_from_the_file(self):
-        assert prompt_version() == 4
+        # Bumped in the same commit as any edit to prompts/score.md, because the
+        # version is stamped on every scored row and is the only way back from a
+        # score to the weights that produced it. 5 added Pillar G at weight 0.00.
+        assert prompt_version() == 5
 
     def test_the_no_edge_threshold_matches_the_prompt(self):
         assert NO_EDGE_THRESHOLD == 55.0

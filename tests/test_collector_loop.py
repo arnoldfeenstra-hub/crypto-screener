@@ -582,3 +582,112 @@ class TestSocialCollection:
         )
         assert "social_tg" not in summary
         assert client.asked == []
+
+
+# ---------------------------------------------------------------------------
+# X, the one metered source
+# ---------------------------------------------------------------------------
+
+
+class StubXClient:
+    """Stands in for X API v2 recent search, and counts what it was asked."""
+
+    def __init__(self, mentions: int = 12):
+        self.mentions = mentions
+        self.calls = 0
+
+    def search_recent(self, query, minutes, max_results=100):
+        self.calls += 1
+        return {
+            "data": [
+                {"id": str(i), "author_id": f"a{i % 3}", "text": query, "public_metrics": {}}
+                for i in range(self.mentions)
+            ],
+            "includes": {
+                "users": [
+                    {"id": f"a{i}", "public_metrics": {"followers_count": 500}}
+                    for i in range(3)
+                ]
+            },
+            "meta": {"result_count": self.mentions},
+        }
+
+
+class TestXCollection:
+    """X runs on the same schedule as everything else, and only with a credential.
+
+    Every other source in this repo is keyless and free. X search is metered per
+    post read, so the two properties that matter are that it is off by default and
+    that a cycle cannot spend an unbounded amount of somebody's quota.
+    """
+
+    def test_it_is_off_when_no_credential_is_configured(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram())
+        assert summary["social_x"] == {"skipped": "X_BEARER_TOKEN is not set"}
+
+    def test_the_absence_is_stated_rather_than_silent(self, tmp_path, monkeypatch):
+        # A social series nobody is collecting and a social series of zeroes look
+        # identical in a row count afterwards. The summary has to tell them apart.
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram())
+        assert "skipped" in summary["social_x"]
+
+    def test_an_injected_client_collects_without_any_credential(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram(), x_client=client)
+        assert client.calls >= 1
+        assert summary["social_x"]["observations"] >= 1
+        assert summary["social_x"]["with_counts"] >= 1
+
+    def test_the_budget_caps_the_calls_and_reports_what_it_skipped(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(
+            tmp_path,
+            [tradeable("solana", f"C{i}" * 11, f"$T{i}", 400_000.0) for i in range(6)],
+            with_social=True,
+            telegram_client=StubTelegram(),
+            x_client=client,
+            x_max_searches=2,
+        )
+        assert client.calls == 2
+        assert summary["social_x"]["skipped_for_budget"] >= 1
+        assert summary["social_x"]["budget"] == 2
+
+    def test_a_skipped_poll_is_not_written_as_an_error_row(self, tmp_path, monkeypatch):
+        """A budget is a fact about the collector, not about the token.
+
+        An error row means "we asked and it failed". Writing one for a poll that
+        was never attempted would put this repo's own rate limit into the dataset
+        as though it were an observation about the token.
+        """
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(
+            tmp_path,
+            [tradeable("solana", f"C{i}" * 11, f"$T{i}", 400_000.0) for i in range(6)],
+            with_social=True,
+            telegram_client=StubTelegram(),
+            x_client=client,
+            x_max_searches=2,
+        )
+        assert summary["social_x"]["with_errors"] == 0
+        assert summary["social_x"]["observations"] == 2
+
+    def test_a_failing_client_does_not_end_the_cycle(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+
+        class Broken:
+            def search_recent(self, *a, **k):
+                raise RuntimeError("boom")
+
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram(), x_client=Broken())
+        # The cycle still scored and journalled; the failure is a row, not a crash.
+        assert "scored" in summary
+        assert summary["social_x"]["with_errors"] >= 1

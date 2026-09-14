@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from collections.abc import Sequence
@@ -43,6 +44,7 @@ from collectors.outcomes import OutcomeTracker
 from collectors.safety import SafetySource
 from collectors.social_base import OFFSET_TOLERANCE_MINUTES
 from collectors.social_tg import TelegramCollector, TelegramPreviewClient
+from collectors.social_x import XClient, XCollector
 from collectors.store import Store
 from collectors.trigger_watcher import TriggerWatcher
 from scoring.runner import ScoringRunner
@@ -68,6 +70,8 @@ def run_cycle(
     price_source: Any = None,
     safety_source: Any = None,
     telegram_client: Any = None,
+    x_client: Any = None,
+    x_max_searches: int | None = None,
 ) -> dict[str, Any]:
     """Run one full cycle and return a summary. Every source is injectable for tests."""
     started = time.time()
@@ -151,6 +155,43 @@ def run_cycle(
                 "late": late,
             }
 
+        # X, on the same schedule and for the same reason -- and off unless a
+        # credential is present, because it is the one metered source here.
+        #
+        # Why it is worth a credential at all, in one number from this repo's own
+        # data: 92% of the tokens collected so far declare an X account. The
+        # published 17.4x graduation lift on declared socials is measured over the
+        # launch population, where most tokens declare nothing; by the time a token
+        # is above $250k the boolean is nearly constant and carries almost no
+        # information (calibration/backtest.py: 92% tie mass, AUC 0.46). What is
+        # left to learn is the *series* -- mentions per hour, unique authors, reply
+        # ratio -- which is Pillar A, the largest prior weight in the vector at
+        # 0.28, and which resolves on exactly zero rows today.
+        #
+        # See docs/x-investigation.md for the cost side and the decision.
+        if with_social and (x_client or os.environ.get("X_BEARER_TOKEN")):
+            client = x_client or XClient(bearer_token=os.environ["X_BEARER_TOKEN"])
+            x_collector = XCollector(store, client)
+            try:
+                x_written = x_collector.run(
+                    limit=score_limit, max_searches=x_max_searches
+                )
+            except Exception:
+                log.exception("x collection failed")
+                x_written = []
+            summary["social_x"] = {
+                "observations": len(x_written),
+                "with_counts": sum(1 for o in x_written if o.error is None),
+                "with_errors": sum(1 for o in x_written if o.error is not None),
+                "skipped_for_budget": x_collector.skipped_for_budget,
+                "budget": x_max_searches,
+            }
+        elif with_social:
+            # Stated in the summary rather than silently absent. A social series
+            # that is not being collected and a social series of zeroes look the
+            # same in a row count afterwards.
+            summary["social_x"] = {"skipped": "X_BEARER_TOKEN is not set"}
+
         runner = ScoringRunner(
             store,
             safety_source=safety_source
@@ -223,6 +264,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--max-tokens-per-poll", type=int, default=120)
+    parser.add_argument(
+        "--x-max-searches",
+        type=int,
+        default=int(os.environ.get("X_MAX_SEARCHES_PER_CYCLE", "0")) or None,
+        help=(
+            "cap the X searches one cycle may make (default: "
+            "X_MAX_SEARCHES_PER_CYCLE, else unlimited). Every other source here is "
+            "keyless and free; this one is metered per post read."
+        ),
+    )
     parser.add_argument("--score-limit", type=int, default=200)
     parser.add_argument(
         "--export",
@@ -259,6 +310,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_tokens_per_poll=args.max_tokens_per_poll,
             score_limit=args.score_limit,
             export_to=args.export,
+            x_max_searches=args.x_max_searches,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
