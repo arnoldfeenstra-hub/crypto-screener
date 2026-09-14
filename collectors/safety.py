@@ -736,7 +736,21 @@ def parse_goplus_solana(
                 if isinstance(entry, dict):
                     if creator is None and entry.get("address"):
                         creator = entry["address"]
-                    flag = _flag(entry.get("malicious"))
+                    # `malicious_address` is what GoPlus actually sends; the
+                    # documented `malicious` is kept as a fallback and costs
+                    # nothing. Reading only the documented name is why this
+                    # returned None on every Solana row: one word off, and the
+                    # total parser degraded it to "not measured" in silence.
+                    # Recorded in source_fields as creators[].malicious_address,
+                    # which is how it was finally found.
+                    #
+                    # _flag is the guard that matters here. If the field turns out
+                    # to hold an address rather than a 0/1 flag, _flag returns None
+                    # and the answer stays unknown rather than becoming a truthy
+                    # "this deployer has rugged before" -- or worse, a falsy zero.
+                    flag = _flag(entry.get("malicious_address"))
+                    if flag is None:
+                        flag = _flag(entry.get("malicious"))
                     if flag is not None:
                         flags.append(flag)
                 elif creator is None:
@@ -773,6 +787,37 @@ def parse_goplus_solana(
             source_fields=_seen_fields("goplus", data),
         )
     return out
+
+
+def _rugcheck_prior_rugs(
+    payload: dict[str, Any], risks: tuple[str, ...], creator: Any
+) -> int | None:
+    """``check_deployer_history`` from a RugCheck report, or ``None``.
+
+    GoPlus answers this from `creators[].malicious_address`, but its creator list
+    came back empty for 24 of the 25 tokens that carried one, so on its own it
+    leaves the filter unanswered for almost everything. RugCheck returns
+    `creator`, `creatorBalance` and `creatorTokens` on every row observed, which
+    means it does look the deployer up.
+
+    Two readings, and the second is the one to argue with:
+
+    * A risk naming the creator's rug history is a measured "at least one". Safe
+      direction, and the string below was seen in a live response.
+    * A report that names the creator AND enumerates their other launches, with
+      no such risk raised, is a measured zero. This is the permissive direction
+      on a rejection filter, so it is deliberately narrow: both the creator and
+      the `creatorTokens` list have to be present. An empty list is still an
+      answer -- this deployer has launched nothing else RugCheck knows of -- but
+      a *missing* list means RugCheck did not look, and that stays unknown.
+    """
+    for name in risks:
+        lowered = name.lower()
+        if "creator" in lowered and ("rug" in lowered or "history" in lowered):
+            return 1
+    if creator and isinstance(payload.get("creatorTokens"), list):
+        return 0
+    return None
 
 
 def _rugcheck_lp(
@@ -894,6 +939,7 @@ def parse_rugcheck(
 
     total_holders = _number(payload.get("totalHolders"))
     creator = payload.get("creator") or payload.get("creatorAddress")
+    prior_rugs = _rugcheck_prior_rugs(payload, risks, creator)
     return SafetyReport(
         chain="solana",
         contract=contract,
@@ -909,6 +955,7 @@ def parse_rugcheck(
         top10_ex_lp_pct=top10,
         holder_count=int(total_holders) if total_holders is not None else None,
         rugged=payload.get("rugged") if isinstance(payload.get("rugged"), bool) else None,
+        deployer_prior_rugs=prior_rugs,
         risk_labels=risks,
         source_fields=_seen_fields("rugcheck", payload),
     )
