@@ -684,6 +684,49 @@ class TestSafetySource:
         assert report.lp_locked_pct == pytest.approx(100.0)
         assert report.rugged is False
 
+    def test_solana_is_asked_one_mint_at_a_time(self):
+        """GoPlus's native-chain routes answer for the FIRST address only and
+        ignore the rest. The EVM route does batch, which is why this was invisible:
+        identical code, correct on one route, silently lossy on the other.
+
+        Measured from the collector's own rows before the fix -- 4, 9, 10, 17 and
+        13 mints sent in a cycle each came back with exactly one report, and 24
+        (two batches) with exactly two. It left sellability unanswered for 59 of
+        70 collected tokens while the parser that answers it worked correctly.
+        """
+        calls: list[str] = []
+        mints = [f"Mint{i}" for i in range(5)]
+        self.source(calls).fetch([("solana", m) for m in mints])
+
+        token_calls = [c for c in calls if "solana/token_security" in c]
+        assert len(token_calls) == len(mints), (
+            f"{len(mints)} mints went out in {len(token_calls)} requests; GoPlus "
+            "answers one per request on this route, so the rest were dropped."
+        )
+        for call in token_calls:
+            assert call.count("%2C") == 0 and call.count(",") == 0, (
+                f"more than one address in {call}"
+            )
+
+    def test_evm_is_still_batched(self):
+        """The fix is per-chain, not a blanket one-at-a-time: the EVM route really
+        does answer for every address sent, and 20 requests where 1 would do is a
+        rate limit spent for nothing."""
+        calls: list[str] = []
+        tokens = [("bnb", f"0x{i:040x}") for i in range(5)]
+        self.source(calls).fetch(tokens)
+        assert len([c for c in calls if "token_security/56" in c]) == 1
+
+    def test_a_native_chain_cycle_is_capped(self):
+        """One request per token means an uncapped sweep puts a throttled request
+        per token into every run, forever. Same cap and reasoning as RugCheck's."""
+        calls: list[str] = []
+        mints = [f"Mint{i}" for i in range(40)]
+        self.source(calls, native_limit=6, rugcheck_limit=0).fetch(
+            [("solana", m) for m in mints]
+        )
+        assert len([c for c in calls if "solana/token_security" in c]) == 6
+
     def test_a_chain_with_no_safety_source_is_left_unmeasured(self):
         """Robinhood Chain today. Unknown excludes, so this is the safe direction."""
         found = self.source().fetch([("robinhood", "0xrh")])
@@ -740,6 +783,23 @@ class TestTheShapeIsRecorded:
         report = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
         assert report.source_fields
         assert report.measured_fields == replace(report, source_fields=()).measured_fields
+
+    def test_one_level_of_nesting_is_recorded(self):
+        """The open question is usually about a nested key, not a top-level one:
+        creators[].malicious answers deployer history, and the outer name alone
+        cannot say whether it was there."""
+        report = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
+        assert "goplus:creators[].malicious" in report.source_fields
+        assert "goplus:mintable.status" in report.source_fields
+
+    def test_nesting_stops_at_one_level(self):
+        """Two levels would start recording holder addresses, which is payload
+        rather than shape."""
+        from collectors.safety import _seen_fields
+
+        fields = _seen_fields("x", {"a": {"b": {"c": 1}}})
+        assert "x:a.b" in fields
+        assert not any(".c" in f for f in fields)
 
     def test_an_envelope_that_is_not_a_mapping_records_nothing(self):
         from collectors.safety import _seen_fields
