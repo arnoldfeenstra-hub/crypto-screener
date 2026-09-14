@@ -192,6 +192,15 @@ class SafetyReport:
     # pool-level rows can tell "unlocked everywhere" from "one dust pool drags the
     # aggregate down". Evidence, not a measurement -- see `measured_fields`.
     lp_markets: tuple[dict[str, Any], ...] = ()
+    # The top-level keys each source actually returned for this token, prefixed by
+    # source. Not a measurement -- a record of the shape that produced one.
+    #
+    # Every parser here is total: an unrecognised shape degrades to None rather
+    # than crashing or guessing, which is the right failure mode and also a silent
+    # one. Twice now a field has been quietly absent in the live response and the
+    # only symptom was a filter that could never answer, diagnosable only by
+    # waiting for another run. This is what makes the shape itself reviewable.
+    source_fields: tuple[str, ...] = ()
     # The denominator the share above was computed over. Kept for the same reason
     # as the pool rows: a ratio whose divisor is gone cannot be checked.
     lp_total_usd: float | None = None
@@ -227,6 +236,7 @@ class SafetyReport:
                 "risk_labels",
                 "lp_markets",
                 "lp_total_usd",
+                "source_fields",
                 "error",
             )
             and getattr(self, f.name) is not None
@@ -258,6 +268,7 @@ class SafetyReport:
         row = asdict(self)
         row["risk_labels"] = json.dumps(list(self.risk_labels))
         row["lp_markets"] = json.dumps(list(self.lp_markets))
+        row["source_fields"] = json.dumps(list(self.source_fields))
         row["snapshot_id"] = snapshot_id
         row["ts"] = self.collected_at_ms
         return row
@@ -289,6 +300,13 @@ def from_row(row: dict[str, Any]) -> SafetyReport:
     if not isinstance(markets, list):
         markets = []
     values["lp_markets"] = tuple(m for m in markets if isinstance(m, dict))
+    seen = row.get("source_fields")
+    if isinstance(seen, str):
+        try:
+            seen = json.loads(seen)
+        except json.JSONDecodeError:
+            seen = []
+    values["source_fields"] = tuple(str(f) for f in (seen or []) if isinstance(seen, list))
     values.setdefault("source", "stored")
     values.setdefault("collected_at_ms", row.get("ts") or 0)
     return SafetyReport(**values)
@@ -350,6 +368,7 @@ def merge(first: SafetyReport | None, second: SafetyReport | None) -> SafetyRepo
         source="+".join(sources),
         deployer_address=first.deployer_address or second.deployer_address,
         lp_markets=first.lp_markets or second.lp_markets,
+        source_fields=tuple(sorted(set(first.source_fields) | set(second.source_fields))),
         collected_at_ms=max(first.collected_at_ms, second.collected_at_ms),
         risk_labels=tuple(sorted(set(first.risk_labels) | set(second.risk_labels))),
         error=first.error or second.error,
@@ -358,6 +377,21 @@ def merge(first: SafetyReport | None, second: SafetyReport | None) -> SafetyRepo
 
 
 # --- parsing helpers ---------------------------------------------------------
+
+
+def _seen_fields(source: str, data: Any) -> tuple[str, ...]:
+    """The top-level keys ``source`` returned, prefixed by source name.
+
+    Provenance for the shape, not for the values. Every parser in this module is
+    total -- an unrecognised response degrades each field to None rather than
+    crashing or guessing -- which is the right failure mode and a completely
+    silent one. The symptom is a filter that answers "unknown" forever, and the
+    only way to tell a field that was absent from one that was misread has been
+    to wait for another live run. A key list is a few hundred bytes and settles it.
+    """
+    if not isinstance(data, dict):
+        return ()
+    return tuple(sorted(f"{source}:{key}" for key in data))
 
 
 def _flag(value: Any) -> bool | None:
@@ -542,6 +576,7 @@ def parse_goplus_evm(
             admin_renounced=renounced,
             deployer_address=str(creator) if creator else None,
             risk_labels=tuple(risks),
+            source_fields=_seen_fields("goplus", data),
         )
     return out
 
@@ -627,7 +662,13 @@ def parse_goplus_solana(
                     "balance_mutable_authority",
                     (data.get("balance_mutable_authority") or {}).get("status"),
                 ),
-                ("default_account_state_frozen", data.get("default_account_state")),
+                # `default_account_state` is deliberately absent. Reading "1" as
+                # "frozen" labelled 36 of 36 real tokens frozen -- every one of
+                # them trading with live liquidity at the time, so the reading
+                # cannot be right. The encoding is unverified from here, and a
+                # risk label shown to a reader on every single token is worse than
+                # no label. `source_fields` records whether the key was returned;
+                # interpreting it needs the live values, not another guess.
                 ("transfer_hook", "1" if data.get("transfer_hook") else "0"),
             )
             if _flag(value) is True
@@ -686,6 +727,7 @@ def parse_goplus_solana(
             # is answered without a second request.
             deployer_prior_rugs=prior_rugs,
             risk_labels=tuple(risks),
+            source_fields=_seen_fields("goplus", data),
         )
     return out
 
@@ -825,6 +867,7 @@ def parse_rugcheck(
         holder_count=int(total_holders) if total_holders is not None else None,
         rugged=payload.get("rugged") if isinstance(payload.get("rugged"), bool) else None,
         risk_labels=risks,
+        source_fields=_seen_fields("rugcheck", payload),
     )
 
 
