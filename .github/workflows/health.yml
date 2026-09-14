@@ -1,0 +1,93 @@
+# Does the deployed page actually answer?
+#
+# This file used to deploy. It does not any more: Vercel's own Git integration is
+# connected to this repository and owns deploys now, and running both would mean
+# every push deploys twice -- the trade-off the old header described, resolved.
+#
+# What the Git integration gives up, and this restores: it reports whether the
+# BUILD succeeded, which is not the same question. api/screener.py runs on Vercel
+# with no requirements.txt and nothing installed, so an accidental `import duckdb`
+# builds perfectly and then 500s on every request. Vercel would show that deploy
+# green.
+#
+# Two layers catch it, before and after:
+#
+#   * ci.yml runs the test suite on every push, and the suite re-imports
+#     api/screener.py with duckdb, requests, numpy and pandas blocked. That check
+#     was silently vacuous until it was fixed to use find_spec -- Python 3.12
+#     removed the find_module fallback -- so it now proves the blocker blocks
+#     before trusting what it lets through.
+#   * this workflow asks the live deployment for the page and the endpoint and
+#     reports what came back. A deploy that serves a 500 is worse than one that
+#     fails, because nothing says so.
+#
+# Vercel deploys on push regardless of whether CI is green, so the second layer
+# is not redundant with the first.
+#
+# Setup: one repository VARIABLE (not a secret -- it is a public URL), in
+# Settings -> Secrets and variables -> Actions -> Variables:
+#
+#   SCREENER_URL    e.g. https://crypto-screener-fean.vercel.app
+#
+# Until it is set the job succeeds with a notice naming it, rather than putting a
+# red cross on a repository nobody has pointed at a deployment yet.
+
+name: health
+
+on:
+  schedule:
+    # Four times a day. The collector commits hourly and each commit triggers a
+    # Vercel deploy, so a broken function would otherwise sit there serving 500s
+    # until someone happened to open the page.
+    - cron: "35 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Override SCREENER_URL for this run"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check the deployment answers
+        env:
+          URL: ${{ inputs.url || vars.SCREENER_URL }}
+        run: |
+          set -o pipefail
+          if [ -z "$URL" ]; then
+            echo "::notice title=Health check skipped::Set the SCREENER_URL repository variable to the deployed URL (Settings -> Secrets and variables -> Actions -> Variables). See the comments at the top of .github/workflows/health.yml."
+            exit 0
+          fi
+
+          echo "checking $URL"
+          PAGE=$(curl -sS -o /tmp/page.html -w '%{http_code}' --max-time 30 "$URL/") || PAGE=000
+          API=$(curl -sS -o /tmp/api.json -w '%{http_code}' --max-time 90 "$URL/api/screener?limit=5") || API=000
+
+          {
+            echo "### $URL"
+            echo ""
+            echo "| check | status |"
+            echo "|---|---|"
+            echo "| page | $PAGE |"
+            echo "| /api/screener | $API |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # The page is the deliverable. It falling over is a failure.
+          if [ "$PAGE" != "200" ]; then
+            echo "::error title=Page::$URL/ returned $PAGE"
+            exit 1
+          fi
+
+          # The live endpoint is an enhancement: the page falls back to the
+          # exported dataset on its own and says on the page that the live view is
+          # unavailable. So this warns rather than fails.
+          if [ "$API" != "200" ]; then
+            echo "::warning title=Live endpoint::/api/screener returned $API. The page still works -- it falls back to the exported dataset."
+            head -c 600 /tmp/api.json || true
+          fi

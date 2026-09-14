@@ -628,7 +628,9 @@ class TestTheDeployedPage:
         packages -- and would not fail here, because both are installed locally.
         So the import is re-run with them blocked.
 
-        .github/workflows/deploy.yml runs the same check before deploying.
+        Nothing deploys from this repo any more -- Vercel's Git integration
+        owns that -- so this suite is the only thing standing between an
+        accidental import and a function that 500s on every request.
         """
         import importlib
 
@@ -673,27 +675,53 @@ class TestTheDeployedPage:
         assert hasattr(module, "handler"), "no `handler` class for the Vercel runtime"
         assert hasattr(module, "build_live_payload")
 
-    def test_a_workflow_deploys_what_github_receives(self):
-        """"Push to GitHub, deploy to Vercel" is a file in the repo, not a memory."""
+    def test_nothing_in_the_repo_deploys_any_more(self):
+        """Vercel's Git integration is connected and owns deploys. A second
+        deployer in the repo would mean every push deploys twice -- the trade-off
+        the old deploy.yml header described, and the reason it is gone."""
+        import yaml
+
+        directory = REPO_ROOT / ".github" / "workflows"
+        assert "deploy.yml" not in {p.name for p in directory.glob("*.yml")}
+
+        # Only what the steps actually RUN counts. Prose about Vercel deploying on
+        # push is exactly what these comments should say; a `vercel deploy` in a
+        # run block is the thing that would deploy twice.
+        commands = []
+        for path in directory.glob("*.yml"):
+            workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+            for job in (workflow.get("jobs") or {}).values():
+                commands += [str(step.get("run", "")) for step in job.get("steps", [])]
+        ran = " ".join(commands).lower()
+        assert "vercel deploy" not in ran
+        assert "vercel@" not in ran
+
+    def test_something_still_asks_whether_the_deployment_answers(self):
+        """The Git integration reports whether the BUILD succeeded, which is a
+        different question. api/screener.py runs with nothing installed, so an
+        accidental `import duckdb` builds green and 500s on every request -- and
+        Vercel deploys on push whether or not CI is green, so the test suite
+        catching it first is not the same as nobody shipping it."""
         import yaml
 
         workflow = yaml.safe_load(
-            (REPO_ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
+            (REPO_ROOT / ".github" / "workflows" / "health.yml").read_text(encoding="utf-8")
         )
-        # PyYAML reads the bare `on:` key as the boolean True.
         triggers = workflow.get("on", workflow.get(True))
-        assert "push" in triggers
-        assert "workflow_dispatch" in triggers
-        # The collector commits with GITHUB_TOKEN, and such a push never starts
-        # another workflow, so without a schedule the exported dataset would never
-        # reach the deployed page.
         assert "schedule" in triggers
+        body = " ".join(
+            str(step.get("run", "")) for step in workflow["jobs"]["check"]["steps"]
+        )
+        assert "/api/screener" in body
+        # Unset URL must be a notice, not a red cross on a repository nobody has
+        # pointed at a deployment yet.
+        assert "SCREENER_URL" in body
 
     def test_a_workflow_runs_the_tests_on_every_push(self):
         """The suite is only a check if something runs it without being asked.
 
         Neither other workflow fails on a broken test: collect.yml gathers data
-        and deploy.yml publishes. Without this one a push that broke scoring would
+        and health.yml only checks. Without this one a push that broke scoring would
         go green, be committed on top of by the hourly collector, and ship.
         """
         import yaml
