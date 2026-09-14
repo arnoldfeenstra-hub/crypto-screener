@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-14T09:19:21+00:00",
+  "generated_at": "2026-09-14T10:17:25+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -63,13 +63,13 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 76,
-    "outcome_observations": 1093,
+    "outcome_observations": 1111,
     "social_observations": 248,
     "labelled_snapshots": 74,
     "excluded_on_evidence": 37,
     "excluded_as_unmeasured": 38,
     "safety_checked": 76,
-    "safety_observations": 297
+    "safety_observations": 298
   },
   "calibration": {
     "verdict": "not_ready",
@@ -4349,7 +4349,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789355866177,
+        "collected_at_ms": 1789381038424,
         "honeypot": false,
         "buy_tax_pct": 1.0,
         "sell_tax_pct": 0.9900000000000001,
@@ -4357,8 +4357,8 @@
         "freeze_active": false,
         "lp_burned": false,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 15.122273359483243,
-        "holder_count": 2600,
+        "top10_ex_lp_pct": 15.29061244303759,
+        "holder_count": 2775,
         "deployer_address": "0xbc91c86f6d6242b05e4a043cc486dc2bd02bd886",
         "deployer_prior_rugs": 0,
         "rugged": null,
