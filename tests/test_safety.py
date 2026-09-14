@@ -747,6 +747,66 @@ class TestSafetySource:
         assert found[("bnb", CLEAN_EVM)].deployer_prior_rugs is None
 
 
+class TestDeployerHistoryOnSolana:
+    """The last filter standing between the collector and a ranked list.
+
+    It was unanswered for 62 of 74 tokens, for two separate reasons found in the
+    same inventory: GoPlus's key is not the one the docs name, and its creator
+    list is usually empty anyway.
+    """
+
+    def test_goplus_reads_the_key_it_actually_sends(self):
+        """`creators[].malicious_address`, not the documented `malicious`. One
+        word off, and the total parser degraded it to "not measured" in silence on
+        every Solana row from the first live run onward."""
+        bad = next(
+            iter(parse_goplus_solana(DATA["goplus_solana_malicious_creator"]).values())
+        )
+        assert bad.deployer_prior_rugs == 1
+
+    def test_a_creator_goplus_cleared_is_a_measured_zero(self):
+        report = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
+        assert report.deployer_prior_rugs == 0
+
+    def test_an_address_where_a_flag_was_expected_stays_unknown(self):
+        """The guard on reading a field whose meaning is inferred from its name.
+        If `malicious_address` holds an address rather than 0/1, _flag returns
+        None and the filter abstains -- rather than reading a non-empty string as
+        a truthy "this deployer has rugged", or worse defaulting it to zero."""
+        payload = {
+            "result": {
+                "M": {
+                    "mintable": {"status": "0"},
+                    "creators": [{"address": "C", "malicious_address": "SoMeAddr111"}],
+                }
+            }
+        }
+        assert next(iter(parse_goplus_solana(payload).values())).deployer_prior_rugs is None
+
+    def test_rugcheck_answers_where_goplus_cannot(self):
+        """GoPlus's creator list was empty for 24 of the 25 rows that carried one.
+        RugCheck returned creator, creatorBalance and creatorTokens on all 25."""
+        rugged = parse_rugcheck(DATA["rugcheck_creator_rugged"], "x")
+        assert rugged.deployer_prior_rugs == 1
+
+    def test_an_enumerated_creator_with_no_rug_risk_is_a_measured_zero(self):
+        assert parse_rugcheck(DATA["rugcheck_report"], SOL_MINT).deployer_prior_rugs == 0
+
+    def test_a_creator_rugcheck_did_not_enumerate_stays_unknown(self):
+        """The narrow half of the permissive reading. Naming the creator is not
+        the same as having looked at what else they launched, and this is a
+        rejection filter -- a wrong zero lets a token through."""
+        report = parse_rugcheck(DATA["rugcheck_creator_not_enumerated"], "x")
+        assert report.deployer_prior_rugs is None
+
+    def test_the_unsafe_answer_survives_a_merge(self):
+        """GoPlus clearing a creator must not erase RugCheck finding a rug."""
+        clean = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
+        rugged = parse_rugcheck(DATA["rugcheck_creator_rugged"], SOL_MINT)
+        assert merge(clean, rugged).deployer_prior_rugs == 1
+        assert merge(rugged, clean).deployer_prior_rugs == 1
+
+
 class TestTheShapeIsRecorded:
     """Every parser here is total: an unrecognised response degrades each field to
     None rather than crashing or guessing. That is the right failure mode and a
@@ -789,7 +849,9 @@ class TestTheShapeIsRecorded:
         creators[].malicious answers deployer history, and the outer name alone
         cannot say whether it was there."""
         report = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
-        assert "goplus:creators[].malicious" in report.source_fields
+        # The real key name, and the one the inventory surfaced: the parser had
+        # been reading the documented `malicious` and getting None on every row.
+        assert "goplus:creators[].malicious_address" in report.source_fields
         assert "goplus:mintable.status" in report.source_fields
 
     def test_nesting_stops_at_one_level(self):
