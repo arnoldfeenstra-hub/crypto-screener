@@ -149,32 +149,36 @@ The deployment is two halves, both from the **repo root** (not from `web/`):
 
 ### Push to GitHub, deploy to Vercel
 
-Two ways. **Pick one** — with both switched on, every push deploys twice.
+**Vercel's Git integration is connected and owns deploys.** Every push to the repository
+builds: production on the default branch, a preview URL on any other. No secrets, no
+workflow — the project is linked in the Vercel dashboard.
 
-**A. `.github/workflows/deploy.yml` (in the repo).** Add three repository secrets under
-*Settings → Secrets and variables → Actions*:
+The repo used to carry a `deploy.yml` that did the same job with three secrets. It is gone,
+because running both would mean every push deploys twice.
 
-| Secret | Where it comes from |
-|---|---|
-| `VERCEL_TOKEN` | Vercel → Account Settings → Tokens → Create |
-| `VERCEL_ORG_ID` | `.vercel/project.json` after one `vercel link`, or Project → Settings |
-| `VERCEL_PROJECT_ID` | same place |
+One consequence worth knowing: the collector commits hourly, and each of those commits
+triggers a build — roughly 24 a day against a Hobby limit of 100. That is comfortably
+inside it, and it is also what keeps the page's exported dataset fresh, so it is a feature
+rather than a cost. If the collector ever moves to every 30 minutes, put `[skip ci]` in
+`collect.yml`'s commit message and publish the data on a schedule instead.
 
-Then every push deploys: production on the default branch, a preview URL on any other
-branch. Until those secrets exist the job succeeds with a notice saying what to set,
-rather than putting a red cross on every push.
+### Is it actually up?
 
-It also runs daily at 06:20 UTC. That is not redundant: the collector commits with
-`GITHUB_TOKEN`, and a push made with that token never starts another workflow, so without
-the schedule the dataset it accumulates would sit in the repo and never reach the page.
-Before deploying, it re-imports `api/screener.py` with `duckdb`, `requests`, `numpy` and
-`pandas` blocked — that function runs on Vercel with nothing installed, and an accidental
-import of one of them is the failure that builds fine and then 500s on every request.
+A successful build is not the same as a working page. `api/screener.py` runs on Vercel with
+nothing installed, so an accidental `import duckdb` builds green and then 500s on every
+request — and Vercel deploys on push whether or not CI passed.
 
-**B. Vercel's own Git integration.** One click in the Vercel dashboard, no secrets. Simpler,
-but it deploys on *every* push — including the collector's data commit every 30 minutes,
-roughly 48 a day against a Hobby limit of 100. Put `[skip ci]` in `collect.yml`'s commit
-message if you want to suppress those.
+Two layers, before and after:
+
+- `ci.yml` runs the suite on every push, and the suite re-imports `api/screener.py` with
+  `duckdb`, `requests`, `numpy` and `pandas` blocked. (That check was silently vacuous until
+  it was fixed to use `find_spec`: Python 3.12 removed the `find_module` fallback both
+  workflows' pinned version relies on. It now proves the blocker blocks before trusting what
+  it lets through.)
+- `health.yml` asks the live deployment for the page and for `/api/screener` four times a
+  day and reports both status codes. Set the `SCREENER_URL` repository *variable* (not a
+  secret — it is a public URL) under *Settings → Secrets and variables → Actions →
+  Variables* to switch it on; until then it succeeds with a notice naming it.
 
 ### Deploying by hand
 
@@ -339,7 +343,8 @@ export_web.py              DuckDB → web/screener-data.json
 api/screener.py            Vercel function: live DexScreener → scored ranking (stdlib only)
 web/                       static viewer (Vercel), chain + mindshare + safety
 state/                     the dataset, as an append-only JSONL journal (tracked in git)
-.github/workflows/         collect.yml (the schedule) and deploy.yml (push -> Vercel)
+.github/workflows/         collect.yml (the schedule), ci.yml (lint + tests),
+                           health.yml (is the deployment answering?)
 tests/                     554 tests, network access blocked by conftest
 ```
 
