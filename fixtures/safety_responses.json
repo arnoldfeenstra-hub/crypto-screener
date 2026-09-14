@@ -23,7 +23,8 @@
     "",
     "The Solana cases below were added after the first live collector run showed check_sellability unanswerable for 12 of 13 real tokens, all Solana. GoPlus has no is_honeypot off EVM, so the question is answered from the SPL mechanics that actually block a sale: the non_transferable extension and a transfer_hook program. goplus_solana_empty_report is the guard that matters most -- an envelope covering nothing must stay unknown rather than become a pass.",
     "rugcheck_dust_pool_unlocked and rugcheck_every_pool_secured were added after the second live run left 11 of 13 real tokens rejected on liquidity_lock. A Solana token routinely has several pools, and collapsing them with min() reads a burned main pool plus a dust pool as 0% locked -- a rejection the data does not support. collectors.safety._rugcheck_lp now answers only where the pools agree; these two fixtures are the disagreeing and the agreeing case. Both are hand-built to the documented schema, same provenance caveat as everything else in this file.",
-    "GoPlus's creators[] key is malicious_address, NOT the documented malicious. Confirmed from a live source_fields inventory (collectors/safety._seen_fields), which is the only reason it was found: the total parser read the documented name, got None, and degraded to 'not measured' in silence on every Solana row. The fixtures above now carry the real name. rugcheck_creator_rugged and rugcheck_creator_not_enumerated are the two halves of _rugcheck_prior_rugs: a risk naming the creator's history is a measured one, and a report that names the creator without enumerating creatorTokens has not looked, so it stays unknown."
+    "GoPlus's creators[] key is malicious_address, NOT the documented malicious. Confirmed from a live source_fields inventory (collectors/safety._seen_fields), which is the only reason it was found: the total parser read the documented name, got None, and degraded to 'not measured' in silence on every Solana row. The fixtures above now carry the real name. rugcheck_creator_rugged and rugcheck_creator_not_enumerated are the two halves of _rugcheck_prior_rugs: a risk naming the creator's history is a measured one, and a report that names the creator without enumerating creatorTokens has not looked, so it stays unknown.",
+    "rugcheck_creator_not_enumerated is the common real shape: RugCheck names the creator and returns a computed score and a rugged verdict, but creatorTokens is null. Measured across 25 live rows in one cycle -- creatorTokens[] populated on 2, GoPlus creators[] on 1, score and rugged on all 25. Gating deployer history on creatorTokens left the filter abstaining for 22 of them; it is gated on the engine's own output instead."
   ],
   "goplus_evm_clean": {
     "code": 1,
@@ -619,6 +620,8 @@
         "owner": "H1",
         "pct": 2.0
       }
-    ]
+    ],
+    "score": 412,
+    "score_normalised": 18
   }
 }

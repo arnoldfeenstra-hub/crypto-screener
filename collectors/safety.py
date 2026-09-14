@@ -794,30 +794,47 @@ def _rugcheck_prior_rugs(
 ) -> int | None:
     """``check_deployer_history`` from a RugCheck report, or ``None``.
 
-    GoPlus answers this from `creators[].malicious_address`, but its creator list
-    came back empty for 24 of the 25 tokens that carried one, so on its own it
-    leaves the filter unanswered for almost everything. RugCheck returns
-    `creator`, `creatorBalance` and `creatorTokens` on every row observed, which
-    means it does look the deployer up.
+    Neither keyless source can identify the deployer for most Solana tokens.
+    Across 25 rows in one cycle, GoPlus's `creators[]` was empty for 24 and
+    RugCheck's `creatorTokens[]` for 23. That is a real limit, not a parse gap.
 
     Two readings, and the second is the one to argue with:
 
     * A risk naming the creator's rug history is a measured "at least one". Safe
-      direction, and the string below was seen in a live response.
-    * A report that names the creator AND enumerates their other launches, with
-      no such risk raised, is a measured zero. This is the permissive direction
-      on a rejection filter, so it is deliberately narrow: both the creator and
-      the `creatorTokens` list have to be present. An empty list is still an
-      answer -- this deployer has launched nothing else RugCheck knows of -- but
-      a *missing* list means RugCheck did not look, and that stays unknown.
+      direction, and the string is one seen in a live response.
+    * A report that names the creator, from an engine that evaluated this token
+      and did not raise that risk, is a measured zero.
+
+    The witness for "the engine evaluated this token" was `creatorTokens` being a
+    list, and that was the wrong field. It is a separate enrichment and comes back
+    null on most reports, so the filter abstained for 22 of those 25 rows -- which
+    is to say it was not screening, it was declining to answer, the same failure
+    check_liquidity_lock had. `score` and `score_normalised` come back on every
+    report observed, populated or not, alongside a `rugged` verdict: those are the
+    engine's own output, and their presence is what says it ran.
+
+    What this concedes, stated rather than buried: "RugCheck scored this token and
+    its named creator and raised no rug-history flag" is weaker than "this
+    deployer's prior launches were enumerated and none had rugged". It rests on
+    the risk engine's coverage rather than on a list this code can read. A token
+    whose deployer rugged under a wallet RugCheck has not connected will pass.
+
+    Naming the creator stays required either way. Without it there is no deployer
+    for any verdict to be about, and the answer is unknown -- 6 of those 25 rows.
     """
     for name in risks:
         lowered = name.lower()
         if "creator" in lowered and ("rug" in lowered or "history" in lowered):
             return 1
-    if creator and isinstance(payload.get("creatorTokens"), list):
-        return 0
-    return None
+    if not creator:
+        return None
+    evaluated = (
+        _number(payload.get("score")) is not None
+        or _number(payload.get("score_normalised")) is not None
+        or isinstance(payload.get("rugged"), bool)
+        or isinstance(payload.get("creatorTokens"), list)
+    )
+    return 0 if evaluated else None
 
 
 def _rugcheck_lp(
