@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-14T12:22:55+00:00",
+  "generated_at": "2026-09-14T13:19:54+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -63,13 +63,13 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 78,
-    "outcome_observations": 1192,
-    "social_observations": 260,
+    "outcome_observations": 1214,
+    "social_observations": 264,
     "labelled_snapshots": 77,
-    "excluded_on_evidence": 37,
-    "excluded_as_unmeasured": 38,
+    "excluded_on_evidence": 39,
+    "excluded_as_unmeasured": 36,
     "safety_checked": 78,
-    "safety_observations": 332
+    "safety_observations": 339
   },
   "calibration": {
     "verdict": "not_ready",
@@ -545,7 +545,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789370310551,
+        "collected_at_ms": 1789391966878,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
@@ -553,8 +553,8 @@
         "freeze_active": false,
         "lp_burned": false,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 61.036343714436065,
-        "holder_count": 1005,
+        "top10_ex_lp_pct": 57.90354335702059,
+        "holder_count": 1067,
         "deployer_address": "0x0147b7e34a26c4d7f444e548a35f97b437c157ff",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -575,13 +575,13 @@
       ],
       "pillar_scores": {
         "attention_velocity": null,
-        "community_depth": 2.37,
+        "community_depth": 3.9131263383297643,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 78.01084434439895,
         "asymmetry_timing": 36.666666666666664,
         "mindshare": 53.12671997819078
       },
-      "pillar_composite": 50.88386910523302,
+      "pillar_composite": 51.31251531032461,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -636,22 +636,23 @@
         "universe_boost_total": 3900.0
       },
       "safety": {
-        "source": "rugcheck",
-        "collected_at_ms": 1789367053991,
-        "honeypot": null,
+        "source": "goplus+rugcheck",
+        "collected_at_ms": 1789391985389,
+        "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 48.022335579599655,
-        "top10_ex_lp_pct": 25.763454923698646,
-        "holder_count": 4180,
+        "lp_locked_pct": 68.2069869325254,
+        "top10_ex_lp_pct": 29.447517991857445,
+        "holder_count": 5593,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
         "risk_labels": [
-          "Mutable metadata"
+          "Mutable metadata",
+          "metadata_mutable"
         ]
       },
       "data_completeness": 0.3888888888888889,
@@ -729,21 +730,23 @@
         "universe_boost_total": 3900.0
       },
       "safety": {
-        "source": "rugcheck",
-        "collected_at_ms": 1789367052905,
-        "honeypot": null,
-        "buy_tax_pct": null,
-        "sell_tax_pct": null,
+        "source": "goplus+rugcheck",
+        "collected_at_ms": 1789391988208,
+        "honeypot": false,
+        "buy_tax_pct": 0.0,
+        "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 9.215650442904114,
-        "holder_count": 3638,
+        "top10_ex_lp_pct": 101.00229103632923,
+        "holder_count": 523,
         "deployer_address": "9buSYiZYhtLQjEVSck9BsUvqFW7ipM1BiaUBw4MG2hDp",
-        "deployer_prior_rugs": null,
+        "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": []
+        "risk_labels": [
+          "Low Liquidity"
+        ]
       },
       "data_completeness": 0.4444444444444444,
       "fields_present": 24,
@@ -751,20 +754,19 @@
       "score": null,
       "rank": null,
       "excluded": true,
-      "rejected_by": [],
-      "indeterminate_on": [
-        "sellability",
-        "deployer_history"
+      "rejected_by": [
+        "concentration"
       ],
+      "indeterminate_on": [],
       "pillar_scores": {
         "attention_velocity": null,
-        "community_depth": 0.055,
+        "community_depth": 5.583055555555555,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 92.89277707609082,
         "asymmetry_timing": 69.22500000000001,
         "mindshare": 49.96838867611391
       },
-      "pillar_composite": 61.571056884361084,
+      "pillar_composite": 63.10662787201541,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -820,7 +822,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789367051908,
+        "collected_at_ms": 1789391990522,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -829,9 +831,9 @@
         "lp_burned": null,
         "lp_locked_pct": 0.0,
         "top10_ex_lp_pct": 99.76,
-        "holder_count": 347,
+        "holder_count": 350,
         "deployer_address": "AVmBM8kPbUZo5wyYe56BDWFdWBXKWUbBvXfHodn1Mbar",
-        "deployer_prior_rugs": null,
+        "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
           "High market cap per holder",
@@ -842,7 +844,6 @@
           "Mutable metadata",
           "Single holder ownership",
           "Top 10 holders high ownership",
-          "default_account_state_frozen",
           "metadata_mutable"
         ]
       },
@@ -857,18 +858,16 @@
         "concentration",
         "liquidity_depth"
       ],
-      "indeterminate_on": [
-        "deployer_history"
-      ],
+      "indeterminate_on": [],
       "pillar_scores": {
         "attention_velocity": null,
-        "community_depth": 0.8049999999999999,
+        "community_depth": 1.1913975155279504,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 20.015034134962345,
         "asymmetry_timing": 20.0,
         "mindshare": 0.8602041232505656
       },
-      "pillar_composite": 29.255982652349605,
+      "pillar_composite": 29.363315295551814,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -1658,16 +1657,16 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789370312511,
+        "collected_at_ms": 1789391976847,
         "honeypot": false,
-        "buy_tax_pct": null,
-        "sell_tax_pct": null,
+        "buy_tax_pct": 0.0,
+        "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.73643520147667,
-        "top10_ex_lp_pct": 34.921044718943165,
-        "holder_count": 1707,
+        "lp_locked_pct": 99.6974503057855,
+        "top10_ex_lp_pct": 34.177010947374995,
+        "holder_count": 1717,
         "deployer_address": "0xdd753903f06538c6cc8187f1e03bb276e1ca96c6",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -1676,13 +1675,11 @@
       "data_completeness": 0.3888888888888889,
       "fields_present": 21,
       "fields_expected": 54,
-      "score": null,
-      "rank": null,
-      "excluded": true,
+      "score": 22.63467338079778,
+      "rank": 2,
+      "excluded": false,
       "rejected_by": [],
-      "indeterminate_on": [
-        "sellability"
-      ],
+      "indeterminate_on": [],
       "pillar_scores": {
         "attention_velocity": null,
         "community_depth": 23.409221768999572,
@@ -1838,16 +1835,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789370319181,
+        "collected_at_ms": 1789391990861,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 98.66423385693199,
-        "top10_ex_lp_pct": 26.1728549596735,
-        "holder_count": 1605,
+        "lp_locked_pct": 91.35408499890269,
+        "top10_ex_lp_pct": 26.458730849745898,
+        "holder_count": 1959,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -1864,6 +1861,7 @@
       "excluded": true,
       "rejected_by": [],
       "indeterminate_on": [
+        "liquidity_lock",
         "deployer_history"
       ],
       "pillar_scores": {
@@ -1930,16 +1928,16 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789367045436,
-        "honeypot": false,
+        "collected_at_ms": 1789391978842,
+        "honeypot": true,
         "buy_tax_pct": 0.0,
-        "sell_tax_pct": 0.0,
+        "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": true,
-        "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 9.937101470565603,
-        "holder_count": 833,
+        "lp_locked_pct": 99.06984822587673,
+        "top10_ex_lp_pct": 9.248292422035629,
+        "holder_count": 1235,
         "deployer_address": "0x3f74b73965ba1e4b74788730b50b1b6d7061fde5",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -1953,10 +1951,12 @@
       "data_completeness": 0.4444444444444444,
       "fields_present": 24,
       "fields_expected": 54,
-      "score": 28.691089099966472,
-      "rank": 2,
-      "excluded": false,
-      "rejected_by": [],
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [
+        "sellability"
+      ],
       "indeterminate_on": [],
       "pillar_scores": {
         "attention_velocity": null,
