@@ -283,10 +283,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--chains",
-        default=",".join(chains.DEFAULT_CHAINS),
+        default=",".join(chains.default_chain_names()),
         help=(
             "comma-separated chains to watch (default: "
-            f"{','.join(chains.DEFAULT_CHAINS)}). Supported by the DexScreener "
+            f"{','.join(chains.default_chain_names())}). Supported by the DexScreener "
             f"source: {', '.join(chains.supported_names())}"
         ),
     )

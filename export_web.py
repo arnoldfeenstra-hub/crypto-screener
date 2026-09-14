@@ -23,6 +23,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from calibration.backtest import DEFAULT_LABEL, DEFAULT_THRESHOLD
+from calibration.backtest import rows_from_store as backtest_rows
+from calibration.backtest import run as run_backtest
 from calibration.fit import (
     MIN_DEAD_PER_SURVIVOR,
     MIN_TRIGGERED_TOKENS,
@@ -109,6 +112,13 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                 "regime": snap["regime"],
                 "source": snap["source"],
                 "chain_label": chain_registry.label(snap["chain"]),
+                # The token's page on DexScreener. Built from the registry rather
+                # than from the stored chain name, because the URL takes
+                # DexScreener's chainId -- /bsc/, not /bnb/ -- and null for a chain
+                # with no bound id rather than a guess that 404s.
+                "dexscreener_url": chain_registry.dexscreener_token_url(
+                    snap["chain"], snap["contract"]
+                ),
                 "mcap_usd": snap["market_mcap_usd"],
                 "fdv_usd": snap["market_fdv_usd"],
                 "liquidity_usd": snap["market_liquidity_usd"],
@@ -221,6 +231,17 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
 
     calibration = render_calibration(store)
 
+    # The exploratory backtest, exported so the page can show what was actually
+    # measured rather than only what the weights guess. It is not a calibration --
+    # the payload says so in its own field -- and the leads list is empty far more
+    # often than not, which is the honest common case and is rendered as such.
+    survivors, dead = store.survivor_counts("7d")
+    backtest = run_backtest(
+        backtest_rows(store),
+        triggered_tokens=triggered,
+        dead_per_survivor=(dead / survivors) if survivors else None,
+    )
+
     excluded_evidence = sum(
         1 for t in tokens if t["excluded"] and t["rejected_by"]
     )
@@ -325,6 +346,20 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             "explanation": calibration["explanation"],
             "base_rate_by_mcap_band": calibration["base_rate_by_mcap_band"],
             "fit": calibration.get("fit"),
+        },
+        "backtest": {
+            "is_calibration": False,
+            "label": DEFAULT_LABEL,
+            "threshold": DEFAULT_THRESHOLD,
+            "rows": backtest.rows,
+            "positives": backtest.positives,
+            "base_rate": backtest.base,
+            "verdict": backtest.verdict(),
+            "leads": [r.to_dict() for r in backtest.leads()],
+            # The whole table, so the negative results are as visible as the
+            # positive ones. A page that showed only what separated would be a
+            # page that had quietly gone looking for something.
+            "features": [r.to_dict() for r in backtest.results],
         },
         "published_base_rates": PUBLISHED_BASE_RATES,
         "trigger": {

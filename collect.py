@@ -245,7 +245,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--chains",
-        default=",".join(chains.DEFAULT_CHAINS),
+        default=",".join(chains.default_chain_names()),
         help=f"comma-separated (supported: {', '.join(chains.supported_names())})",
     )
     parser.add_argument("--state", default=DEFAULT_STATE_DIR, help="journal directory")

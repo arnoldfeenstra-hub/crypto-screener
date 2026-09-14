@@ -170,6 +170,9 @@ def build_live_payload(
                 "ticker": snapshot.ticker,
                 "chain": snapshot.chain,
                 "chain_label": chain_registry.label(snapshot.chain),
+                "dexscreener_url": chain_registry.dexscreener_token_url(
+                    snapshot.chain, snapshot.contract
+                ),
                 "contract": snapshot.contract,
                 "ts": snapshot.ts,
                 "snapshot_date": snapshot.snapshot_date,
@@ -340,7 +343,7 @@ def build_live_payload(
 
 def _parse_query(raw: str) -> tuple[list[str], int, bool]:
     params = urllib.parse.parse_qs(raw or "")
-    requested = params.get("chains", [",".join(chain_registry.DEFAULT_CHAINS)])[0]
+    requested = params.get("chains", [",".join(chain_registry.default_chain_names())])[0]
     chain_names = [c.strip() for c in requested.split(",") if c.strip()]
     try:
         limit = int(params.get("limit", [str(DEFAULT_LIMIT)])[0])

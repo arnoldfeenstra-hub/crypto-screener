@@ -160,6 +160,144 @@ class TestDeclaredLinks:
         page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
         assert "const safeHref" in page
         assert "u.protocol === 'http:' || u.protocol === 'https:'" in page
-        # The only href built from token data goes through it.
+        # Every href built from token data goes through it -- the declared social
+        # links, and the DexScreener button added alongside them.
         assert 'href="${esc(links[k])}"' in page
         assert "rel=\"noopener noreferrer nofollow\"" in page
+        assert "const href = safeHref(t.dexscreener_url)" in page
+        assert 'href="${esc(href)}"' in page
+
+    def test_every_href_in_the_row_template_is_a_vouched_variable(self):
+        """A stricter version of the above, so a third link cannot slip in raw.
+
+        The check is textual because the guard is: it is easy to add
+        `href="${t.some_url}"` to a row template and never notice that it skipped
+        safeHref. Only two spellings are allowed, and both are values safeHref
+        already returned.
+        """
+        import re
+
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        hrefs = set(re.findall(r'href="\$\{([^}]+)\}"', page))
+        assert hrefs == {"esc(links[k])", "esc(href)"}, hrefs
+
+
+class TestTheDexScreenerLink:
+    """A link button per row, built from the registry rather than from the page."""
+
+    def test_the_url_uses_dexscreeners_chain_id_not_the_stored_chain_name(self):
+        # /bsc/, not /bnb/. A page that built the URL from the `chain` column
+        # would produce a dead link on every BNB row.
+        store = Store()
+        store.append_snapshot(
+            Snapshot(
+                chain="bnb",
+                contract="0xdead",
+                trigger="mcap_250k",
+                source="dexscreener",
+                ticker="$B",
+                ts=T0,
+                market=Market(mcap_usd=300_000.0),
+            )
+        )
+        with store:
+            payload = build_payload(store)
+        assert payload["tokens"][0]["dexscreener_url"] == "https://dexscreener.com/bsc/0xdead"
+
+    def test_a_chain_with_no_bound_id_gets_no_link_rather_than_a_guess(self):
+        from collectors import chains
+
+        assert chains.dexscreener_token_url("robinhood", "0xdead") is None
+
+    def test_the_page_renders_a_dash_rather_than_a_dead_button(self):
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "no DexScreener id bound for this chain" in page
+
+
+class TestTheMomentumBlock:
+    def test_every_row_carries_the_group_even_when_it_is_all_null(self):
+        """Null on every row written before schema 7, which is the truth about
+        those rows. Omitting the key instead would make the page's own
+        "not measured" rendering indistinguishable from a bug."""
+        with store_with("dexscreener") as store:
+            payload = build_payload(store)
+        momentum = payload["tokens"][0]["momentum"]
+        assert set(momentum) == {
+            "volume_1h_usd",
+            "volume_6h_usd",
+            "txns_1h",
+            "buys_1h",
+            "sells_1h",
+            "buys_24h",
+            "sells_24h",
+            "price_change_5m_pct",
+            "price_change_1h_pct",
+            "price_change_6h_pct",
+            "price_change_24h_pct",
+        }
+        assert all(value is None for value in momentum.values())
+
+    def test_the_payload_states_the_weight_is_zero(self):
+        with store_with("dexscreener") as store:
+            payload = build_payload(store)
+        assert payload["momentum"]["prior_weight_in_composite"] == 0.0
+
+    def test_the_page_does_not_read_a_missing_sell_count_as_zero_sells(self):
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "if (b == null || s == null) return null;" in page
+
+
+class TestTheColumnGlossary:
+    """The three columns people ask about have to be explained on the page."""
+
+    def test_every_table_header_has_a_glossary_entry(self):
+        import re
+
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        head = re.search(r"<thead>(.*?)</thead>", page, re.S).group(1)
+        headers = re.findall(r"<th[^>]*>([^<]+)</th>", head)
+        described = set(re.findall(r"^  \['([^']+)',", page, re.M))
+        missing = [h.strip() for h in headers if h.strip() not in described]
+        assert not missing, f"columns with no glossary entry: {missing}"
+
+    def test_score_complete_and_pillars_are_distinguished_from_each_other(self):
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "fields_present / fields_expected" in page
+        assert "It is <i>not</i> the score" in page
+        assert "uncalibrated priors" in page
+
+    def test_the_glossary_is_rendered_on_load(self):
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "function renderGlossary()" in page
+        assert "renderGlossary();" in page
+
+
+class TestTheRefreshButton:
+    def test_the_button_exists_and_is_wired(self):
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert 'id="refresh"' in page
+        assert "addEventListener('click', doRefresh)" in page
+
+    def test_it_actually_refetches_rather_than_re_rendering(self):
+        """A refresh button that only re-sorts what is already in memory is a lie.
+
+        Both sources are re-fetched, and with a cache-busting query, because
+        'no-store' is honoured by the browser and not always by a CDN in front of
+        a static file.
+        """
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "loadCollected(), loadLive()" in page
+        assert "const bust =" in page
+        assert "bust('screener-data.json')" in page
+        assert "bust('/api/screener')" in page
+
+    def test_changing_a_filter_does_not_re_poll_dexscreener(self):
+        # render() re-draws from memory; doRefresh() goes to the network. The
+        # dropdowns are wired to the former.
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "addEventListener('change', render)" in page
+        assert "addEventListener('input', renderRows)" in page
+
+    def test_a_failed_refresh_keeps_the_rows_already_on_screen(self):
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "stale and labelled is better than blank" in page

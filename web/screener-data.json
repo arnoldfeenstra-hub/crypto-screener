@@ -1,17 +1,18 @@
 {
-  "generated_at": "2026-09-14T17:15:19+00:00",
+  "generated_at": "2026-09-14T18:58:51+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
-  "prompt_version": 4,
-  "weights_version": "priors-v2",
+  "prompt_version": 5,
+  "weights_version": "priors-v3",
   "weights": {
     "attention_velocity": 0.28,
     "community_depth": 0.2,
     "lineage_meta_fit": 0.15,
     "onchain_structure": 0.22,
     "asymmetry_timing": 0.15,
-    "mindshare": 0.0
+    "mindshare": 0.0,
+    "momentum_flow": 0.0
   },
   "weights_are_calibrated": false,
   "data_sources": [
@@ -39,6 +40,11 @@
       "count": 2
     }
   ],
+  "momentum": {
+    "prior_weight_in_composite": 0.0,
+    "definition": "The shape of the last hour rather than the level of the last day: the buy/sell split over 1h and 24h, 1h volume against the 6h rate, and the per-window price change. Stored raw and derived at read time.",
+    "caveat": "Weight 0.00 in the composite. A ratio between two nested windows saturates -- a token younger than the long window has identical counts in both -- so those components are dropped when pinned rather than scored. The buy/sell split is a ratio inside one window and does not saturate."
+  },
   "mindshare": {
     "method_version": "mindshare-v1",
     "component_weights": {
@@ -98,6 +104,659 @@
     },
     "fit": null
   },
+  "backtest": {
+    "is_calibration": false,
+    "label": "max_multiple_6h",
+    "threshold": 1.5,
+    "rows": 76,
+    "positives": 22,
+    "base_rate": 0.2894736842105263,
+    "verdict": "76 tokens, 22 reached max_multiple_6h >= 1.5x -- a base rate of 28.9% [20.0%, 40.0%]. Phase 0's gate is NOT met (85/300 triggered tokens, no survivors yet/20 dead per survivor), so nothing below is a calibration and no weight in prompts/score.md may be changed on it. Features that separated out of sample and survived age stratification: top10_ex_lp_pct. Treat them as leads to collect against, not as a measured edge.",
+    "leads": [
+      {
+        "feature": "top10_ex_lp_pct",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.3324915824915825,
+        "auc_ci": [
+          0.20504716349685395,
+          0.4599360014863111
+        ],
+        "auc_out_of_sample": 0.7368421052631579,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 40.21,
+        "auc_by_age_band": {
+          "<1h": 0.3055555555555556,
+          "1-6h": 0.17592592592592593,
+          "6-48h": null,
+          ">48h": 0.28205128205128205
+        },
+        "separates": true,
+        "survives_strata": true,
+        "is_control": false,
+        "verdict": "separates, out of sample, within age bands -- a lead, not a result"
+      }
+    ],
+    "features": [
+      {
+        "feature": "age_minutes",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.28745791245791247,
+        "auc_ci": [
+          0.16792796518369718,
+          0.40698785973212775
+        ],
+        "auc_out_of_sample": 0.618421052631579,
+        "top_decile_lift": 0.0,
+        "tie_share": 0.06578947368421052,
+        "tie_value": 34.0,
+        "auc_by_age_band": {
+          "<1h": 0.3958333333333333,
+          "1-6h": 0.7962962962962963,
+          "6-48h": null,
+          ">48h": 0.14102564102564102
+        },
+        "separates": true,
+        "survives_strata": true,
+        "is_control": true,
+        "verdict": "control variable -- younger surges more; the strata are cut on it, so it is not checked against itself"
+      },
+      {
+        "feature": "txn_accel_6h_24h",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.6994949494949495,
+        "auc_ci": [
+          0.5623611069061412,
+          0.8366287920837578
+        ],
+        "auc_out_of_sample": 0.618421052631579,
+        "top_decile_lift": 2.9610389610389607,
+        "tie_share": 0.5131578947368421,
+        "tie_value": 4.0,
+        "auc_by_age_band": {
+          "<1h": 0.5,
+          "1-6h": 0.5,
+          "6-48h": null,
+          ">48h": 0.6794871794871795
+        },
+        "separates": true,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "socials_declared_n",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.3244949494949495,
+        "auc_ci": [
+          0.1983453058392634,
+          0.4506445931506356
+        ],
+        "auc_out_of_sample": 0.4407894736842105,
+        "top_decile_lift": 0.0,
+        "tie_share": 0.4605263157894737,
+        "tie_value": 2.0,
+        "auc_by_age_band": {
+          "<1h": 0.5,
+          "1-6h": 0.4444444444444444,
+          "6-48h": null,
+          ">48h": 0.11538461538461539
+        },
+        "separates": true,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "top10_ex_lp_pct",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.3324915824915825,
+        "auc_ci": [
+          0.20504716349685395,
+          0.4599360014863111
+        ],
+        "auc_out_of_sample": 0.7368421052631579,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 40.21,
+        "auc_by_age_band": {
+          "<1h": 0.3055555555555556,
+          "1-6h": 0.17592592592592593,
+          "6-48h": null,
+          ">48h": 0.28205128205128205
+        },
+        "separates": true,
+        "survives_strata": true,
+        "is_control": false,
+        "verdict": "separates, out of sample, within age bands -- a lead, not a result"
+      },
+      {
+        "feature": "data_completeness",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.3712121212121212,
+        "auc_ci": [
+          0.23815775727994984,
+          0.5042664851442926
+        ],
+        "auc_out_of_sample": 0.3881578947368421,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.5263157894736842,
+        "tie_value": 0.4444444444444444,
+        "auc_by_age_band": {
+          "<1h": 0.3958333333333333,
+          "1-6h": 0.375,
+          "6-48h": null,
+          ">48h": 0.6538461538461539
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "declared_telegram",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.382996632996633,
+        "auc_ci": [
+          0.24844914339107196,
+          0.5175441226021941
+        ],
+        "auc_out_of_sample": 0.4342105263157895,
+        "top_decile_lift": 0.0,
+        "tie_share": 0.6973684210526315,
+        "tie_value": 0.0,
+        "auc_by_age_band": {
+          "<1h": 0.5694444444444444,
+          "1-6h": 0.4722222222222222,
+          "6-48h": null,
+          ">48h": 0.25
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "lp_locked_pct",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.3838383838383838,
+        "auc_ci": [
+          0.2491880333365086,
+          0.518488734340259
+        ],
+        "auc_out_of_sample": 0.34210526315789475,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.21052631578947367,
+        "tie_value": 100.0,
+        "auc_by_age_band": {
+          "<1h": 0.375,
+          "1-6h": 0.23148148148148148,
+          "6-48h": null,
+          ">48h": 0.48717948717948717
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "holder_count",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.6136363636363636,
+        "auc_ci": [
+          0.4697423210337084,
+          0.7575304062390189
+        ],
+        "auc_out_of_sample": 0.5657894736842105,
+        "top_decile_lift": 0.9870129870129869,
+        "tie_share": 0.02631578947368421,
+        "tie_value": 2060.0,
+        "auc_by_age_band": {
+          "<1h": 0.6111111111111112,
+          "1-6h": 0.7222222222222222,
+          "6-48h": null,
+          ">48h": 0.6666666666666666
+        },
+        "separates": false,
+        "survives_strata": true,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "declared_website",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.4065656565656566,
+        "auc_ci": [
+          0.2693282319660153,
+          0.5438030811652979
+        ],
+        "auc_out_of_sample": 0.4934210526315789,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.7236842105263158,
+        "tie_value": 1.0,
+        "auc_by_age_band": {
+          "<1h": 0.3611111111111111,
+          "1-6h": 0.5138888888888888,
+          "6-48h": null,
+          ">48h": 0.24358974358974358
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "liquidity_over_mcap",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.4090909090909091,
+        "auc_ci": [
+          0.2715886060696111,
+          0.5465932121122071
+        ],
+        "auc_out_of_sample": 0.5789473684210527,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 0.23706486661956502,
+        "auc_by_age_band": {
+          "<1h": 0.4444444444444444,
+          "1-6h": 0.35185185185185186,
+          "6-48h": null,
+          ">48h": 0.38461538461538464
+        },
+        "separates": false,
+        "survives_strata": true,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "liquidity_usd",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.4385521885521885,
+        "auc_ci": [
+          0.29829180546179046,
+          0.5788125716425866
+        ],
+        "auc_out_of_sample": 0.6710526315789473,
+        "top_decile_lift": 1.4805194805194803,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 74489.1,
+        "auc_by_age_band": {
+          "<1h": 0.3333333333333333,
+          "1-6h": 0.6388888888888888,
+          "6-48h": null,
+          ">48h": 0.5512820512820513
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "value_per_trade",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.5462962962962963,
+        "auc_ci": [
+          0.4011686988354656,
+          0.691423893757127
+        ],
+        "auc_out_of_sample": 0.6052631578947368,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 147.19240336134453,
+        "auc_by_age_band": {
+          "<1h": 0.4305555555555556,
+          "1-6h": 0.6666666666666666,
+          "6-48h": null,
+          ">48h": 0.7435897435897436
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "fdv_over_mcap",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.5454545454545454,
+        "auc_ci": [
+          0.40033281184602065,
+          0.6905762790630702
+        ],
+        "auc_out_of_sample": 0.625,
+        "top_decile_lift": 1.9740259740259738,
+        "tie_share": 0.9736842105263158,
+        "tie_value": 1.0,
+        "auc_by_age_band": {
+          "<1h": 0.5,
+          "1-6h": 0.6111111111111112,
+          "6-48h": null,
+          ">48h": 0.5
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "turnover_24h",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.45791245791245794,
+        "auc_ci": [
+          0.3161721568048246,
+          0.5996527590200913
+        ],
+        "auc_out_of_sample": 0.4473684210526316,
+        "top_decile_lift": 0.0,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 0.27872558192824,
+        "auc_by_age_band": {
+          "<1h": 0.3055555555555556,
+          "1-6h": 0.06481481481481481,
+          "6-48h": null,
+          ">48h": 0.6794871794871795
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "declared_x",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.4595959595959596,
+        "auc_ci": [
+          0.3177394288883406,
+          0.6014524903035786
+        ],
+        "auc_out_of_sample": 0.47368421052631576,
+        "top_decile_lift": 0.9870129870129869,
+        "tie_share": 0.9210526315789473,
+        "tie_value": 1.0,
+        "auc_by_age_band": {
+          "<1h": 0.6111111111111112,
+          "1-6h": 0.4444444444444444,
+          "6-48h": null,
+          ">48h": 0.3333333333333333
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "boost_total",
+        "n": 45,
+        "positives": 9,
+        "auc": 0.5324074074074074,
+        "auc_ci": [
+          0.31707275507486843,
+          0.7477420597399465
+        ],
+        "auc_out_of_sample": 0.4,
+        "top_decile_lift": 0.0,
+        "tie_share": 0.4222222222222222,
+        "tie_value": 10.0,
+        "auc_by_age_band": {
+          "<1h": null,
+          "1-6h": null,
+          "6-48h": null,
+          ">48h": 0.5793650793650794
+        },
+        "separates": false,
+        "survives_strata": true,
+        "is_control": false,
+        "verdict": "suspect: 42% of rows share one value"
+      },
+      {
+        "feature": "pair_count",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.5303030303030303,
+        "auc_ci": [
+          0.38537471823178715,
+          0.6752313423742734
+        ],
+        "auc_out_of_sample": 0.32894736842105265,
+        "top_decile_lift": 1.4805194805194803,
+        "tie_share": 0.4868421052631579,
+        "tie_value": 1.0,
+        "auc_by_age_band": {
+          "<1h": 0.3888888888888889,
+          "1-6h": 0.5370370370370371,
+          "6-48h": null,
+          ">48h": 0.5769230769230769
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "mindshare_percentile",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.4743265993265993,
+        "auc_ci": [
+          0.33153817706248073,
+          0.617115021590718
+        ],
+        "auc_out_of_sample": 0.5,
+        "top_decile_lift": 0.9870129870129869,
+        "tie_share": 0.02631578947368421,
+        "tie_value": 57.14285714285714,
+        "auc_by_age_band": {
+          "<1h": 0.3333333333333333,
+          "1-6h": 0.2222222222222222,
+          "6-48h": null,
+          ">48h": 0.7692307692307693
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "mindshare_share_pct",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.48569023569023567,
+        "auc_ci": [
+          0.3422874679857091,
+          0.6290930033947623
+        ],
+        "auc_out_of_sample": 0.5263157894736842,
+        "top_decile_lift": 0.49350649350649345,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 0.20810989882676964,
+        "auc_by_age_band": {
+          "<1h": 0.2777777777777778,
+          "1-6h": 0.25,
+          "6-48h": null,
+          ">48h": 0.6794871794871795
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "mcap_usd",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.49663299663299665,
+        "auc_ci": [
+          0.3527249345944573,
+          0.640541058671536
+        ],
+        "auc_out_of_sample": 0.2894736842105263,
+        "top_decile_lift": 0.9870129870129869,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 314214.0,
+        "auc_by_age_band": {
+          "<1h": 0.3472222222222222,
+          "1-6h": 0.6759259259259259,
+          "6-48h": null,
+          ">48h": 0.5641025641025641
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "volume_24h_usd",
+        "n": 76,
+        "positives": 22,
+        "auc": 0.5016835016835017,
+        "auc_ci": [
+          0.35757086134734906,
+          0.6457961420196544
+        ],
+        "auc_out_of_sample": 0.47368421052631576,
+        "top_decile_lift": 1.9740259740259738,
+        "tie_share": 0.013157894736842105,
+        "tie_value": 87579.48,
+        "auc_by_age_band": {
+          "<1h": 0.2361111111111111,
+          "1-6h": 0.3055555555555556,
+          "6-48h": null,
+          ">48h": 0.717948717948718
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "buy_pressure_1h",
+        "n": 0,
+        "positives": 0,
+        "auc": null,
+        "auc_ci": null,
+        "auc_out_of_sample": null,
+        "top_decile_lift": null,
+        "tie_share": 0.0,
+        "tie_value": null,
+        "auc_by_age_band": {},
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "unmeasurable"
+      },
+      {
+        "feature": "buy_pressure_24h",
+        "n": 0,
+        "positives": 0,
+        "auc": null,
+        "auc_ci": null,
+        "auc_out_of_sample": null,
+        "top_decile_lift": null,
+        "tie_share": 0.0,
+        "tie_value": null,
+        "auc_by_age_band": {},
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "unmeasurable"
+      },
+      {
+        "feature": "volume_accel_1h_6h",
+        "n": 0,
+        "positives": 0,
+        "auc": null,
+        "auc_ci": null,
+        "auc_out_of_sample": null,
+        "top_decile_lift": null,
+        "tie_share": 0.0,
+        "tie_value": null,
+        "auc_by_age_band": {},
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "unmeasurable"
+      },
+      {
+        "feature": "price_change_5m_pct",
+        "n": 0,
+        "positives": 0,
+        "auc": null,
+        "auc_ci": null,
+        "auc_out_of_sample": null,
+        "top_decile_lift": null,
+        "tie_share": 0.0,
+        "tie_value": null,
+        "auc_by_age_band": {},
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "unmeasurable"
+      },
+      {
+        "feature": "price_change_1h_pct",
+        "n": 0,
+        "positives": 0,
+        "auc": null,
+        "auc_ci": null,
+        "auc_out_of_sample": null,
+        "top_decile_lift": null,
+        "tie_share": 0.0,
+        "tie_value": null,
+        "auc_by_age_band": {},
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "unmeasurable"
+      },
+      {
+        "feature": "price_change_6h_pct",
+        "n": 0,
+        "positives": 0,
+        "auc": null,
+        "auc_ci": null,
+        "auc_out_of_sample": null,
+        "top_decile_lift": null,
+        "tie_share": 0.0,
+        "tie_value": null,
+        "auc_by_age_band": {},
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "unmeasurable"
+      },
+      {
+        "feature": "price_change_24h_pct",
+        "n": 0,
+        "positives": 0,
+        "auc": null,
+        "auc_ci": null,
+        "auc_out_of_sample": null,
+        "top_decile_lift": null,
+        "tie_share": 0.0,
+        "tie_value": null,
+        "auc_by_age_band": {},
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "unmeasurable"
+      }
+    ]
+  },
   "published_base_rates": {
     "graduation_rate_range_pct": [
       0.198,
@@ -150,6 +809,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/6XV1bfWhSZfmeZgfRzJHSZ51df31BNVzNE8Xxr2Kpump",
       "mcap_usd": 366378.0,
       "fdv_usd": 366378.0,
       "liquidity_usd": 52728.36,
@@ -179,6 +839,19 @@
         "universe_txns_24h": 560792,
         "universe_volume_24h_usd": 20837492.66,
         "universe_boost_total": 3860.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -239,6 +912,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/Bgm57xauW5W6ScMEmnEsMx3j6YsqbFNDpC8Hgeo1pump",
       "mcap_usd": 660733.0,
       "fdv_usd": 660733.0,
       "liquidity_usd": 69275.19,
@@ -268,6 +942,19 @@
         "universe_txns_24h": 588036,
         "universe_volume_24h_usd": 21988664.12,
         "universe_boost_total": 3900.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -302,7 +989,7 @@
         "asymmetry_timing": 62.9,
         "mindshare": 47.38481115606172
       },
-      "pillar_composite": 57.052740359318115,
+      "pillar_composite": 57.05274035931811,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -326,6 +1013,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/C1xyeVk4NDAcsVXr2r7Jqq3a71yUdnkUupzdPXHypump",
       "mcap_usd": 382422.0,
       "fdv_usd": 382422.0,
       "liquidity_usd": 53050.82,
@@ -355,6 +1043,19 @@
         "universe_txns_24h": 635845,
         "universe_volume_24h_usd": 24458512.4,
         "universe_boost_total": 3960.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -415,6 +1116,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0x3Aec6d579c902c1fe8035a038e3335f3c5E3fFfF",
       "mcap_usd": 3706451.0,
       "fdv_usd": 3706451.0,
       "liquidity_usd": 181976.85,
@@ -444,6 +1146,19 @@
         "universe_txns_24h": 693639,
         "universe_volume_24h_usd": 37543097.05,
         "universe_boost_total": 3280.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -505,6 +1220,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0x882B5ccBc5De8e7941e7a34691c51eE7e0447777",
       "mcap_usd": 1562474.0,
       "fdv_usd": 1562474.0,
       "liquidity_usd": 142948.45,
@@ -534,6 +1250,19 @@
         "universe_txns_24h": 693639,
         "universe_volume_24h_usd": 37543097.05,
         "universe_boost_total": 3280.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -594,6 +1323,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0xf5a248F6139f0Ab0fAB0c4Dda6043b840f927777",
       "mcap_usd": 469548.0,
       "fdv_usd": 469548.0,
       "liquidity_usd": 71474.19,
@@ -623,6 +1353,19 @@
         "universe_txns_24h": 693639,
         "universe_volume_24h_usd": 37543097.05,
         "universe_boost_total": 3280.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -684,6 +1427,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/2hkhFLWQKUcvUNh7eUkfZVz3rYfxXqFNeVLYMotrzFky",
       "mcap_usd": 411887.0,
       "fdv_usd": 411887.0,
       "liquidity_usd": 74949.96,
@@ -713,6 +1457,19 @@
         "universe_txns_24h": 693639,
         "universe_volume_24h_usd": 37543097.05,
         "universe_boost_total": 3280.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -775,6 +1532,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0x5F74b471746be666E40524721aCBc19Ef3967777",
       "mcap_usd": 637288.0,
       "fdv_usd": 637288.0,
       "liquidity_usd": 82738.83,
@@ -804,6 +1562,19 @@
         "universe_txns_24h": 733105,
         "universe_volume_24h_usd": 30573316.84,
         "universe_boost_total": 3440.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -866,6 +1637,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/GADj8JQ8iQLQD5S6ScvncJWmGs7PkwHnXsBrEUns6ue5",
       "mcap_usd": 279204.0,
       "fdv_usd": 279204.0,
       "liquidity_usd": 59804.95,
@@ -895,6 +1667,19 @@
         "universe_txns_24h": 753566,
         "universe_volume_24h_usd": 30428474.669999998,
         "universe_boost_total": 3400.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -960,6 +1745,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/4JiyyzzVFpkXgmTnggFdjuibMZ42ovozoneZU4xVpump",
       "mcap_usd": 273899.0,
       "fdv_usd": 273899.0,
       "liquidity_usd": 46726.96,
@@ -989,6 +1775,19 @@
         "universe_txns_24h": 649525,
         "universe_volume_24h_usd": 26130522.0,
         "universe_boost_total": 3520.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1051,6 +1850,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/9rbAB5BTo12TkKt5ed5SzUXjgBckkFmtcKdPDbMtpump",
       "mcap_usd": 334730.0,
       "fdv_usd": 334730.0,
       "liquidity_usd": 49063.5,
@@ -1080,6 +1880,19 @@
         "universe_txns_24h": 649525,
         "universe_volume_24h_usd": 26130522.0,
         "universe_boost_total": 3520.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1142,6 +1955,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Base",
+      "dexscreener_url": "https://dexscreener.com/base/0xca18A528Ea897040f715edC92e6e4572780c5ca1",
       "mcap_usd": 1044858.0,
       "fdv_usd": 1044858.0,
       "liquidity_usd": 169130.4,
@@ -1171,6 +1985,19 @@
         "universe_txns_24h": 657662,
         "universe_volume_24h_usd": 26975073.61,
         "universe_boost_total": 3850.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -1234,6 +2061,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/9F3CB3jZ3EFQdGDgpQWzGec2ZeWk9KLfVjw7F7hdSTNK",
       "mcap_usd": 533737.0,
       "fdv_usd": 533737.0,
       "liquidity_usd": 135811.47,
@@ -1263,6 +2091,19 @@
         "universe_txns_24h": 609733,
         "universe_volume_24h_usd": 25218036.169999998,
         "universe_boost_total": 3900.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1328,6 +2169,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/2MUY6XJiorc9RR9TLjm4ZBK4VjnVhDoTufijcPGApump",
       "mcap_usd": 409331.0,
       "fdv_usd": 409331.0,
       "liquidity_usd": 54722.98,
@@ -1357,6 +2199,19 @@
         "universe_txns_24h": 609733,
         "universe_volume_24h_usd": 25218036.169999998,
         "universe_boost_total": 3900.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1395,7 +2250,7 @@
         "asymmetry_timing": 69.22500000000001,
         "mindshare": 49.96838867611391
       },
-      "pillar_composite": 63.10662787201541,
+      "pillar_composite": 63.1066278720154,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -1419,6 +2274,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/GkdbD4KjQgBgpsyoK71kLan2AVXTDckGLFsyYmyD5JTM",
       "mcap_usd": 104847877.0,
       "fdv_usd": 104847877.0,
       "liquidity_usd": 4718.8,
@@ -1448,6 +2304,19 @@
         "universe_txns_24h": 609733,
         "universe_volume_24h_usd": 25218036.169999998,
         "universe_boost_total": 3900.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1520,6 +2389,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Ethereum",
+      "dexscreener_url": "https://dexscreener.com/ethereum/0x000025b3816630ad283267d4eB3a5FC8b0200000",
       "mcap_usd": 44859204.0,
       "fdv_usd": 44859204.0,
       "liquidity_usd": 3248210.69,
@@ -1549,6 +2419,19 @@
         "universe_txns_24h": 514095,
         "universe_volume_24h_usd": 20964371.33,
         "universe_boost_total": 3250.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -1615,6 +2498,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/3nkVw4JwdDLGM23Wzqpy2ptAPV5YgMnokEBgijDBpump",
       "mcap_usd": 419975.0,
       "fdv_usd": 419975.0,
       "liquidity_usd": 55254.83,
@@ -1644,6 +2528,19 @@
         "universe_txns_24h": 514095,
         "universe_volume_24h_usd": 20964371.33,
         "universe_boost_total": 3250.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1704,6 +2601,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/GogsSnkXwke5FEUxyV6FmR4eczFK1KJDVsaJNaNspump",
       "mcap_usd": 633549.0,
       "fdv_usd": 633549.0,
       "liquidity_usd": 70672.03,
@@ -1733,6 +2631,19 @@
         "universe_txns_24h": 514095,
         "universe_volume_24h_usd": 20964371.33,
         "universe_boost_total": 3250.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1797,6 +2708,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/J8SJWCmak8yuiVAHvn1aArKnZW1DL2rEE8pGFYb5pump",
       "mcap_usd": 270314.0,
       "fdv_usd": 270314.0,
       "liquidity_usd": 43437.02,
@@ -1826,6 +2738,19 @@
         "universe_txns_24h": 479357,
         "universe_volume_24h_usd": 18712491.93,
         "universe_boost_total": 2830.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1890,6 +2815,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/DhM9xy8gQzZmjoCyyCNPn57nMPPBGgXxj6rXtJnpump",
       "mcap_usd": 563922.0,
       "fdv_usd": 563922.0,
       "liquidity_usd": 101681.15999999999,
@@ -1919,6 +2845,19 @@
         "universe_txns_24h": 479357,
         "universe_volume_24h_usd": 18712491.93,
         "universe_boost_total": 2830.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -1979,6 +2918,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/7Y7V1a4m2nWK7BMgbka5B4vR1pDvCK7yva3Hnrqkraze",
       "mcap_usd": 784886.0,
       "fdv_usd": 784886.0,
       "liquidity_usd": 146136.33000000002,
@@ -2008,6 +2948,19 @@
         "universe_txns_24h": 479357,
         "universe_volume_24h_usd": 18712491.93,
         "universe_boost_total": 2830.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -2069,6 +3022,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/Cf35k1qwZ9dMpxujKwoRizfpZEBb45azg3oa2aSmtcbY",
       "mcap_usd": 280923.0,
       "fdv_usd": 280923.0,
       "liquidity_usd": 50248.89,
@@ -2098,6 +3052,19 @@
         "universe_txns_24h": 445518,
         "universe_volume_24h_usd": 17492302.71,
         "universe_boost_total": 2850.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -2162,6 +3129,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Ethereum",
+      "dexscreener_url": "https://dexscreener.com/ethereum/0xd3E71316A9CCf411b1c5fca58Bb4dDCDe77b1111",
       "mcap_usd": 337525.0,
       "fdv_usd": 337525.0,
       "liquidity_usd": 68380.71,
@@ -2191,6 +3159,19 @@
         "universe_txns_24h": 711335,
         "universe_volume_24h_usd": 25439168.71,
         "universe_boost_total": 3340.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -2254,6 +3235,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0x52EBACf436f01128C4b03FfE94D03C37B35AAbCD",
       "mcap_usd": 270435.0,
       "fdv_usd": 270435.0,
       "liquidity_usd": 121946.8,
@@ -2283,6 +3265,19 @@
         "universe_txns_24h": 703082,
         "universe_volume_24h_usd": 25884745.74,
         "universe_boost_total": 3270.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -2317,7 +3312,7 @@
         "asymmetry_timing": 43.333333333333336,
         "mindshare": 12.223416763394882
       },
-      "pillar_composite": 58.203445836337146,
+      "pillar_composite": 58.20344583633713,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -2341,6 +3336,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0xD9A522893fD7Fd2c1ab52d7186c62EBd5AaB7777",
       "mcap_usd": 267892.0,
       "fdv_usd": 267892.0,
       "liquidity_usd": 52822.61,
@@ -2370,6 +3366,19 @@
         "universe_txns_24h": 757201,
         "universe_volume_24h_usd": 27230576.23,
         "universe_boost_total": 3370.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -2432,6 +3441,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/8rwjpb75Y3r22va4rsYQB13rqqqUhhuPZZhiX29Gk5aH",
       "mcap_usd": 291476.0,
       "fdv_usd": 291476.0,
       "liquidity_usd": 48222.7,
@@ -2461,6 +3471,19 @@
         "universe_txns_24h": 757201,
         "universe_volume_24h_usd": 27230576.23,
         "universe_boost_total": 3370.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -2525,6 +3548,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Ethereum",
+      "dexscreener_url": "https://dexscreener.com/ethereum/0x6821C6C62bc13105BaB758cc703cFF39e5690212",
       "mcap_usd": 385609.0,
       "fdv_usd": 401189.0,
       "liquidity_usd": 64873.42,
@@ -2554,6 +3578,19 @@
         "universe_txns_24h": 794326,
         "universe_volume_24h_usd": 28925880.53,
         "universe_boost_total": 3190.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -2619,6 +3656,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/HRe2LkLMiQnrpeooNTmvkHp2bzX7JdBPpek7Eu3oWSuK",
       "mcap_usd": 423773.0,
       "fdv_usd": 423773.0,
       "liquidity_usd": 53457.1,
@@ -2648,6 +3686,19 @@
         "universe_txns_24h": 794326,
         "universe_volume_24h_usd": 28925880.53,
         "universe_boost_total": 3190.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -2717,6 +3768,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/55VWo7QQpqfYwratKUZHhSSnSghyTVCJx54yNoWVpump",
       "mcap_usd": 502622.0,
       "fdv_usd": 502622.0,
       "liquidity_usd": 108988.76999999999,
@@ -2746,6 +3798,19 @@
         "universe_txns_24h": 794326,
         "universe_volume_24h_usd": 28925880.53,
         "universe_boost_total": 3190.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -2806,6 +3871,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/4MMQY9bwkxxTtsK3W227Q5ABT6yFY8Pmn9Ze7wmAXKY8",
       "mcap_usd": 1918107.0,
       "fdv_usd": 1918107.0,
       "liquidity_usd": 247501.38999999998,
@@ -2835,6 +3901,19 @@
         "universe_txns_24h": 787122,
         "universe_volume_24h_usd": 28684125.87,
         "universe_boost_total": 3170.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -2900,6 +3979,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/6CsmCtDAhRcbp3G4KiinKC2JjLJ9BpR7isqcgZefqLym",
       "mcap_usd": 285056.0,
       "fdv_usd": 285056.0,
       "liquidity_usd": 52753.9,
@@ -2929,6 +4009,19 @@
         "universe_txns_24h": 787122,
         "universe_volume_24h_usd": 28684125.87,
         "universe_boost_total": 3170.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -2994,6 +4087,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/6ssGtD5KUhzrENtn5BiEdTt4tcb6sfn7wPHRJyBYsp7N",
       "mcap_usd": 430502.0,
       "fdv_usd": 430502.0,
       "liquidity_usd": 81820.2,
@@ -3023,6 +4117,19 @@
         "universe_txns_24h": 787122,
         "universe_volume_24h_usd": 28684125.87,
         "universe_boost_total": 3170.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3084,6 +4191,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/dgRAuQe8Pw11wdYZzQST8goZgY34LPdCs3kxaYAQPJx",
       "mcap_usd": 372472.0,
       "fdv_usd": 372472.0,
       "liquidity_usd": 52382.200000000004,
@@ -3113,6 +4221,19 @@
         "universe_txns_24h": 787122,
         "universe_volume_24h_usd": 28684125.87,
         "universe_boost_total": 3170.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3177,6 +4298,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/GeukSURCwLgjRzHiKEN4qZy6eHcDMt4JDXtNJs4EQgj8",
       "mcap_usd": 266493.0,
       "fdv_usd": 266493.0,
       "liquidity_usd": 48073.13,
@@ -3206,6 +4328,19 @@
         "universe_txns_24h": 742709,
         "universe_volume_24h_usd": 24379067.73,
         "universe_boost_total": 3180.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3272,6 +4407,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/GEaPJ5FY3zY9y9SK6fEeL6X8bNGdvCTT1fnB51xQpump",
       "mcap_usd": 296183.0,
       "fdv_usd": 296183.0,
       "liquidity_usd": 46153.86,
@@ -3301,6 +4437,19 @@
         "universe_txns_24h": 742709,
         "universe_volume_24h_usd": 24379067.73,
         "universe_boost_total": 3180.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3363,6 +4512,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/DxG4cBaraNSuk5E1SdgS4X2FRkurj1c3kbxRviiGpump",
       "mcap_usd": 549709.0,
       "fdv_usd": 549709.0,
       "liquidity_usd": 64826.46,
@@ -3392,6 +4542,19 @@
         "universe_txns_24h": 742709,
         "universe_volume_24h_usd": 24379067.73,
         "universe_boost_total": 3180.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3454,6 +4617,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/7MCgYMzq3fov6oERdtTMAYbN2U9LZrrSYS1MBhjixZFr",
       "mcap_usd": 505278.0,
       "fdv_usd": 505278.0,
       "liquidity_usd": 66110.52,
@@ -3483,6 +4647,19 @@
         "universe_txns_24h": 797032,
         "universe_volume_24h_usd": 30759636.580000002,
         "universe_boost_total": 3100.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3547,6 +4724,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/3v1PbHcWLTtQ6mEJdUwXWE1qMC5RRunwjEePtrc6pump",
       "mcap_usd": 273701.0,
       "fdv_usd": 273701.0,
       "liquidity_usd": 45432.65,
@@ -3576,6 +4754,19 @@
         "universe_txns_24h": 797032,
         "universe_volume_24h_usd": 30759636.580000002,
         "universe_boost_total": 3100.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3638,6 +4829,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/C5xph2yL6gMdxmuLGxJBkGpmuDFfyi5fqkBNhvL6pump",
       "mcap_usd": 308418.0,
       "fdv_usd": 308418.0,
       "liquidity_usd": 228.79,
@@ -3667,6 +4859,19 @@
         "universe_txns_24h": 797032,
         "universe_volume_24h_usd": 30759636.580000002,
         "universe_boost_total": 3100.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3732,6 +4937,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Base",
+      "dexscreener_url": "https://dexscreener.com/base/0x60555Ab88a0CAaf893Ab284C1332c9D0A05Af222",
       "mcap_usd": 388438.0,
       "fdv_usd": 388438.0,
       "liquidity_usd": 64014.81,
@@ -3761,6 +4967,19 @@
         "universe_txns_24h": 761546,
         "universe_volume_24h_usd": 32351137.59,
         "universe_boost_total": 2200.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -3823,6 +5042,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/E5iDD4kt9gDxTaAeoCNeN3CcZAWB7FvbPXwqJuuHpump",
       "mcap_usd": 429258.0,
       "fdv_usd": 429258.0,
       "liquidity_usd": 55208.14,
@@ -3852,6 +5072,19 @@
         "universe_txns_24h": 804459,
         "universe_volume_24h_usd": 25039177.240000002,
         "universe_boost_total": 2420.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3916,6 +5149,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/7nLukVng5teXze14rum9v57juXLjUp7JJnCveko1pump",
       "mcap_usd": 277708.0,
       "fdv_usd": 277708.0,
       "liquidity_usd": 60968.22,
@@ -3945,6 +5179,19 @@
         "universe_txns_24h": 804459,
         "universe_volume_24h_usd": 25039177.240000002,
         "universe_boost_total": 2420.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -3981,7 +5228,7 @@
         "asymmetry_timing": 43.333333333333336,
         "mindshare": 4.324431022684083
       },
-      "pillar_composite": 50.299264923329204,
+      "pillar_composite": 50.29926492332919,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -4005,6 +5252,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/3Sv4Jriwo2V7c1wturGVrrpfKc9XbGxewnDHpMLrpbWQ",
       "mcap_usd": 747532.0,
       "fdv_usd": 747532.0,
       "liquidity_usd": 140119.29,
@@ -4034,6 +5282,19 @@
         "universe_txns_24h": 754906,
         "universe_volume_24h_usd": 23837548.69,
         "universe_boost_total": 2720.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4095,6 +5356,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/9GPG5ifxoBXQroVTHmGanxmFGxYDTFPZqKunGueKpump",
       "mcap_usd": 304301.0,
       "fdv_usd": 304301.0,
       "liquidity_usd": 45757.11,
@@ -4124,6 +5386,19 @@
         "universe_txns_24h": 754906,
         "universe_volume_24h_usd": 23837548.69,
         "universe_boost_total": 2720.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4164,7 +5439,7 @@
         "asymmetry_timing": 69.64999999999999,
         "mindshare": 22.700346900211006
       },
-      "pillar_composite": 76.7570105225674,
+      "pillar_composite": 76.75701052256738,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -4188,6 +5463,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/Bobw9yYiRS4Qvcy1Moa1amCa9z1KvpjAuP4RXQ9Wpump",
       "mcap_usd": 282435.0,
       "fdv_usd": 282435.0,
       "liquidity_usd": 45279.75,
@@ -4217,6 +5493,19 @@
         "universe_txns_24h": 754906,
         "universe_volume_24h_usd": 23837548.69,
         "universe_boost_total": 2720.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4281,6 +5570,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/BeXQ21cHNExQTbTbm6Fd2Mnsy4nAw3N3r7WNWTFfpump",
       "mcap_usd": 544770.0,
       "fdv_usd": 544770.0,
       "liquidity_usd": 62173.68,
@@ -4310,6 +5600,19 @@
         "universe_txns_24h": 754906,
         "universe_volume_24h_usd": 23837548.69,
         "universe_boost_total": 2720.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4374,6 +5677,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/TMf6rnjfRc5uANLt9A4Fa9H4N6p1KFxunk77szTpump",
       "mcap_usd": 398200.0,
       "fdv_usd": 398200.0,
       "liquidity_usd": 54068.26,
@@ -4403,6 +5707,19 @@
         "universe_txns_24h": 700319,
         "universe_volume_24h_usd": 22974445.52,
         "universe_boost_total": 2560.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4467,6 +5784,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/2HFakYaUp8au5oZThEvZ8wvSqoTreTQAvqtvoKarpump",
       "mcap_usd": 737013.0,
       "fdv_usd": 737013.0,
       "liquidity_usd": 77459.33,
@@ -4496,6 +5814,19 @@
         "universe_txns_24h": 700319,
         "universe_volume_24h_usd": 22974445.52,
         "universe_boost_total": 2560.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4560,6 +5891,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/fairB7Sv8zfnNrXgEVVNUN7MW66sJ4wVmbaRGtAKAsv",
       "mcap_usd": 2192957.0,
       "fdv_usd": 2192957.0,
       "liquidity_usd": 126510.16,
@@ -4589,6 +5921,19 @@
         "universe_txns_24h": 700319,
         "universe_volume_24h_usd": 22974445.52,
         "universe_boost_total": 2560.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4647,6 +5992,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0x389CB330E4EaA0CCE969759F01a416448FeD6666",
       "mcap_usd": 356149.0,
       "fdv_usd": 356149.0,
       "liquidity_usd": 81733.71,
@@ -4676,6 +6022,19 @@
         "universe_txns_24h": 652881,
         "universe_volume_24h_usd": 17978713.01,
         "universe_boost_total": 2410.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -4737,6 +6096,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/5Zspimi8VD6LctJLtaSjLqaSUvmh3Rs849iPtGocpump",
       "mcap_usd": 446641.0,
       "fdv_usd": 446641.0,
       "liquidity_usd": 88591.55,
@@ -4766,6 +6126,19 @@
         "universe_txns_24h": 722283,
         "universe_volume_24h_usd": 20908869.38,
         "universe_boost_total": 2590.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4829,6 +6202,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/EpFTb2XcGiMyGLykZ9VYmyPWz2AHEwAggqSbwJpypump",
       "mcap_usd": 276134.0,
       "fdv_usd": 276134.0,
       "liquidity_usd": 52978.87,
@@ -4858,6 +6232,19 @@
         "universe_txns_24h": 805464,
         "universe_volume_24h_usd": 23434788.4,
         "universe_boost_total": 2300.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -4918,6 +6305,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/3937Rsye62a53Y5o3UVG6gDPk8whAnKq1sxCV3Xu8YLP",
       "mcap_usd": 519697.0,
       "fdv_usd": 519697.0,
       "liquidity_usd": 62024.16,
@@ -4947,6 +6335,19 @@
         "universe_txns_24h": 805464,
         "universe_volume_24h_usd": 23434788.4,
         "universe_boost_total": 2300.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5014,6 +6415,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/GKeUT73KRsvWVYNfQPdghxdHTKKGUAESf3t8BZmfXvih",
       "mcap_usd": 429456.0,
       "fdv_usd": 429456.0,
       "liquidity_usd": 58711.71,
@@ -5043,6 +6445,19 @@
         "universe_txns_24h": 803435,
         "universe_volume_24h_usd": 22830597.12,
         "universe_boost_total": 2370.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5109,6 +6524,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0xFC9e2B3e001A16A5643cEE48Be04B59327457777",
       "mcap_usd": 4893495.0,
       "fdv_usd": 4893495.0,
       "liquidity_usd": 197583.15,
@@ -5138,6 +6554,19 @@
         "universe_txns_24h": 804954,
         "universe_volume_24h_usd": 23972408.71,
         "universe_boost_total": 2440.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -5198,6 +6627,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/Hy1LfQLL4zLQihmiQKZm7DQzXm5K8aVSfKtdHFYXbKMm",
       "mcap_usd": 771718.0,
       "fdv_usd": 771718.0,
       "liquidity_usd": 90369.63,
@@ -5227,6 +6657,19 @@
         "universe_txns_24h": 831109,
         "universe_volume_24h_usd": 27538745.14,
         "universe_boost_total": 2570.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5292,6 +6735,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/7tFbGa9wt4Q4yxNAdaDcTKahv4WPrJtXh6ty7gjWyKx3",
       "mcap_usd": 1109398.0,
       "fdv_usd": 1109398.0,
       "liquidity_usd": 100710.58,
@@ -5321,6 +6765,19 @@
         "universe_txns_24h": 831109,
         "universe_volume_24h_usd": 27538745.14,
         "universe_boost_total": 2570.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5386,6 +6843,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/88t4EdAjiuUDzHujJnK5nywitQzYQWEJq2ouUgRGpump",
       "mcap_usd": 1552253.0,
       "fdv_usd": 1552253.0,
       "liquidity_usd": 30213.21,
@@ -5415,6 +6873,19 @@
         "universe_txns_24h": 504024,
         "universe_volume_24h_usd": 19903208.2,
         "universe_boost_total": 2230.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5477,6 +6948,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/AqoPZcUumKUBHrnfBsNtoNuneYEjoimaiWYq8GH8gpX9",
       "mcap_usd": 322635.0,
       "fdv_usd": 322635.0,
       "liquidity_usd": 50562.11,
@@ -5506,6 +6978,19 @@
         "universe_txns_24h": 497258,
         "universe_volume_24h_usd": 18565910.09,
         "universe_boost_total": 2230.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5570,6 +7055,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/Cp6AVzuSJ8pDCkYGBxAX3p9Dk77pHSsd35yHh19GJC3i",
       "mcap_usd": 265007.0,
       "fdv_usd": 265007.0,
       "liquidity_usd": 49667.48,
@@ -5599,6 +7085,19 @@
         "universe_txns_24h": 741568,
         "universe_volume_24h_usd": 22947782.52,
         "universe_boost_total": 2410.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5663,6 +7162,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/DEbvZt2QRA8yqNj2Lvsn8JdWjTmZS4yajwpzYL4ypump",
       "mcap_usd": 275296.0,
       "fdv_usd": 275296.0,
       "liquidity_usd": 44997.17,
@@ -5692,6 +7192,19 @@
         "universe_txns_24h": 699456,
         "universe_volume_24h_usd": 20360208.67,
         "universe_boost_total": 2450.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5754,6 +7267,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0x7d1A8DBB40B7b5518ef69b93a6fAEba91eea7777",
       "mcap_usd": 461819.0,
       "fdv_usd": 461819.0,
       "liquidity_usd": 82937.92,
@@ -5783,6 +7297,19 @@
         "universe_txns_24h": 726915,
         "universe_volume_24h_usd": 21107080.01,
         "universe_boost_total": 2970.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -5845,6 +7372,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/8vGr1eX9vfpootWiUPYa5kYoGx9bTuRy2Xc4dNMrpump",
       "mcap_usd": 2206063.0,
       "fdv_usd": 2206063.0,
       "liquidity_usd": 187569.61000000002,
@@ -5874,6 +7402,19 @@
         "universe_txns_24h": 726915,
         "universe_volume_24h_usd": 21107080.01,
         "universe_boost_total": 2970.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -5934,6 +7475,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/9BVn3Y8tPghbnGuuuxoj2mGekqgSQV1M7nALF7brpump",
       "mcap_usd": 572719.0,
       "fdv_usd": 572719.0,
       "liquidity_usd": 114298.01000000001,
@@ -5963,6 +7505,19 @@
         "universe_txns_24h": 726915,
         "universe_volume_24h_usd": 21107080.01,
         "universe_boost_total": 2970.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6021,6 +7576,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/BifUDWQFpbTrSxYXBnqCpAVYgcyQGzHzJk2MDmeM2Gyv",
       "mcap_usd": 1402411.0,
       "fdv_usd": 1402411.0,
       "liquidity_usd": 97101.44,
@@ -6050,6 +7606,19 @@
         "universe_txns_24h": 726915,
         "universe_volume_24h_usd": 21107080.01,
         "universe_boost_total": 2970.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6113,6 +7682,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/F5zC2QoP6j2erxNyf4z6iNCi6X6AkburMC2Xofhxpump",
       "mcap_usd": 595491.0,
       "fdv_usd": 595491.0,
       "liquidity_usd": 35556.08,
@@ -6142,6 +7712,19 @@
         "universe_txns_24h": 759515,
         "universe_volume_24h_usd": 20758558.54,
         "universe_boost_total": 2800.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6202,6 +7785,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0x7A8cCfcA4207B39b2aF51C052D3A14B3BDB2fE69",
       "mcap_usd": 264460.0,
       "fdv_usd": 265496.0,
       "liquidity_usd": 97144.78,
@@ -6231,6 +7815,19 @@
         "universe_txns_24h": 731126,
         "universe_volume_24h_usd": 21226852.67,
         "universe_boost_total": 2800.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -6292,6 +7889,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/5GefefPX1mDs6ZJB1apYmz6fCTCiNJpHturZ9bvFpump",
       "mcap_usd": 391191.0,
       "fdv_usd": 391191.0,
       "liquidity_usd": 54182.05,
@@ -6321,6 +7919,19 @@
         "universe_txns_24h": 731126,
         "universe_volume_24h_usd": 21226852.67,
         "universe_boost_total": 2800.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6379,6 +7990,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/DrdwSUzt5ZMqa9Yj1cpvNRRx7zQZP5s9Gm2S8m62STNK",
       "mcap_usd": 396368.0,
       "fdv_usd": 396368.0,
       "liquidity_usd": 53486.19,
@@ -6408,6 +8020,19 @@
         "universe_txns_24h": 731126,
         "universe_volume_24h_usd": 21226852.67,
         "universe_boost_total": 2800.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6472,6 +8097,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/CNTcaYTBBrSjYQXrWSL3T126eCjYnmvAhSwYBXBScLLM",
       "mcap_usd": 455318.0,
       "fdv_usd": 455318.0,
       "liquidity_usd": 57336.39,
@@ -6501,6 +8127,19 @@
         "universe_txns_24h": 820582,
         "universe_volume_24h_usd": 30063515.119999997,
         "universe_boost_total": 3070.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6566,6 +8205,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/CNWxmoBSQZo2Sgp5KSAK5m9FwSqDbXQRP4CNMuoe78Gm",
       "mcap_usd": 1396394.0,
       "fdv_usd": 1396394.0,
       "liquidity_usd": 153055.00999999998,
@@ -6595,6 +8235,19 @@
         "universe_txns_24h": 822109,
         "universe_volume_24h_usd": 30625285.19,
         "universe_boost_total": 3180.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6633,7 +8286,7 @@
         "asymmetry_timing": 63.050000000000004,
         "mindshare": 78.33333333333333
       },
-      "pillar_composite": 58.81331187779527,
+      "pillar_composite": 58.813311877795265,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
@@ -6657,6 +8310,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/Adgt7dseCq71eN6GDuoUgpsNQp81ZNhq24nrF7pxpump",
       "mcap_usd": 274525.0,
       "fdv_usd": 274525.0,
       "liquidity_usd": 52197.75,
@@ -6686,6 +8340,19 @@
         "universe_txns_24h": 783367,
         "universe_volume_24h_usd": 26870403.24,
         "universe_boost_total": 3130.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6746,6 +8413,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/C5nG72gUFJz6wewcgTPjcBmpSq4BwFLHy5j8heo9d7rZ",
       "mcap_usd": 314214.0,
       "fdv_usd": 314214.0,
       "liquidity_usd": 74489.1,
@@ -6775,6 +8443,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6837,6 +8518,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/DD3AC2Cmr5rXzJ6ErRHeryx3ASLVMhSBALiUqeKcpump",
       "mcap_usd": 737852.0,
       "fdv_usd": 737852.0,
       "liquidity_usd": 78985.09,
@@ -6866,6 +8548,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -6926,6 +8621,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/3URpNcV9wAPjwMAyuBsPjwwkGN9wFJuwcRs3RMbdpair",
       "mcap_usd": 595289.0,
       "fdv_usd": 595289.0,
       "liquidity_usd": 68652.66,
@@ -6955,6 +8651,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7013,6 +8722,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/3nqHijNUExsnjNBb15WJsJ2xisyMVGN6FK4aUgZk1Rwj",
       "mcap_usd": 2797626.0,
       "fdv_usd": 2797626.0,
       "liquidity_usd": 254286.92,
@@ -7042,6 +8752,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7107,6 +8830,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/66aBzVKucLmWvY2JEU5CjAYcUSz7YcpoBDfXXWV9pump",
       "mcap_usd": 327023.0,
       "fdv_usd": 327023.0,
       "liquidity_usd": 47948.4,
@@ -7136,6 +8860,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7198,6 +8935,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/FLk6FKAN26m1FT4ucguwy3uHBMzLKcEu8KMTYD2Zpump",
       "mcap_usd": 1458849.0,
       "fdv_usd": 1458849.0,
       "liquidity_usd": 115839.66,
@@ -7227,6 +8965,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7289,6 +9040,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/6ehEcTMCc85aNF4x9CWx8HuvWGhxQtvKdhKVf2HDpump",
       "mcap_usd": 4626919.0,
       "fdv_usd": 4626919.0,
       "liquidity_usd": 348932.42,
@@ -7318,6 +9070,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7376,6 +9141,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/GWTP6M5bxhaJ1k2Kxvf8hhYaHE6jZMhh4cKzFuCpnc83",
       "mcap_usd": 941660.0,
       "fdv_usd": 941660.0,
       "liquidity_usd": 206909.27,
@@ -7405,6 +9171,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7466,6 +9245,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/zzjkh1hLbvsFJXWLfE6h4JNbcnRj4eteuKRw42PN2tC",
       "mcap_usd": 431448.0,
       "fdv_usd": 431448.0,
       "liquidity_usd": 92433.58,
@@ -7495,6 +9275,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7553,6 +9346,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/7vSG4GX8qz5V36noSde5Z9xV8xAXAGqivDyaNytPVDJf",
       "mcap_usd": 2306355.0,
       "fdv_usd": 2306355.0,
       "liquidity_usd": 381675.18,
@@ -7582,6 +9376,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7646,6 +9453,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/HunmXDXMNQYVoDnUL6PNnSYEtFaTZA2WzGh1HJTW7aoV",
       "mcap_usd": 1329920.0,
       "fdv_usd": 1329920.0,
       "liquidity_usd": 152289.38999999998,
@@ -7675,6 +9483,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",
@@ -7740,6 +9561,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "BNB Chain",
+      "dexscreener_url": "https://dexscreener.com/bsc/0xEe22fCE582Dc4120f07e13e42B55Ee75246e7777",
       "mcap_usd": 637747.0,
       "fdv_usd": 637747.0,
       "liquidity_usd": 81311.31,
@@ -7769,6 +9591,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus",
@@ -7829,6 +9664,7 @@
       "regime": "neutral",
       "source": "dexscreener",
       "chain_label": "Solana",
+      "dexscreener_url": "https://dexscreener.com/solana/HoK7vodcoVYQepStM1dDVyX5iMp2q5narY9bammuGPpe",
       "mcap_usd": 607730.0,
       "fdv_usd": 607730.0,
       "liquidity_usd": 3705.54,
@@ -7858,6 +9694,19 @@
         "universe_txns_24h": 787607,
         "universe_volume_24h_usd": 33188613.169999998,
         "universe_boost_total": 3510.0
+      },
+      "momentum": {
+        "volume_1h_usd": null,
+        "volume_6h_usd": null,
+        "txns_1h": null,
+        "buys_1h": null,
+        "sells_1h": null,
+        "buys_24h": null,
+        "sells_24h": null,
+        "price_change_5m_pct": null,
+        "price_change_1h_pct": null,
+        "price_change_6h_pct": null,
+        "price_change_24h_pct": null
       },
       "safety": {
         "source": "goplus+rugcheck",

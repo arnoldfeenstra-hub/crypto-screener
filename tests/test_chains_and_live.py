@@ -158,26 +158,50 @@ class TestChainIdOverride:
         assert chains.canonical("bsc") == "bnb"
 
 
+class StubDiscovery:
+    """A DexScreener client for the discovery path, with both sources stubbed."""
+
+    def __init__(self, boosts_top=None, boosts_latest=None, profiles=None, search=None):
+        self._boosts_top = boosts_top if boosts_top is not None else []
+        self._boosts_latest = boosts_latest if boosts_latest is not None else []
+        self._profiles = profiles if profiles is not None else []
+        self._search = search if search is not None else {}
+        self.queries_asked: list[str] = []
+
+    def token_boosts_top(self):
+        return self._raise_or(self._boosts_top)
+
+    def token_boosts_latest(self):
+        return self._raise_or(self._boosts_latest)
+
+    def token_profiles(self):
+        return self._raise_or(self._profiles)
+
+    def search(self, query):
+        self.queries_asked.append(query)
+        return self._raise_or(self._search.get(query, []))
+
+    @staticmethod
+    def _raise_or(value):
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
 class TestChainDiscovery:
     """The probe that finds an id, so binding one is not guesswork either."""
 
     def test_it_reports_every_chain_id_seen_and_whether_it_is_bound(self):
         from collectors.dexscreener import discover_chain_ids
 
-        class StubClient:
-            def token_boosts_top(self):
-                return [
-                    {"chainId": "solana", "tokenAddress": "A"},
-                    {"chainId": "robinhood-chain", "tokenAddress": "B"},
-                ]
-
-            def token_boosts_latest(self):
-                return [{"chainId": "robinhood-chain", "tokenAddress": "C"}]
-
-            def token_profiles(self):
-                return []
-
-        found = discover_chain_ids(StubClient())
+        client = StubDiscovery(
+            boosts_top=[
+                {"chainId": "solana", "tokenAddress": "A"},
+                {"chainId": "robinhood-chain", "tokenAddress": "B"},
+            ],
+            boosts_latest=[{"chainId": "robinhood-chain", "tokenAddress": "C"}],
+        )
+        found = discover_chain_ids(client, queries=())
         assert found["solana"]["bound_to_a_source"] is True
         assert found["robinhood-chain"]["tokens_seen"] == 2
         assert found["robinhood-chain"]["canonical_name"] == "robinhood"
@@ -186,17 +210,126 @@ class TestChainDiscovery:
     def test_a_failing_endpoint_does_not_lose_the_others(self):
         from collectors.dexscreener import DexScreenerError, discover_chain_ids
 
-        class StubClient:
-            def token_boosts_top(self):
-                raise DexScreenerError("down")
+        client = StubDiscovery(
+            boosts_top=DexScreenerError("down"),
+            boosts_latest=[{"chainId": "base", "tokenAddress": "A"}],
+        )
+        assert "base" in discover_chain_ids(client, queries=())
 
-            def token_boosts_latest(self):
-                return [{"chainId": "base", "tokenAddress": "A"}]
+    def test_search_surfaces_a_chain_the_boost_endpoints_never_see(self):
+        """The reason the search sweep exists.
 
-            def token_profiles(self):
-                return []
+        Boosts and profiles only return chains with a token currently boosted or
+        profiled -- a small, paid-for sample. A chain can be live, trading, and
+        entirely absent from it, which is exactly the position Robinhood Chain is
+        in here.
+        """
+        from collectors.dexscreener import discover_chain_ids
 
-        assert "base" in discover_chain_ids(StubClient())
+        client = StubDiscovery(
+            boosts_top=[{"chainId": "solana", "tokenAddress": "A"}],
+            search={"USDC": [{"chainId": "somenewrollup", "baseToken": {"symbol": "X"}}]},
+        )
+        found = discover_chain_ids(client, queries=("USDC",))
+        assert "somenewrollup" in found
+        assert found["somenewrollup"]["seen_via"] == ["search"]
+        assert found["solana"]["seen_via"] == ["discovery"]
+
+    def test_a_failing_search_does_not_lose_the_discovery_endpoints(self):
+        from collectors.dexscreener import DexScreenerError, discover_chain_ids
+
+        client = StubDiscovery(
+            boosts_top=[{"chainId": "base", "tokenAddress": "A"}],
+            search={"USDC": DexScreenerError("down")},
+        )
+        assert "base" in discover_chain_ids(client, queries=("USDC",))
+
+
+class TestVerifyChainId:
+    """Binding a wrong id is the worst failure available: silence that looks quiet."""
+
+    def test_a_real_id_comes_back_with_the_pools_that_prove_it(self):
+        from collectors.dexscreener import verify_chain_id
+
+        client = StubDiscovery(
+            search={
+                "USDC": [
+                    {
+                        "chainId": "somerollup",
+                        "dexId": "someswap",
+                        "baseToken": {"symbol": "$AAA", "address": "0xAAA"},
+                        "liquidity": {"usd": 41000.0},
+                    },
+                    {"chainId": "solana", "baseToken": {"symbol": "$B"}},
+                ]
+            }
+        )
+        result = verify_chain_id(client, "somerollup", queries=("USDC",))
+        assert result["pairs"] == 1
+        assert result["sample"][0]["ticker"] == "$AAA"
+        assert result["sample"][0]["liquidity_usd"] == 41000.0
+        assert "Bind it with" in result["conclusion"]
+
+    def test_finding_nothing_is_not_reported_as_proof_the_id_is_wrong(self):
+        from collectors.dexscreener import verify_chain_id
+
+        client = StubDiscovery(search={"USDC": [{"chainId": "solana"}]})
+        result = verify_chain_id(client, "notachain", queries=("USDC",))
+        assert result["pairs"] == 0
+        assert "not proof the id is wrong" in result["conclusion"]
+
+    def test_a_search_failure_is_reported_rather_than_read_as_absence(self):
+        from collectors.dexscreener import DexScreenerError, verify_chain_id
+
+        client = StubDiscovery(search={"USDC": DexScreenerError("429")})
+        result = verify_chain_id(client, "somerollup", queries=("USDC",))
+        assert result["query_errors"] == ["USDC: 429"]
+        assert result["pairs"] == 0
+
+    def test_it_says_when_the_candidate_is_the_id_already_bound(self):
+        from collectors.dexscreener import verify_chain_id
+
+        client = StubDiscovery(search={"USDC": [{"chainId": "bsc", "baseToken": {}}]})
+        result = verify_chain_id(client, "bsc", queries=("USDC",))
+        assert result["canonical_name"] == "bnb"
+        assert result["already_bound"] is True
+
+
+class TestBoundChainsAreCollectedByDefault:
+    """Binding an id is the whole decision; there is no second switch to forget."""
+
+    def test_an_unbound_chain_is_not_in_the_defaults(self, monkeypatch):
+        monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+        chains.reload_overrides()
+        assert "robinhood" not in chains.default_chain_names()
+
+    def test_binding_robinhood_puts_it_in_the_default_run(self, monkeypatch):
+        monkeypatch.setenv(chains.CHAIN_ID_ENV, "robinhood=rhchain")
+        chains.reload_overrides()
+        try:
+            assert chains.default_chain_names()[-1] == "robinhood"
+            assert chains.resolve_requested(["robinhood"]) == ["robinhood"]
+            assert chains.dexscreener_id("robinhood") == "rhchain"
+        finally:
+            monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+            chains.reload_overrides()
+
+    def test_the_compiled_in_defaults_still_come_first_and_in_order(self, monkeypatch):
+        monkeypatch.setenv(chains.CHAIN_ID_ENV, "robinhood=rhchain")
+        chains.reload_overrides()
+        try:
+            names = chains.default_chain_names()
+            assert names[: len(chains.DEFAULT_CHAINS)] == list(chains.DEFAULT_CHAINS)
+        finally:
+            monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+            chains.reload_overrides()
+
+    def test_robinhood_is_evm_even_while_unbound(self, monkeypatch):
+        # A property of the chain (an Arbitrum Orbit rollup), not of whether
+        # anybody has told this repo its DexScreener id.
+        monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+        chains.reload_overrides()
+        assert chains.is_evm("robinhood") is True
 
 
 class TestProxyFilterFollowsTheChain:

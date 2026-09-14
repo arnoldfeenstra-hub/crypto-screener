@@ -703,8 +703,18 @@ class DexScreenerPriceSource:
         return out
 
 
-def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
-    """Every ``chainId`` the discovery endpoints actually return, with counts.
+# Broad queries used to widen chain discovery beyond the boost endpoints. Quote
+# assets and stablecoins, because whatever else a chain has, it has a pool against
+# one of these. Deliberately not chain names: searching "robinhood" would return
+# tokens *called* Robinhood on every other chain, which is the kind of near-miss
+# that reads as a discovery.
+DISCOVERY_QUERIES: tuple[str, ...] = ("USDC", "USDT", "WETH", "WBTC")
+
+
+def discover_chain_ids(
+    client: DexScreenerClient, *, queries: Sequence[str] | None = DISCOVERY_QUERIES
+) -> dict[str, dict[str, Any]]:
+    """Every ``chainId`` the API actually returns, with counts and how it was seen.
 
     The answer to "what is Robinhood Chain's DexScreener id" is not something this
     repo can hardcode honestly -- see ``collectors/chains.py``. This asks the API
@@ -712,10 +722,24 @@ def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
     so an unregistered id can be bound with ``SCREENER_CHAIN_IDS`` without a code
     change.
 
-    A chain with no boosted or profiled tokens at this moment will not appear. That
-    is a fact about the sample, not proof the chain is absent from DexScreener.
+    Two sources, because one was not enough. The boost and profile endpoints only
+    ever return chains that have a *boosted or profiled token right now*, which is
+    a small and paid-for sample: a chain can be live, trading and entirely absent
+    from it. The search endpoint answers about anything that trades, so sweeping a
+    handful of quote assets surfaces chains the discovery endpoints never will.
+    Which source saw an id is reported per id rather than pooled, because "seen
+    only in search" and "seen in boosts" mean different things about the chain.
     """
     seen: dict[str, int] = {}
+    via: dict[str, set[str]] = {}
+
+    def note(raw_id: Any, source: str) -> None:
+        if not raw_id:
+            return
+        raw = str(raw_id)
+        seen[raw] = seen.get(raw, 0) + 1
+        via.setdefault(raw, set()).add(source)
+
     for fetch in (
         client.token_boosts_top,
         client.token_boosts_latest,
@@ -727,9 +751,18 @@ def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
             log.exception("discovery endpoint failed during chain discovery")
             continue
         for entry in entries if isinstance(entries, list) else []:
-            if isinstance(entry, dict) and entry.get("chainId"):
-                raw = str(entry["chainId"])
-                seen[raw] = seen.get(raw, 0) + 1
+            if isinstance(entry, dict):
+                note(entry.get("chainId"), "discovery")
+
+    for query in queries or ():
+        try:
+            pairs = client.search(query)
+        except DexScreenerError:
+            log.exception("search failed during chain discovery (q=%s)", query)
+            continue
+        for pair in pairs if isinstance(pairs, list) else []:
+            if isinstance(pair, dict):
+                note(pair.get("chainId"), "search")
 
     out: dict[str, dict[str, Any]] = {}
     for raw, count in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
@@ -737,11 +770,69 @@ def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
         entry = chains.get(raw)
         out[raw] = {
             "tokens_seen": count,
+            "seen_via": sorted(via.get(raw, ())),
             "canonical_name": name,
             "registered": bool(entry and entry.known),
             "bound_to_a_source": bool(entry and entry.has_dexscreener_source),
         }
     return out
+
+
+def verify_chain_id(
+    client: DexScreenerClient, candidate: str, *, queries: Sequence[str] | None = None
+) -> dict[str, Any]:
+    """Ask the API whether one candidate ``chainId`` is real, and show the evidence.
+
+    This is the other half of discovery and the half that matters for a chain the
+    discovery endpoints cannot see. A human can read a ``chainId`` straight out of
+    a DexScreener URL -- ``dexscreener.com/<chainId>/<pair>`` -- but a string read
+    off a page is a hypothesis, and binding a wrong one produces the single worst
+    failure available here: requests that match nothing, forever, looking exactly
+    like a quiet chain.
+
+    So the candidate is tested rather than trusted. ``pairs`` is how many pools
+    came back carrying that id and ``sample`` is what they were; zero of both means
+    nothing was found *by these queries*, which is not the same as the id being
+    wrong, and the returned ``conclusion`` says so in those words.
+    """
+    found: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for query in queries or DISCOVERY_QUERIES:
+        try:
+            pairs = client.search(query)
+        except DexScreenerError as exc:
+            errors.append(f"{query}: {exc}")
+            continue
+        for pair in pairs if isinstance(pairs, list) else []:
+            if isinstance(pair, dict) and str(pair.get("chainId")) == candidate:
+                found.append(
+                    {
+                        "ticker": _get(pair, "baseToken", "symbol"),
+                        "contract": _get(pair, "baseToken", "address"),
+                        "dex": pair.get("dexId"),
+                        "liquidity_usd": _as_float(_get(pair, "liquidity", "usd")),
+                    }
+                )
+    canonical_name = chains.canonical(candidate)
+    return {
+        "candidate": candidate,
+        "pairs": len(found),
+        "sample": found[:5],
+        "queries": list(queries or DISCOVERY_QUERIES),
+        "query_errors": errors,
+        "canonical_name": canonical_name,
+        "already_bound": chains.dexscreener_id(canonical_name) == candidate,
+        "conclusion": (
+            f"DexScreener returns pools on {candidate!r}. Bind it with "
+            f'{chains.CHAIN_ID_ENV}="<chain>={candidate}".'
+            if found
+            else (
+                f"No pool carrying {candidate!r} came back from these queries. That is "
+                "not proof the id is wrong -- the chain may simply have no pool "
+                "matching them -- so try other queries before concluding anything."
+            )
+        ),
+    }
 
 
 def merge_discovery(metrics: TokenMetrics, discovery: dict[str, Any]) -> TokenMetrics:
@@ -775,14 +866,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--verify-chain-id",
+        metavar="CHAIN_ID",
+        help=(
+            "test one candidate chainId against the live API and show the pools it "
+            "found. Read the candidate out of a DexScreener URL "
+            "(dexscreener.com/<chainId>/<pair>); this says whether it is real "
+            "before you bind it."
+        ),
+    )
+    parser.add_argument(
         "--chains",
-        default=",".join(chains.DEFAULT_CHAINS),
+        default=",".join(chains.default_chain_names()),
         help=f"comma-separated (supported: {', '.join(chains.supported_names())})",
     )
     parser.add_argument("--limit", type=int, default=5, help="tokens to show")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
+
+    if args.verify_chain_id:
+        try:
+            print(json.dumps(verify_chain_id(DexScreenerClient(), args.verify_chain_id), indent=2))
+        except DexScreenerError as exc:
+            print(json.dumps({"error": str(exc)}, indent=2))
+            return 1
+        return 0
 
     if args.discover_chains:
         try:
@@ -800,9 +909,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "not_bound_to_a_source": unbound,
                     "hint": (
                         f'{chains.CHAIN_ID_ENV}="robinhood=<id>" binds one without a '
-                        "code change. A chain with no boosted or profiled tokens right "
-                        "now will not appear here; that is a fact about this sample, "
-                        "not proof the chain is absent from DexScreener."
+                        "code change, and a bound chain is collected by default. Ids "
+                        'seen only via "search" are still real; ids seen via '
+                        '"discovery" additionally had a boosted or profiled token at '
+                        "this moment. A chain absent from both may still exist on "
+                        "DexScreener -- check a candidate with --verify-chain-id."
                     ),
                 },
                 indent=2,

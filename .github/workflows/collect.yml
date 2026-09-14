@@ -50,8 +50,8 @@ on:
   workflow_dispatch:
     inputs:
       chains:
-        description: "Comma-separated chains to poll"
-        default: "solana,bnb,base,ethereum"
+        description: "Comma-separated chains to poll (blank = the collector's own default set)"
+        default: ""
         required: false
       regime:
         description: "Tape regime recorded on this batch (hot / neutral / cold)"
@@ -96,18 +96,31 @@ jobs:
       - name: Collect
         id: collect
         env:
-          CHAINS: ${{ inputs.chains || 'solana,bnb,base,ethereum' }}
+          # Blank by default, on purpose. `collect.py` derives its own chain list
+          # from collectors/chains.py, which already includes anything bound below
+          # -- so binding Robinhood Chain is the whole decision and there is no
+          # second place here to forget to add the name. A value typed into the
+          # workflow_dispatch box still wins.
+          CHAINS: ${{ inputs.chains }}
           REGIME: ${{ inputs.regime || 'neutral' }}
           # Bind a chain whose DexScreener id this repo does not ship, e.g.
-          # "robinhood=<id>". Find the id with:
+          # "robinhood=<id>". Two commands find and check one:
           #   python -m collectors.dexscreener --discover-chains
+          #   python -m collectors.dexscreener --verify-chain-id <candidate>
           SCREENER_CHAIN_IDS: ${{ vars.SCREENER_CHAIN_IDS }}
+          # The one metered source here. Absent, the X collector stays off and the
+          # run summary says so -- see docs/x-investigation.md. The budget caps
+          # what a single cycle may spend; every other source is keyless.
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          X_MAX_SEARCHES_PER_CYCLE: ${{ vars.X_MAX_SEARCHES_PER_CYCLE }}
         run: |
           set -o pipefail
           SAFETY=""
           if [ "${{ inputs.safety }}" = "false" ]; then SAFETY="--no-safety"; fi
+          CHAIN_ARG=""
+          if [ -n "$CHAINS" ]; then CHAIN_ARG="--chains $CHAINS"; fi
           python -m collect \
-            --chains "$CHAINS" \
+            $CHAIN_ARG \
             --regime "$REGIME" \
             --state state \
             --export web/screener-data.json \
