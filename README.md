@@ -20,19 +20,21 @@ tokens whether or not a collector has ever run.
 | 0.0 live source (DexScreener, keyless, multi-chain) | Built |
 | 0.1 trigger watcher | Built |
 | 0.2 snapshot writer | Built |
-| 0.3 social collectors (X + Telegram) | Telegram runs on the schedule, keyless. X is built but unscheduled: it needs `X_BEARER_TOKEN` |
+| 0.3 social collectors (X + Telegram) | Telegram runs on the schedule, keyless. X now runs on the same schedule **when `X_BEARER_TOKEN` is set**, under a per-cycle search budget — see [docs/x-investigation.md](docs/x-investigation.md) |
 | 0.4 outcome tracker | Built |
 | 0.5 on-chain backfill | Built |
 | 0.6 mindshare (share-of-attention variable) | Built, weight 0.00 in the composite |
+| 0.6b momentum & flow (buy/sell split, short-window volume and price change) | Built, weight 0.00 in the composite |
 | 0.7 safety source (GoPlus + RugCheck, keyless) | Built, answers 6 of the 8 hard filters |
 | 0.8 scheduled collector + append-only journal | Built, `collect.py` + GitHub Actions |
 | 1 hard filters | Built, 8/8 filters, and they now answer |
 | 1 scoring runner | Built, paper mode only |
 | 2 calibration (fit + report) | Built, gated on Phase 0 exit criteria |
+| 2- exploratory backtest (`calibration/backtest.py`) | Built, runs now, fits nothing |
 | 3 live ranking | **Not built, and should not be** — gated on Phase 2 measuring an edge |
-| Web viewer | Built, `web/` + `api/screener.py`, chain and mindshare filters |
+| Web viewer | Built, `web/` + `api/screener.py`; refresh button, per-coin DexScreener link, column glossary, chain/mindshare/momentum sorts |
 
-554 tests, no network, ~8s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
+703 tests, no network, ~14s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
 
 ## Run it against real data
 
@@ -203,7 +205,8 @@ member-count series it builds cannot be reconstructed later, so it is on by defa
 
 ```bash
 python -m collectors.social_tg                  # no key needed (public t.me previews)
-python -m collectors.social_x                   # needs X_BEARER_TOKEN, not on the schedule
+python -m collectors.social_x --max-searches 40 # needs X_BEARER_TOKEN; also runs inside
+                                                # `python -m collect` when the token is set
 cp .env.example .env                            # BITQUERY_TOKEN, for the Bitquery source
 python -m collectors.bitquery --probe           # verify its queries against the live schema
 python -m collectors.trigger_watcher --source bitquery --chain solana
@@ -212,6 +215,63 @@ python -m collectors.trigger_watcher --source bitquery --chain solana
 Bitquery is still wired up and is the only source that can answer holder counts, but it needs
 a paid key and its three GraphQL queries have never run against the live endpoint. DexScreener
 is the default source because it needs neither.
+
+## What has actually been measured
+
+`calibration/backtest.py` scores every collected feature against the forward
+labels. It is **not** a calibration: it fits nothing, changes no weight, and says
+so in its own header, because `.claude/rules/stats.md` admits only fitted
+coefficients that cleared the Phase 0 gate — which 85 tokens does not.
+
+```bash
+python -m calibration.backtest --db data/screener.duckdb
+python -m calibration.backtest --label max_multiple_24h --threshold 2.0
+```
+
+It reports two columns a bare AUC hides, and both exist because of one result.
+
+The only rate-of-change feature the pre-schema-7 rows could express —
+`(txns_6h/6) / (txns_24h/24)` — scores **AUC 0.70** against a 1.5x-in-6h outcome,
+across three horizons. It is worth nothing. A token younger than six hours has
+`txns_6h == txns_24h`, so the ratio pins at exactly 4.0: **39 of 76 rows sat on
+that single value**, and inside one age band the AUC is **0.500**. It was age
+wearing a disguise, and it would have shipped.
+
+- **Tie mass** — the share of rows at the modal value. AUC scores ties as
+  half-wins, so a feature that assigns one value to half the sample can post a
+  respectable number while ranking half the sample not at all.
+- **AUC by age band** — the same figure computed inside each stratum. A pooled
+  separation that vanishes in every stratum is measuring the stratum.
+
+Against a 1.5x-in-6h outcome on 76 resolved tokens (base rate **28.9%**
+[20.0%, 40.0%] — note this is *not* the ~2% graduation rate in CLAUDE.md, because
+these tokens are sampled above $250k and have already cleared that bar), exactly
+one feature survives both checks: **top-10 concentration excluding LP, lower being
+better** — out-of-sample AUC 0.74, 1% tie mass, same direction in every age band.
+Splitting the sample on it in-sample gives 39% [26%, 55%] against 18% [9%, 33%].
+
+That is a lead to collect against. It is not an edge, it was found on the same 76
+rows it is quoted from, and no weight in `prompts/score.md` moved because of it.
+
+## Momentum & flow
+
+DexScreener has always returned 1h and 6h volume, a buy/sell split per window and
+per-window price change. Until schema 7 the parser read them and **threw them away
+at the snapshot boundary**, so every market field on a row was a 24h level — and
+`prompts/score.md` opens its scoring model with "measure acceleration, not volume"
+and closes its non-negotiables with "rate of change beats level".
+
+The `momentum` group stores them raw (`buys_1h`, `sells_1h`, `volume_1h_usd`, …)
+and `scoring/pillars.py::momentum_flow` derives the ratios at read time, so a
+revised formula re-reads every row already collected instead of stranding it.
+
+- **Buy pressure** is the component to watch: a ratio *inside* one window, so
+  unlike a between-window ratio it cannot be pinned by the token being young.
+- **Window ratios drop themselves when pinned.** 1h volume against the 6h rate is
+  not scored when the two are identical, and the pillar says why in its notes.
+- **Weight 0.00 in the composite**, on the mindshare precedent.
+  `tests/test_momentum_pillar.py` asserts the composite is numerically identical
+  with the pillar present and absent.
 
 ## Mindshare
 
@@ -248,13 +308,27 @@ Optimism, Blast, Sui, TON, Tron.
 much is a property of the chain). Its DexScreener `chainId` is *not* hardcoded, because
 nobody here has seen DexScreener return one and a guessed string produces the worst outcome
 available: a request that quietly matches nothing, indistinguishable from a quiet chain. So
-it is configuration, and switching it on takes two commands and no code change:
+it is configuration, and switching it on takes no code change:
 
 ```bash
-python -m collectors.dexscreener --discover-chains     # prints every chainId seen
-export SCREENER_CHAIN_IDS="robinhood=<the id it printed>"
-python -m collect --chains solana,bnb,robinhood
+# 1. find candidate ids. Sweeps the boost and profile endpoints AND a search
+#    sweep -- a live chain with nothing boosted on it never appears in the former.
+python -m collectors.dexscreener --discover-chains
+
+# 2. test one before trusting it. A chainId can be read straight out of a
+#    DexScreener URL (dexscreener.com/<chainId>/<pair>), but a string read off a
+#    page is a hypothesis; this shows the pools it actually found.
+python -m collectors.dexscreener --verify-chain-id <candidate>
+
+# 3. bind it. It is then in the DEFAULT run -- there is no second list to edit.
+export SCREENER_CHAIN_IDS="robinhood=<the verified id>"
+python -m collect            # solana, bnb, base, ethereum AND robinhood
 ```
+
+Step 3 is the whole decision: `collect.py`, `.github/workflows/collect.yml` and
+`api/screener.py` all ask `chains.default_chain_names()`, which includes anything bound
+through `SCREENER_CHAIN_IDS`. A bound chain that still is not being polled would be the
+same class of silent gap this repo exists to avoid.
 
 The same variable binds any chain the registry does not yet know
 (`"robinhood=abc,newchain=def"`), and the GitHub Actions workflow reads it from a repository
@@ -294,8 +368,11 @@ free pass.
 - **`flows` and `launch` are never populated.** Cohort flow and bundle/sniper analysis need
   heavier per-wallet queries that aren't written. Null, not zero, so the rows stay honest —
   but `data_completeness` sits near 0.35 and the composite is multiplied by it.
-- **Three of six pillars resolve to null on Phase 0 data**, so a composite score today is
-  computed from on-chain structure and asymmetry only, renormalised over what resolved.
+- **Three of seven pillars resolve to null on Phase 0 data** — attention, community and
+  the trend half of lineage — so a composite score today is computed from on-chain
+  structure, asymmetry, mindshare and momentum, renormalised over what resolved. The
+  largest single weight in the vector (attention velocity, 0.28) **has never resolved on
+  any row ever collected**; see [docs/x-investigation.md](docs/x-investigation.md).
 - **The GoPlus and RugCheck response shapes are unverified too**, for the same reason as
   DexScreener's, and it matters more here: a price parsed wrong is a wrong number, but a
   safety field parsed wrong is a token that passes a filter it should have failed. The
@@ -337,6 +414,7 @@ scoring/pillars.py         Phase 1 — deterministic pillar maths (what Phase 2 
 scoring/candidate.py       Phase 1 — snapshot row → candidate packet, no store needed
 scoring/prompt_meta.py     Phase 1 — prompt_version and the SYSTEM block
 scoring/runner.py          Phase 1 — filters → pillars → narrative → stored row
+calibration/backtest.py    exploratory — per-feature AUC, tie mass, AUC by age band
 calibration/fit.py         Phase 2 — time split, logistic fit, AUC/lift/intervals
 calibration/report.py      Phase 2 — the verdict, with two ways to say "no"
 export_web.py              DuckDB → web/screener-data.json
@@ -345,7 +423,8 @@ web/                       static viewer (Vercel), chain + mindshare + safety
 state/                     the dataset, as an append-only JSONL journal (tracked in git)
 .github/workflows/         collect.yml (the schedule), ci.yml (lint + tests),
                            health.yml (is the deployment answering?)
-tests/                     554 tests, network access blocked by conftest
+docs/x-investigation.md    should x.com messages be collected, and what it costs
+tests/                     703 tests, network access blocked by conftest
 ```
 
 Four modules were split out so `api/screener.py` can share the repo's real logic instead of
