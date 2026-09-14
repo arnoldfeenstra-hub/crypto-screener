@@ -108,6 +108,11 @@ jobs:
           #   python -m collectors.dexscreener --discover-chains
           #   python -m collectors.dexscreener --verify-chain-id <candidate>
           SCREENER_CHAIN_IDS: ${{ vars.SCREENER_CHAIN_IDS }}
+          # Token addresses to poll regardless of whether anyone boosted them.
+          # Discovery is boosted and profiled tokens -- a paid-for sample -- so a
+          # chain can be live and produce an empty poll forever. A seed says "this
+          # token exists, look at it"; it does not bypass the trigger.
+          SCREENER_SEED_TOKENS: ${{ vars.SCREENER_SEED_TOKENS }}
           # The one metered source here. Absent, the X collector stays off and the
           # run summary says so -- see docs/x-investigation.md. The budget caps
           # what a single cycle may spend; every other source is keyless.

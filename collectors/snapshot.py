@@ -107,6 +107,7 @@ def build_snapshot(
         trigger_mcap_crossed=decision.mcap_crossed,
         trigger_holders_crossed=decision.holders_crossed,
         age_at_trigger_minutes=metrics.age_minutes(),
+        entry_path=metrics.entry_path,
         regime=regime,
         listings=metrics.listings,
         market=Market(

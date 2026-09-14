@@ -77,6 +77,13 @@ RATE_LIMIT_PER_MINUTE: dict[str, int] = {
 # `/latest/dex/tokens/{addresses}` takes a comma-separated list, capped upstream.
 MAX_ADDRESSES_PER_REQUEST = 30
 
+# Placeholder chain for a seeded address before the API has said where it lives.
+# A seed is an address and nothing else -- `/latest/dex/tokens/{address}` needs no
+# chainId and returns one, so the chain is read off the response rather than
+# assumed. It never reaches a row: poll() replaces it with what came back, or
+# drops the seed.
+_SEED_CHAIN = "?"
+
 
 class DexScreenerError(RuntimeError):
     """A DexScreener request failed after retries."""
@@ -551,6 +558,7 @@ def to_metrics(
         declared_website=_pick("declared_website"),
         telegram_url=_pick("telegram_url"),
         x_url=_pick("x_url"),
+        entry_path=discovery.get("discovery"),
         listings=["dex"],
         raw={"dex_ids": list(aggregate.dex_ids), "discovery": discovery.get("discovery")},
     )
@@ -561,6 +569,29 @@ def to_metrics(
 
 def _batched(items: Sequence[str], size: int) -> list[list[str]]:
     return [list(items[i : i + size]) for i in range(0, len(items), size)]
+
+
+SEED_TOKENS_ENV = "SCREENER_SEED_TOKENS"
+
+
+def seed_contracts_from_env(raw: str | None = None) -> tuple[str, ...]:
+    """Token addresses from ``SCREENER_SEED_TOKENS``, comma separated.
+
+    Configuration, like ``SCREENER_CHAIN_IDS``, and for the neighbouring reason:
+    the operator knows a token exists on a chain the discovery endpoints cannot
+    see, and saying so is an assertion they are entitled to make. Order is
+    preserved and duplicates are dropped; whitespace and empty entries are
+    skipped rather than turned into a request for the empty address.
+    """
+    import os
+
+    text = raw if raw is not None else os.environ.get(SEED_TOKENS_ENV, "")
+    out: list[str] = []
+    for item in text.split(","):
+        address = item.strip()
+        if address and address not in out:
+            out.append(address)
+    return tuple(out)
 
 
 @dataclass
@@ -582,12 +613,27 @@ class DexScreenerFeed:
     source_name: str = SOURCE_NAME
     max_tokens_per_poll: int = 120
     include_profiles: bool = True
+    # Token addresses to poll regardless of whether anyone boosted or profiled them.
+    #
+    # Discovery is boosted and profiled tokens, which is a paid-for sample: a chain
+    # can be live, trading, and produce an empty poll forever because nobody has
+    # spent anything on a token there. Binding such a chain's id and collecting
+    # nothing looks identical to a quiet chain -- the exact failure
+    # collectors/chains.py refuses to guess its way into.
+    #
+    # A seed is an operator saying "this token exists, look at it". It does not
+    # bypass the trigger: a seeded token is observed on identical terms and enters
+    # the dataset only if it crosses, like every other token. What it does change
+    # is the *sample*, so every row records how it arrived (`entry_path`), and a
+    # seeded token counts in the mindshare universe it was polled with.
+    seed_contracts: tuple[str, ...] = ()
 
     @classmethod
     def for_chains(
         cls, chain_names: Sequence[str], client: DexScreenerClient | None = None, **kwargs: Any
     ) -> DexScreenerFeed:
         resolved = chains.resolve_requested(list(chain_names))
+        kwargs.setdefault("seed_contracts", seed_contracts_from_env())
         return cls(
             client=client or DexScreenerClient(),
             chain_names=tuple(resolved),
@@ -631,6 +677,19 @@ class DexScreenerFeed:
                     for flag in ("declared_telegram", "declared_x", "declared_website"):
                         if existing.get(flag) is None:
                             existing[flag] = entry.get(flag)
+
+        # Seeds last, and they never overwrite a discovery entry: a token that was
+        # both boosted and seeded arrived by the boost, and its boost figures are
+        # real mindshare inputs that a seed placeholder would erase. The chain is
+        # left unresolved here because a seed is an address with no chainId
+        # attached -- poll() fills it in from what the API actually returns.
+        for contract in self.seed_contracts:
+            if not any(key[1] == contract for key in found):
+                found[(_SEED_CHAIN, contract)] = {
+                    "chain": _SEED_CHAIN,
+                    "contract": contract,
+                    "discovery": "seed",
+                }
         return found
 
     def poll(self) -> list[TokenMetrics]:
@@ -651,15 +710,45 @@ class DexScreenerFeed:
             except DexScreenerError:
                 log.exception("pair lookup failed for a batch of %d", len(batch))
 
+        # Seeds arrive as an address with no chain. The response carries the chain,
+        # so it is matched by contract and the API's answer is used -- the one place
+        # a key is completed rather than looked up.
+        by_contract: dict[str, tuple[str, PairAggregate]] = {
+            contract: (chain, aggregate)
+            for (chain, contract), aggregate in aggregates.items()
+        }
+        wanted = set(self.chain_names)
+
         out: list[TokenMetrics] = []
-        for key in keys:
-            aggregate = aggregates.get(key)
-            if aggregate is None:
-                # Discovered but not yet pooled, or the lookup failed. Nothing to
-                # snapshot: with no market data the trigger cannot fire anyway.
-                continue
+        for chain, contract in keys:
+            if chain == _SEED_CHAIN:
+                resolved = by_contract.get(contract)
+                if resolved is None:
+                    continue
+                chain, aggregate = resolved
+                if chain not in wanted:
+                    # A seeded address that turned out to live on a chain this run
+                    # did not ask for. Dropped rather than collected: seeding must
+                    # not widen the sample's chain set by a side effect, or the
+                    # chain filter stops describing what was polled.
+                    log.info(
+                        "seeded token %s is on %s, which was not requested", contract, chain
+                    )
+                    continue
+            else:
+                aggregate = aggregates.get((chain, contract))  # type: ignore[assignment]
+                if aggregate is None:
+                    # Discovered but not yet pooled, or the lookup failed. Nothing
+                    # to snapshot: with no market data the trigger cannot fire.
+                    continue
             out.append(
-                to_metrics(aggregate, observed_at_ms=observed, discovery=discovered[key])
+                to_metrics(
+                    aggregate,
+                    observed_at_ms=observed,
+                    discovery=discovered[(_SEED_CHAIN, contract)]
+                    if (_SEED_CHAIN, contract) in discovered
+                    else discovered[(chain, contract)],
+                )
             )
         return out
 
@@ -778,6 +867,83 @@ def discover_chain_ids(
     return out
 
 
+def resolve_token_chain(client: DexScreenerClient, address: str) -> dict[str, Any]:
+    """What chain is this token on? Ask the endpoint that does not need to be told.
+
+    ``/latest/dex/tokens/{address}`` takes an address and **no chainId**, and every
+    pair it returns carries the ``chainId`` DexScreener files it under. So a single
+    token address somebody already has is enough to learn a chain's id -- which is
+    the missing step for a chain nobody here can otherwise name.
+
+    That matters most for exactly the chain that has the problem. ``--discover-chains``
+    asks the boost, profile and search endpoints, and a chain can be live and absent
+    from all of them; a token address is direct evidence, and the id comes back from
+    the API rather than from anyone's memory of a URL.
+
+    Reports the id **raw**, beside the canonical name it maps to today. Those differ
+    precisely when the chain is not bound yet, which is the case this exists for.
+    """
+    try:
+        payload = client.pairs_for_tokens([address])
+    except DexScreenerError as exc:
+        return {"address": address, "error": str(exc), "chain_ids": []}
+
+    # Both envelope shapes, exactly as parse_pairs accepts them. The real client
+    # unwraps `{"pairs": [...]}` to a list, but this reads the raw chainId rather
+    # than the canonical name -- the whole point -- so it cannot reuse parse_pairs
+    # for that half, and must not disagree with it about what a payload is.
+    if isinstance(payload, dict):
+        raw_pairs = payload.get("pairs") or []
+    elif isinstance(payload, list):
+        raw_pairs = payload
+    else:
+        raw_pairs = []
+
+    raw_ids: dict[str, int] = {}
+    for pair in raw_pairs:
+        if isinstance(pair, dict) and pair.get("chainId"):
+            raw = str(pair["chainId"])
+            raw_ids[raw] = raw_ids.get(raw, 0) + 1
+
+    aggregates = parse_pairs(payload)
+    tokens = [
+        {
+            "chain": chain,
+            "ticker": aggregate.ticker,
+            "mcap_usd": aggregate.mcap_usd,
+            "liquidity_usd": aggregate.liquidity_usd,
+            "pairs": aggregate.pair_count,
+        }
+        for (chain, _), aggregate in aggregates.items()
+    ]
+
+    unbound = [
+        raw for raw in raw_ids if chains.dexscreener_id(chains.canonical(raw)) != raw
+    ]
+    return {
+        "address": address,
+        "chain_ids": sorted(raw_ids),
+        "pairs_by_chain_id": raw_ids,
+        "tokens": tokens,
+        "not_bound": unbound,
+        "conclusion": (
+            f"No pool came back for {address}. Either the address is wrong, or "
+            "DexScreener has not indexed it."
+            if not raw_ids
+            else (
+                "DexScreener files this token under chainId "
+                + ", ".join(repr(r) for r in sorted(raw_ids))
+                + ". "
+                + (
+                    f'Bind it: {chains.CHAIN_ID_ENV}="<chain>={sorted(unbound)[0]}".'
+                    if unbound
+                    else "It is already bound in collectors/chains.py."
+                )
+            )
+        ),
+    }
+
+
 def verify_chain_id(
     client: DexScreenerClient, candidate: str, *, queries: Sequence[str] | None = None
 ) -> dict[str, Any]:
@@ -866,6 +1032,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--resolve-token",
+        metavar="ADDRESS",
+        help=(
+            "ask which chain a token address is on. /latest/dex/tokens takes no "
+            "chainId and returns one, so a single address you already have is "
+            "enough to learn a chain's id -- including a chain that never shows up "
+            "in --discover-chains because nobody has boosted a token on it."
+        ),
+    )
+    parser.add_argument(
         "--verify-chain-id",
         metavar="CHAIN_ID",
         help=(
@@ -884,6 +1060,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
+
+    if args.resolve_token:
+        print(json.dumps(resolve_token_chain(DexScreenerClient(), args.resolve_token), indent=2))
+        return 0
 
     if args.verify_chain_id:
         try:

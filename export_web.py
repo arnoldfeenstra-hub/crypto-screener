@@ -111,6 +111,10 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                 "age_at_trigger_minutes": snap["age_at_trigger_minutes"],
                 "regime": snap["regime"],
                 "source": snap["source"],
+                # How the token entered the sample (schema 8): a boost list, a
+                # profile, or an operator seeding its address. Null on every row
+                # written before it was recorded.
+                "entry_path": snap["entry_path"],
                 "chain_label": chain_registry.label(snap["chain"]),
                 # The token's page on DexScreener. Built from the registry rather
                 # than from the stored chain name, because the URL takes

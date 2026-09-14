@@ -88,9 +88,17 @@ def run_cycle(
     try:
         summary["restored"] = journal.restore(store, state_dir)
 
+        # for_chains reads SCREENER_SEED_TOKENS itself, so a seeded address is
+        # polled on the schedule without a second switch -- the same shape as
+        # SCREENER_CHAIN_IDS, and for the same reason: a chain whose tokens
+        # nobody boosts is invisible to discovery, and binding its id alone
+        # collects nothing while looking exactly like a quiet chain.
         feed = feed or DexScreenerFeed.for_chains(
             resolved, client=DexScreenerClient(), max_tokens_per_poll=max_tokens_per_poll
         )
+        seeds = tuple(getattr(feed, "seed_contracts", ()) or ())
+        if seeds:
+            summary["seeded_tokens"] = len(seeds)
         watcher = TriggerWatcher(
             store, source=getattr(feed, "source_name", "dexscreener"), regime=regime
         )

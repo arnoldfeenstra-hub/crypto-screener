@@ -976,3 +976,266 @@ class TestTheCollectorCanActuallyStart:
             "collect.yml installs named packages instead of the project. The list "
             "will drift from the imports again; it already did once."
         )
+
+
+# ---------------------------------------------------------------------------
+# Finding a chain nobody has boosted a token on
+# ---------------------------------------------------------------------------
+
+
+ROBINHOOD_TOKEN = "0x1cDb289BeFDFaC8aF945a288BCdcCc382cB34d32"
+
+
+def _quiet_chain_pairs(chain_id: str, address: str) -> list[dict]:
+    return [
+        {
+            "chainId": chain_id,
+            "baseToken": {"address": address, "symbol": "$RH", "name": "RH Token"},
+            "priceUsd": "0.01",
+            "marketCap": 900_000,
+            "fdv": 1_000_000,
+            "liquidity": {"usd": 90_000},
+            "volume": {"h24": 400_000, "h6": 120_000, "h1": 30_000},
+            "txns": {"h24": {"buys": 900, "sells": 700}, "h1": {"buys": 90, "sells": 40}},
+            "priceChange": {"h1": 4.2, "h6": 18.0, "h24": 55.0},
+            "pairCreatedAt": 1_789_300_000_000,
+        }
+    ]
+
+
+class QuietChainClient:
+    """DexScreener with a live pool nobody has boosted or profiled.
+
+    This is the shape of the problem, not a contrivance: the discovery endpoints
+    only ever return tokens somebody paid to boost or filled in a profile for, so
+    a whole chain can trade all day and never appear in one.
+    """
+
+    def __init__(self, chain_id: str = "robinhoodchain", address: str = ROBINHOOD_TOKEN):
+        self.chain_id = chain_id
+        self.address = address
+        self.asked: list[list[str]] = []
+
+    def token_boosts_top(self):
+        return [{"chainId": "solana", "tokenAddress": "SoL1"}]
+
+    def token_boosts_latest(self):
+        return []
+
+    def token_profiles(self):
+        return [{"chainId": "bsc", "tokenAddress": "0xbsc1"}]
+
+    def pairs_for_tokens(self, addresses):
+        self.asked.append(list(addresses))
+        if self.address in addresses:
+            return _quiet_chain_pairs(self.chain_id, self.address)
+        return []
+
+
+class TestWhyAChainProducesNoTokens:
+    """Two independent reasons, and the second is the one that surprises."""
+
+    def test_an_unbound_chain_cannot_even_be_asked_about(self, monkeypatch):
+        monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+        chains.reload_overrides()
+        with pytest.raises(ValueError, match="no DexScreener source"):
+            chains.resolve_requested(["robinhood"])
+
+    def test_binding_the_id_is_not_enough_on_a_chain_nobody_boosts(self, monkeypatch):
+        """The failure that looks exactly like success.
+
+        With the id bound, the chain resolves, the feed polls, and it collects
+        nothing -- because discovery is a paid-for sample and this chain is not in
+        it. Indistinguishable, in the counts afterwards, from a quiet chain.
+        """
+        from collectors.dexscreener import DexScreenerFeed
+
+        monkeypatch.setenv(chains.CHAIN_ID_ENV, "robinhood=robinhoodchain")
+        chains.reload_overrides()
+        try:
+            feed = DexScreenerFeed(
+                client=QuietChainClient(), chain_names=("robinhood",)
+            )
+            assert feed.discover() == {}
+            assert feed.poll() == []
+        finally:
+            monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+            chains.reload_overrides()
+
+
+class TestResolveTokenChain:
+    """A token address you already have is enough to learn a chain's id."""
+
+    def test_it_reports_the_raw_chain_id_the_api_files_the_token_under(self):
+        from collectors.dexscreener import resolve_token_chain
+
+        result = resolve_token_chain(QuietChainClient(), ROBINHOOD_TOKEN)
+        assert result["chain_ids"] == ["robinhoodchain"]
+        assert result["not_bound"] == ["robinhoodchain"]
+        assert "robinhoodchain" in result["conclusion"]
+
+    def test_it_accepts_either_envelope_shape(self):
+        from collectors.dexscreener import resolve_token_chain
+
+        class DictEnvelope(QuietChainClient):
+            def pairs_for_tokens(self, addresses):
+                return {"pairs": _quiet_chain_pairs(self.chain_id, self.address)}
+
+        assert resolve_token_chain(DictEnvelope(), ROBINHOOD_TOKEN)["chain_ids"] == [
+            "robinhoodchain"
+        ]
+
+    def test_an_unindexed_address_is_not_reported_as_a_new_chain(self):
+        from collectors.dexscreener import resolve_token_chain
+
+        result = resolve_token_chain(QuietChainClient(), "0xnothing")
+        assert result["chain_ids"] == []
+        assert "Either the address is wrong" in result["conclusion"]
+
+    def test_a_request_failure_is_reported_rather_than_read_as_absence(self):
+        from collectors.dexscreener import DexScreenerError, resolve_token_chain
+
+        class Broken(QuietChainClient):
+            def pairs_for_tokens(self, addresses):
+                raise DexScreenerError("429")
+
+        result = resolve_token_chain(Broken(), ROBINHOOD_TOKEN)
+        assert result["error"] == "429"
+        assert result["chain_ids"] == []
+
+    def test_an_already_bound_id_is_not_offered_for_binding(self):
+        from collectors.dexscreener import resolve_token_chain
+
+        result = resolve_token_chain(QuietChainClient(chain_id="bsc"), ROBINHOOD_TOKEN)
+        assert result["not_bound"] == []
+        assert "already bound" in result["conclusion"]
+
+
+class TestSeededTokens:
+    """The other half: collecting a token discovery will never surface."""
+
+    def test_a_seeded_address_is_polled_and_its_chain_comes_from_the_response(
+        self, monkeypatch
+    ):
+        from collectors.dexscreener import DexScreenerFeed
+
+        monkeypatch.setenv(chains.CHAIN_ID_ENV, "robinhood=robinhoodchain")
+        chains.reload_overrides()
+        try:
+            feed = DexScreenerFeed(
+                client=QuietChainClient(),
+                chain_names=("robinhood",),
+                seed_contracts=(ROBINHOOD_TOKEN,),
+            )
+            polled = feed.poll()
+            assert [m.chain for m in polled] == ["robinhood"]
+            assert polled[0].mcap_usd == 900_000.0
+            assert polled[0].entry_path == "seed"
+        finally:
+            monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+            chains.reload_overrides()
+
+    def test_a_seeded_token_still_has_to_cross_the_trigger(self, monkeypatch):
+        """Seeding says "look at this", never "include this".
+
+        The trigger is the sample's entry rule and it is identical for every
+        token; a seed that bypassed it would put a row into the dataset at a
+        lifecycle point of its own.
+        """
+        from collectors.dexscreener import DexScreenerFeed
+
+        class Small(QuietChainClient):
+            def pairs_for_tokens(self, addresses):
+                pairs = _quiet_chain_pairs(self.chain_id, self.address)
+                pairs[0]["marketCap"] = 1_000  # far below $250k
+                return pairs
+
+        monkeypatch.setenv(chains.CHAIN_ID_ENV, "robinhood=robinhoodchain")
+        chains.reload_overrides()
+        try:
+            feed = DexScreenerFeed(
+                client=Small(), chain_names=("robinhood",), seed_contracts=(ROBINHOOD_TOKEN,)
+            )
+            polled = feed.poll()
+            assert len(polled) == 1
+            assert not evaluate(polled[0].mcap_usd, polled[0].holder_count).fired
+        finally:
+            monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+            chains.reload_overrides()
+
+    def test_a_seed_on_a_chain_nobody_requested_is_dropped(self):
+        """Seeding must not widen the run's chain set by a side effect, or the
+        chain list stops describing what was actually polled."""
+        from collectors.dexscreener import DexScreenerFeed
+
+        feed = DexScreenerFeed(
+            client=QuietChainClient(chain_id="bsc"),
+            chain_names=("solana",),
+            seed_contracts=(ROBINHOOD_TOKEN,),
+        )
+        assert feed.poll() == []
+
+    def test_a_boosted_token_keeps_its_boost_figures_when_also_seeded(self):
+        """A seed placeholder carries no boost data. Letting it win would erase a
+        real mindshare input."""
+        from collectors.dexscreener import DexScreenerFeed
+
+        class Boosted(QuietChainClient):
+            def token_boosts_top(self):
+                return [
+                    {
+                        "chainId": "solana",
+                        "tokenAddress": "SoL1",
+                        "amount": 100,
+                        "totalAmount": 500,
+                    }
+                ]
+
+        feed = DexScreenerFeed(
+            client=Boosted(), chain_names=("solana",), seed_contracts=("SoL1",)
+        )
+        entry = feed.discover()[("solana", "SoL1")]
+        assert entry["discovery"] == "boost_top"
+        assert entry["boost_total"] == 500
+
+    def test_the_env_list_is_parsed_without_inventing_an_empty_address(self):
+        from collectors.dexscreener import seed_contracts_from_env
+
+        assert seed_contracts_from_env(" 0xA , ,0xB, 0xA ") == ("0xA", "0xB")
+        assert seed_contracts_from_env("") == ()
+
+
+class TestEntryPathIsRecorded:
+    """How a row arrived is a confounder, so it is a column and not a caveat."""
+
+    def test_the_snapshot_carries_how_the_token_was_found(self):
+        from collectors.dexscreener import parse_pairs, to_metrics
+        from collectors.snapshot import build_snapshot
+
+        aggregate = next(iter(parse_pairs(_quiet_chain_pairs("solana", "Tok1")).values()))
+        metrics = to_metrics(aggregate, discovery={"discovery": "seed"})
+        snapshot = build_snapshot(metrics, evaluate(metrics.mcap_usd, None))
+        assert snapshot.entry_path == "seed"
+        assert snapshot.to_row()["entry_path"] == "seed"
+
+    def test_it_does_not_count_toward_data_completeness(self):
+        """Bookkeeping about the collector, not a measurement of the token. A row
+        must not score better for having been collected."""
+        from collectors.schema import Market, Snapshot
+
+        base = Snapshot(
+            chain="solana", contract="C", trigger="mcap_250k", source="t",
+            market=Market(mcap_usd=300_000.0),
+        )
+        seeded = Snapshot(
+            chain="solana", contract="C", trigger="mcap_250k", source="t",
+            market=Market(mcap_usd=300_000.0), entry_path="seed",
+        )
+        assert base.completeness() == seeded.completeness()
+
+    def test_a_row_written_before_it_was_recorded_is_null_not_a_guess(self):
+        from collectors.schema import Snapshot
+
+        assert Snapshot(
+            chain="solana", contract="C", trigger="mcap_250k", source="t"
+        ).entry_path is None

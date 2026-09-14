@@ -182,6 +182,7 @@ def build_live_payload(
                 "age_at_trigger_minutes": snapshot.age_at_trigger_minutes,
                 "regime": regime,
                 "source": SOURCE_NAME,
+                "entry_path": snapshot.entry_path,
                 "mcap_usd": snapshot.market.mcap_usd,
                 "fdv_usd": snapshot.market.fdv_usd,
                 "liquidity_usd": snapshot.market.liquidity_usd,

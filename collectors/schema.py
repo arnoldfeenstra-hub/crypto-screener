@@ -25,6 +25,14 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
+# 8 adds snapshots.entry_path: how this token got into the sample -- a boost list,
+# a profile, or an operator seeding its address. It is the selection effect the
+# README has always named and no row has ever recorded. Discovery is boosted and
+# profiled tokens, which is a paid-for sample, so "how did this row arrive" is a
+# confounder for anything fitted on the dataset and has to be a column rather
+# than a caveat. Deliberately outside FEATURE_GROUPS, like telegram_url: it is
+# bookkeeping about the collector, not a measurement of the token, and counting
+# it toward data_completeness would reward a row for being collected.
 # 7 adds the `momentum` group: the short-window trade and price fields DexScreener
 # has always returned and this repo has always thrown away at the snapshot
 # boundary. The parser read `volume.h1`, `volume.h6`, `txns.h1`, the buy/sell
@@ -61,7 +69,7 @@ from typing import Any
 # take version 2 rows. Store.open refuses it by name rather than failing on the
 # insert. Phase 0 has no production database yet; if one exists, start a new file
 # and keep the old one -- the old rows are still the graveyard.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # Groups whose leaf fields count toward the Data Completeness modifier in
 # prompts/score.md. Identity and bookkeeping columns are excluded: they are always
@@ -341,6 +349,11 @@ class Snapshot:
     telegram_url: str | None = None
     x_url: str | None = None
 
+    # How this token entered the sample: "boost_top", "boost_latest", "profile"
+    # or "seed". See the schema 8 note above -- it is the selection effect, and
+    # None on every row written before it was recorded.
+    entry_path: str | None = None
+
     # Both crossing flags are kept even though ``trigger`` names only one. The
     # section 4 enum has no "both" member, and dropping the second flag would be a
     # small act of data loss on the one field the whole cohort design rests on.
@@ -402,6 +415,7 @@ class Snapshot:
             "contract": self.contract,
             "telegram_url": self.telegram_url,
             "x_url": self.x_url,
+            "entry_path": self.entry_path,
             "age_at_trigger_minutes": self.age_at_trigger_minutes,
         }
         for group_name in FEATURE_GROUPS:
@@ -438,6 +452,7 @@ class Snapshot:
             "contract": self.contract,
             "telegram_url": self.telegram_url,
             "x_url": self.x_url,
+            "entry_path": self.entry_path,
             "age_at_trigger_minutes": self.age_at_trigger_minutes,
             "regime": self.regime,
             "listings": json.dumps(self.listings) if self.listings is not None else None,
@@ -551,6 +566,7 @@ SNAPSHOT_COLUMNS: list[tuple[str, str]] = [
     ("contract", "VARCHAR"),
     ("telegram_url", "VARCHAR"),
     ("x_url", "VARCHAR"),
+    ("entry_path", "VARCHAR"),
     ("age_at_trigger_minutes", "BIGINT"),
     ("regime", "VARCHAR"),
     ("listings", "JSON"),

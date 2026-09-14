@@ -107,6 +107,12 @@ class TokenMetrics:
     telegram_url: str | None = None
     x_url: str | None = None
 
+    # How the collector found this token: "boost_top", "boost_latest", "profile"
+    # or "seed". Provenance, not a feature -- see collectors/schema.py's schema 8
+    # note. Set by to_metrics() from the discovery record, so a source with no
+    # notion of discovery simply leaves it None.
+    entry_path: str | None = None
+
     listings: list[str] | None = None
     raw: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 

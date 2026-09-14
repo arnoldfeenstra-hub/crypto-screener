@@ -34,7 +34,7 @@ tokens whether or not a collector has ever run.
 | 3 live ranking | **Not built, and should not be** — gated on Phase 2 measuring an edge |
 | Web viewer | Built, `web/` + `api/screener.py`; refresh button, per-coin DexScreener link, column glossary, chain/mindshare/momentum sorts |
 
-703 tests, no network, ~14s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
+718 tests, no network, ~14s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
 
 ## Run it against real data
 
@@ -70,6 +70,8 @@ The individual steps still exist if you want them:
 ```bash
 python -m collectors.dexscreener --probe --chains solana,bnb   # see what comes back
 python -m collectors.dexscreener --discover-chains             # every chainId it returns
+python -m collectors.dexscreener --resolve-token 0xTOKEN       # which chain is it on?
+python -m collectors.dexscreener --verify-chain-id someid      # is this chainId real?
 python -m collectors.safety --probe --chain bnb 0xTOKEN        # what the filters can answer
 python -m collectors.trigger_watcher --chains solana,bnb,base --once --db data/screener.duckdb
 python -m scoring.runner --db data/screener.duckdb --safety --regime neutral
@@ -308,27 +310,48 @@ Optimism, Blast, Sui, TON, Tron.
 much is a property of the chain). Its DexScreener `chainId` is *not* hardcoded, because
 nobody here has seen DexScreener return one and a guessed string produces the worst outcome
 available: a request that quietly matches nothing, indistinguishable from a quiet chain. So
-it is configuration, and switching it on takes no code change:
+it is configuration, and switching it on takes no code change.
+
+**Binding the id is necessary and not sufficient**, which is the part that surprises.
+Discovery is boosted and profiled tokens — a paid-for sample — so a chain can be live,
+trading, and produce an empty poll forever. With the id bound and nothing else done,
+`discover()` returns `{}` and `poll()` returns `[]`, which in the counts afterwards is
+indistinguishable from a quiet chain. `tests/test_chains_and_live.py::TestWhyAChainProducesNoTokens`
+asserts exactly that, so the trap stays documented in something that runs.
+
+So there are two halves, and a token address you already have drives both:
 
 ```bash
-# 1. find candidate ids. Sweeps the boost and profile endpoints AND a search
-#    sweep -- a live chain with nothing boosted on it never appears in the former.
-python -m collectors.dexscreener --discover-chains
+# 1. Which chain is this token on? /latest/dex/tokens takes an address and NO
+#    chainId, and every pair it returns carries one. So one address is enough to
+#    learn a chain's id -- including a chain that never appears in --discover-chains
+#    because nobody has boosted a token on it.
+python -m collectors.dexscreener --resolve-token 0xTOKEN
 
-# 2. test one before trusting it. A chainId can be read straight out of a
-#    DexScreener URL (dexscreener.com/<chainId>/<pair>), but a string read off a
-#    page is a hypothesis; this shows the pools it actually found.
-python -m collectors.dexscreener --verify-chain-id <candidate>
+#    (--discover-chains lists every id the boost, profile and search endpoints
+#    return; --verify-chain-id tests a candidate read off a DexScreener URL.)
 
-# 3. bind it. It is then in the DEFAULT run -- there is no second list to edit.
-export SCREENER_CHAIN_IDS="robinhood=<the verified id>"
+# 2. Bind the id, and seed the addresses discovery cannot see.
+export SCREENER_CHAIN_IDS="robinhood=<the id step 1 printed>"
+export SCREENER_SEED_TOKENS="0xTOKEN,0xANOTHER"
 python -m collect            # solana, bnb, base, ethereum AND robinhood
 ```
 
-Step 3 is the whole decision: `collect.py`, `.github/workflows/collect.yml` and
-`api/screener.py` all ask `chains.default_chain_names()`, which includes anything bound
-through `SCREENER_CHAIN_IDS`. A bound chain that still is not being polled would be the
-same class of silent gap this repo exists to avoid.
+Binding is the whole decision for *which chains run*: `collect.py`,
+`.github/workflows/collect.yml` and `api/screener.py` all ask
+`chains.default_chain_names()`, which includes anything bound through
+`SCREENER_CHAIN_IDS`. In Actions, set both as repository *variables*.
+
+**A seed says "this token exists, look at it" — never "include this".** A seeded token
+is observed on identical terms and enters the dataset only if it crosses the trigger,
+like every other token; one that turns out to live on a chain the run did not ask for is
+dropped rather than collected, because seeding must not widen the sample's chain set by a
+side effect. What it does change is the *sample*, so schema 8 records `entry_path` on
+every row — `boost_top`, `boost_latest`, `profile` or `seed`. That is the selection effect
+this README has always named and no row had ever recorded; it is a confounder for anything
+fitted on the dataset, so it is a column rather than a caveat. It sits outside
+`FEATURE_GROUPS`, like `telegram_url`, because it is bookkeeping about the collector and a
+row must not score better for having been collected.
 
 The same variable binds any chain the registry does not yet know
 (`"robinhood=abc,newchain=def"`), and the GitHub Actions workflow reads it from a repository
@@ -357,7 +380,9 @@ free pass.
 - **Discovery is boosted and profiled tokens, not every new pool.** There is no keyless
   new-pool firehose. A token reaches the sample because someone paid to boost it or filled in
   its profile, which is a real selection effect on the population *and* the denominator of
-  every mindshare figure. Stated on the page rather than hidden.
+  every mindshare figure. Stated on the page rather than hidden, and now recorded per row as
+  `entry_path`. `SCREENER_SEED_TOKENS` is the escape hatch for a token discovery will never
+  surface — it widens the sample deliberately and says so on every row it adds.
 - **The Bitquery queries are unverified.** Everything downstream is tested; this is the other
   seam where reality gets in.
 - **Telegram message rates and unique speakers are not collected.** The public t.me preview
@@ -424,7 +449,7 @@ state/                     the dataset, as an append-only JSONL journal (tracked
 .github/workflows/         collect.yml (the schedule), ci.yml (lint + tests),
                            health.yml (is the deployment answering?)
 docs/x-investigation.md    should x.com messages be collected, and what it costs
-tests/                     703 tests, network access blocked by conftest
+tests/                     718 tests, network access blocked by conftest
 ```
 
 Four modules were split out so `api/screener.py` can share the repo's real logic instead of

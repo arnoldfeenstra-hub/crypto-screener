@@ -169,7 +169,10 @@ class TestWiredThrough:
         assert snapshot.completeness()[1] == 65
 
     def test_the_schema_version_was_bumped_with_the_group(self):
-        assert SCHEMA_VERSION == 7
+        # The group landed at 7. The assertion is >= rather than == because later
+        # versions add unrelated columns; what it defends is that the group never
+        # ships without a bump, which is what lets a row say which schema wrote it.
+        assert SCHEMA_VERSION >= 7
 
     def test_the_parser_keeps_every_window_the_api_reports(self):
         payload = json.loads(
