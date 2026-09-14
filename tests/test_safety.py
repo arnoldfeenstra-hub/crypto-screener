@@ -792,12 +792,27 @@ class TestDeployerHistoryOnSolana:
     def test_an_enumerated_creator_with_no_rug_risk_is_a_measured_zero(self):
         assert parse_rugcheck(DATA["rugcheck_report"], SOL_MINT).deployer_prior_rugs == 0
 
-    def test_a_creator_rugcheck_did_not_enumerate_stays_unknown(self):
-        """The narrow half of the permissive reading. Naming the creator is not
-        the same as having looked at what else they launched, and this is a
-        rejection filter -- a wrong zero lets a token through."""
+    def test_a_scored_report_answers_even_without_the_token_list(self):
+        """creatorTokens was the wrong witness for "the engine evaluated this".
+
+        It is a separate enrichment and comes back null on most reports, so
+        gating on it left the filter abstaining for 22 of 25 real rows -- not
+        screening, declining to answer. `score` and a `rugged` verdict are the
+        engine's own output and came back on 25 of 25.
+        """
         report = parse_rugcheck(DATA["rugcheck_creator_not_enumerated"], "x")
-        assert report.deployer_prior_rugs is None
+        assert report.deployer_prior_rugs == 0
+
+    def test_a_report_that_names_no_creator_stays_unknown(self):
+        """The half that is still required. Without a creator there is no
+        deployer for any verdict to be about -- 6 of those 25 rows."""
+        payload = dict(DATA["rugcheck_creator_not_enumerated"])
+        payload.pop("creator")
+        assert parse_rugcheck(payload, "x").deployer_prior_rugs is None
+
+    def test_an_engine_that_said_nothing_at_all_stays_unknown(self):
+        """A creator name on its own is not a verdict about them."""
+        assert parse_rugcheck({"mint": "x", "creator": "C"}, "x").deployer_prior_rugs is None
 
     def test_the_unsafe_answer_survives_a_merge(self):
         """GoPlus clearing a creator must not erase RugCheck finding a rug."""
