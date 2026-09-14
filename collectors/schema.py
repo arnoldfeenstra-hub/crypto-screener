@@ -25,7 +25,11 @@ from dataclasses import asdict, dataclass, field, fields
 from datetime import UTC, datetime
 from typing import Any
 
-# 5 adds safety_observations.lp_total_usd -- the denominator lp_locked_pct is
+# 6 adds safety_observations.source_fields: which top-level keys each source
+# actually returned. The parsers are total, so an unrecognised shape degrades to
+# None -- correct, and silent. Twice a field has been absent from a live response
+# with no symptom but a filter that could never answer. 5 adds
+# safety_observations.lp_total_usd -- the denominator lp_locked_pct is
 # weighted over when a token's pools disagree -- and snapshots.telegram_url and
 # snapshots.x_url: the declared link
 # addresses, not just the booleans saying they exist. Without them the forward
@@ -46,7 +50,7 @@ from typing import Any
 # take version 2 rows. Store.open refuses it by name rather than failing on the
 # insert. Phase 0 has no production database yet; if one exists, start a new file
 # and keep the old one -- the old rows are still the graveyard.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Groups whose leaf fields count toward the Data Completeness modifier in
 # prompts/score.md. Identity and bookkeeping columns are excluded: they are always
@@ -625,6 +629,7 @@ SAFETY_OBSERVATION_COLUMNS: list[tuple[str, str]] = [
     ("lp_locked_pct", "DOUBLE"),
     ("lp_markets", "JSON"),
     ("lp_total_usd", "DOUBLE"),
+    ("source_fields", "JSON"),
     ("top10_ex_lp_pct", "DOUBLE"),
     ("holder_count", "BIGINT"),
     ("upgradeable", "BOOLEAN"),

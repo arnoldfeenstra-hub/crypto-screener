@@ -704,6 +704,60 @@ class TestSafetySource:
         assert found[("bnb", CLEAN_EVM)].deployer_prior_rugs is None
 
 
+class TestTheShapeIsRecorded:
+    """Every parser here is total: an unrecognised response degrades each field to
+    None rather than crashing or guessing. That is the right failure mode and a
+    silent one -- the symptom is a filter that answers "unknown" forever.
+
+    Twice now that has cost a live run to diagnose. The key list is what makes a
+    field that was absent distinguishable from one that was misread.
+    """
+
+    def test_a_solana_report_records_the_keys_goplus_returned(self):
+        report = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
+        assert "goplus:mintable" in report.source_fields
+        assert "goplus:non_transferable" in report.source_fields
+        assert all(f.startswith("goplus:") for f in report.source_fields)
+
+    def test_a_rugcheck_report_records_its_own(self):
+        fields = parse_rugcheck(DATA["rugcheck_report"], SOL_MINT).source_fields
+        assert "rugcheck:totalMarketLiquidity" in fields
+        assert "rugcheck:markets" in fields
+
+    def test_merging_two_sources_keeps_both_inventories(self):
+        """Which is the point on Solana, where GoPlus and RugCheck answer
+        different halves of the question."""
+        found = self.merged()
+        assert any(f.startswith("goplus:") for f in found.source_fields)
+        assert any(f.startswith("rugcheck:") for f in found.source_fields)
+
+    def merged(self):
+        goplus = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
+        rug = parse_rugcheck(DATA["rugcheck_report"], SOL_MINT)
+        return merge(goplus, rug)
+
+    def test_the_inventory_is_not_counted_as_a_measurement(self):
+        report = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
+        assert report.source_fields
+        assert report.measured_fields == replace(report, source_fields=()).measured_fields
+
+    def test_an_envelope_that_is_not_a_mapping_records_nothing(self):
+        from collectors.safety import _seen_fields
+
+        assert _seen_fields("goplus", None) == ()
+        assert _seen_fields("goplus", []) == ()
+
+    def test_default_account_state_is_no_longer_read_as_frozen(self):
+        """It fired on 36 of 36 real tokens, every one of them trading with live
+        liquidity at the time, so the reading cannot have been right. The encoding
+        is unverified; a label shown on every token is worse than no label."""
+        report = next(iter(parse_goplus_solana(DATA["goplus_solana"]).values()))
+        assert "default_account_state_frozen" not in report.risk_labels
+        # But the key's presence is still recorded, so it can be interpreted once
+        # the live values say what it means.
+        assert "goplus:default_account_state" in report.source_fields
+
+
 class TestStorage:
     def test_the_pool_rows_survive_a_write_and_read_back(self):
         """`lp_markets` is only worth collecting if it reaches the journal, which
