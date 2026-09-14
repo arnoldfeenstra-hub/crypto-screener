@@ -92,6 +92,31 @@ RATE_LIMIT_PER_MINUTE = {"goplus": 30, "rugcheck": 60}
 # most common way a batched GET quietly starts failing.
 MAX_ADDRESSES_PER_REQUEST = 20
 
+# GoPlus's native-chain endpoints -- /api/v1/solana/... and /api/v1/sui/... --
+# answer for the FIRST address they are given and ignore the rest, whatever
+# `contract_addresses` contains. The EVM endpoint does batch, which is why this
+# went unnoticed: the same code was correct on one route and silently lossy on
+# the other, with no error to see.
+#
+# Measured from the collector's own rows, grouped by cycle:
+#
+#     solana mints sent   4   9  24  10  17   1  13
+#     goplus answers      1   1   2   1   1   1   1
+#
+# 24 is two batches of 20 and 4, and returned exactly two reports. One per
+# request, every time. That is why sellability was unanswered for 59 of 70
+# tokens while the parser that answers it was working correctly all along.
+NATIVE_MAX_ADDRESSES_PER_REQUEST = 1
+
+
+def goplus_batch_size(chain: str) -> int:
+    """How many addresses one GoPlus request for ``chain`` can actually answer."""
+    return (
+        NATIVE_MAX_ADDRESSES_PER_REQUEST
+        if chain in GOPLUS_NATIVE_PATHS
+        else MAX_ADDRESSES_PER_REQUEST
+    )
+
 # GoPlus numeric chain ids, by this repo's canonical chain name. A chain absent
 # here has no safety source and its filters stay unknown -- which is the correct
 # answer, and is why Robinhood Chain will show as unmeasured until GoPlus covers it.
@@ -391,7 +416,25 @@ def _seen_fields(source: str, data: Any) -> tuple[str, ...]:
     """
     if not isinstance(data, dict):
         return ()
-    return tuple(sorted(f"{source}:{key}" for key in data))
+
+    seen: set[str] = set()
+    for key, value in data.items():
+        seen.add(f"{source}:{key}")
+        # One level down, and no further. The open question this exists to settle
+        # is usually about a nested key rather than a top-level one:
+        # `creators[].malicious` answers deployer history and `transfer_fee`'s
+        # inner shape answers the tax, and neither is visible from the outer name.
+        # Two levels would start recording holder addresses, which is payload, not
+        # shape.
+        inner = value
+        if isinstance(inner, list):
+            inner = next((v for v in inner if isinstance(v, dict)), None)
+            if inner is not None:
+                seen.update(f"{source}:{key}[].{name}" for name in inner)
+            continue
+        if isinstance(inner, dict):
+            seen.update(f"{source}:{key}.{name}" for name in inner)
+    return tuple(sorted(seen))
 
 
 def _flag(value: Any) -> bool | None:
@@ -939,7 +982,7 @@ class GoPlusClient(JsonGetClient):
     def token_security(self, chain: str, addresses: Sequence[str]) -> Any:
         if not addresses:
             return {}
-        joined = ",".join(addresses[:MAX_ADDRESSES_PER_REQUEST])
+        joined = ",".join(addresses[: goplus_batch_size(chain)])
         native = GOPLUS_NATIVE_PATHS.get(chain)
         if native:
             return self.get(native, "goplus", {"contract_addresses": joined})
@@ -979,6 +1022,9 @@ class SafetySource:
     # RugCheck is one request per token, so it is only worth spending on the tokens
     # that got far enough to matter. Zero disables it.
     rugcheck_limit: int = 25
+    # Tokens per cycle on a GoPlus native-chain route, where each one costs its
+    # own request. Same reasoning and same default as rugcheck_limit.
+    native_limit: int = 25
     # Address security is one request per *unique deployer*, and it is the only
     # thing that can answer check_deployer_history. Deduplicated, then capped:
     # keyless GoPlus is 30 requests a minute, so an uncapped sweep would take
@@ -1042,9 +1088,15 @@ class SafetySource:
                     len(contracts),
                 )
                 continue
+            size = goplus_batch_size(chain)
+            if size == 1:
+                # One request per token on these chains, so cap the cycle the same
+                # way RugCheck is capped. The reuse window means a token missed
+                # this hour is picked up the next one; an uncapped sweep would put
+                # a throttled request per token into every run forever.
+                contracts = contracts[: self.native_limit]
             for batch in [
-                contracts[i : i + MAX_ADDRESSES_PER_REQUEST]
-                for i in range(0, len(contracts), MAX_ADDRESSES_PER_REQUEST)
+                contracts[i : i + size] for i in range(0, len(contracts), size)
             ]:
                 try:
                     payload = self.goplus.token_security(chain, batch)
