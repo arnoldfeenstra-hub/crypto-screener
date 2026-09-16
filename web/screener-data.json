@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T14:20:14+00:00",
+  "generated_at": "2026-09-16T15:17:33+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -63,13 +63,13 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 141,
-    "outcome_observations": 2761,
-    "social_observations": 526,
-    "labelled_snapshots": 139,
+    "outcome_observations": 2779,
+    "social_observations": 528,
+    "labelled_snapshots": 140,
     "excluded_on_evidence": 99,
     "excluded_as_unmeasured": 30,
     "safety_checked": 141,
-    "safety_observations": 1103
+    "safety_observations": 1104
   },
   "calibration": {
     "verdict": "not_ready",
@@ -903,16 +903,16 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789546702436,
+        "collected_at_ms": 1789571833344,
         "honeypot": false,
-        "buy_tax_pct": 0.0,
-        "sell_tax_pct": 0.0,
+        "buy_tax_pct": null,
+        "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": true,
         "lp_locked_pct": 99.92026399287582,
-        "top10_ex_lp_pct": 42.294889997848486,
-        "holder_count": 23689,
+        "top10_ex_lp_pct": 40.36198092209386,
+        "holder_count": 23703,
         "deployer_address": "0x72f3c6af7cfe93ac9197aa377fc276caa865c390",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -927,7 +927,9 @@
       "rejected_by": [
         "concentration"
       ],
-      "indeterminate_on": [],
+      "indeterminate_on": [
+        "sellability"
+      ],
       "pillar_scores": {
         "attention_velocity": null,
         "community_depth": 1.0189285714285714,
@@ -2749,20 +2751,20 @@
       ],
       "pillar_scores": {
         "attention_velocity": null,
-        "community_depth": 5.155411857292759,
+        "community_depth": 5.2354118572927595,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 64.31141674710692,
         "asymmetry_timing": 36.666666666666664,
         "mindshare": 38.13679811462446
       },
-      "pillar_composite": 47.47165841086399,
+      "pillar_composite": 47.49388063308621,
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 1.234057850414406,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 0.3153120527244283,
+      "survived_24h": true,
       "survived_7d": null
     },
     {
