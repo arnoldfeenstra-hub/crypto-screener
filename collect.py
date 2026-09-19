@@ -167,11 +167,13 @@ def run_cycle(
         # credential is present, because it is the one metered source here.
         #
         # Why it is worth a credential at all, in one number from this repo's own
-        # data: 92% of the tokens collected so far declare an X account. The
+        # data: 88% of the tokens collected so far declare an X account. The
         # published 17.4x graduation lift on declared socials is measured over the
         # launch population, where most tokens declare nothing; by the time a token
         # is above $250k the boolean is nearly constant and carries almost no
-        # information (calibration/backtest.py: 92% tie mass, AUC 0.46). What is
+        # information (calibration/backtest.py: 88% tie mass, AUC 0.48 over 239
+        # resolved tokens -- the figure barely moved when the sample tripled).
+        # What is
         # left to learn is the *series* -- mentions per hour, unique authors, reply
         # ratio -- which is Pillar A, the largest prior weight in the vector at
         # 0.28, and which resolves on exactly zero rows today.

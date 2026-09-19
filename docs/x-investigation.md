@@ -15,27 +15,29 @@ what was built so the decision is one environment variable either way.
 
 ## 1. What the collected data says about the free half
 
-85 tokens, snapshotted at first observation above $250k mcap between 2026-09-12
-and 2026-09-14. Declared-social coverage in that sample:
+247 tokens, snapshotted at first observation above $250k mcap between 2026-09-12
+and 2026-09-19. Declared-social coverage in that sample:
 
-| Declared | Share of the 85 |
+| Declared | Share of the 247 |
 |---|---|
-| X / Twitter | **91.8%** (78 of 85) |
-| Website | 74.1% (63) |
-| Telegram | 28.2% (24) |
+| X / Twitter | **88.3%** (218 of 247) |
+| Website | 76.9% (190) |
+| Telegram | 27.1% (67) |
 
-`calibration/backtest.py` against a 1.5x-in-6h outcome (76 tokens with a resolved
-label, base rate 28.9% [20.0%, 40.0%]):
+`calibration/backtest.py` against a 1.5x-in-6h outcome (239 tokens with a resolved
+label, base rate 21.8% [17.0%, 27.4%]):
 
 | Feature | AUC | 95% CI | Tie mass | Verdict |
 |---|---|---|---|---|
-| `declared_x` | 0.460 | [0.32, 0.60] | **92%** | no information |
-| `declared_telegram` | 0.383 | [0.25, 0.52] | 70% | no separation |
-| `socials_declared_n` | 0.324 | [0.20, 0.45] | 46% | see below |
+| `declared_x` | 0.477 | [0.39, 0.56] | **88%** | no information |
+| `declared_telegram` | 0.427 | [0.34, 0.51] | 73% | no separation |
+| `socials_declared_n` | 0.404 | [0.32, 0.49] | 50% | see below |
 
-**The X boolean is exhausted.** 92% of rows share one value, so it does not rank
+**The X boolean is exhausted.** 88% of rows share one value, so it does not rank
 the sample; the interval spans 0.5. There is nothing further to learn from
-whether a token above $250k has an X link, because nearly all of them do.
+whether a token above $250k has an X link, because nearly all of them do. This
+was first measured on 85 tokens and is unchanged on 247 — the conclusion did not
+depend on the small sample.
 
 ## 2. The declared-socials effect points the *other way* here, and that is not a contradiction
 
@@ -44,10 +46,10 @@ CLAUDE.md records a 17.4x graduation lift for all three socials declared
 
 | Declared socials | Reached 1.5x in 6h | Rate | 95% CI |
 |---|---|---|---|
-| 0 | 1 / 3 | 0.33 | [0.06, 0.79] |
-| 1 | 10 / 18 | 0.56 | [0.34, 0.75] |
-| 2 | 8 / 35 | 0.23 | [0.12, 0.39] |
-| 3 | 3 / 20 | 0.15 | [0.05, 0.36] |
+| 0 | 4 / 14 | 0.29 | [0.12, 0.55] |
+| 1 | 16 / 49 | 0.33 | [0.21, 0.47] |
+| 2 | 24 / 120 | 0.20 | [0.14, 0.28] |
+| 3 | 8 / 56 | 0.14 | [0.07, 0.26] |
 
 Both can be true, and the reason matters more than either number.
 
@@ -59,11 +61,12 @@ tokens that got to $250k *without* a full social kit had to get there some other
 way, which selects for something real, while a complete social kit is also what a
 professionally-launched token that is already being distributed looks like.
 
-Read it as a warning, not a finding. Three of the four cells have single-digit
-numerators and the intervals overlap. What it does establish is that **the
-published lift must not be carried into this lifecycle point unexamined**, which
-is precisely what Pillar C does today when it scores the declared triple at
-90/65/45/5.
+Read it as a warning, not a finding. The intervals still overlap, and the
+zero-socials cell is 14 rows. But the monotone fall from one social to three now
+rests on 49, 120 and 56 rows rather than 18, 35 and 20, and it did not reverse when
+the sample nearly tripled. What it establishes is that **the published lift must not
+be carried into this lifecycle point unexamined**, which is precisely what Pillar C
+does today when it scores the declared triple at 90/65/45/5.
 
 ## 3. What is actually missing
 
@@ -109,9 +112,9 @@ of later spending recovers. That asymmetry is why Phase 0 exists at all.
   should be trusted as a quote.
 
 Sizing it against this collector, so the number is concrete rather than a shrug:
-the cycle runs hourly, snapshots roughly 25–40 tokens a day, and polls each at
-four offsets. That is on the order of **100–160 searches a day**, each returning
-up to 100 posts. Against a monthly post cap in the low tens of thousands, the
+the cycle runs hourly, snapshots roughly 30 tokens a day (247 in the eight days to
+2026-09-19), and polls each at four offsets. That is on the order of **120 searches
+a day**, each returning up to 100 posts. Against a monthly post cap in the low tens of thousands, the
 budget binds quickly, which is why `--x-max-searches` exists.
 
 ## 6. What was built
@@ -141,9 +144,10 @@ The decision is now one environment variable in either direction.
 **Switch it on.** The argument is not that X mentions predict price — this repo has
 measured nothing of the sort and says so everywhere. It is that:
 
-1. the largest weight in the scoring model has never had an input;
+1. the largest weight in the scoring model has never had an input — still true
+   across all 247 rows collected;
 2. the data to give it one cannot be bought later at any price; and
-3. the free half of the X signal is demonstrably exhausted at 92% tie mass.
+3. the free half of the X signal is demonstrably exhausted at 88% tie mass.
 
 Two conditions on switching it on:
 

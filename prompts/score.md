@@ -1,12 +1,19 @@
 # Memecoin Screener — Ranking Prompt
 
-`prompt_version: 5` — bump this on every edit and write it into every scored row.
+`prompt_version: 6` — bump this on every edit and write it into every scored row.
 
 Drop the SYSTEM block into your model call. Feed one `candidate` object per token.
 
 **Status: uncalibrated priors.** The weights below are informed guesses plus two effects that
 have been measured against a real graveyard (see "Evidence-backed priors"). Everything else is
 placeholder until Phase 2 of `BUILD_BRIEF.md` replaces it with fitted coefficients.
+
+**Version 6 changes — the version 5 findings re-run on nearly three times the data.**
+No weight moved; these are the same measurements on 239 resolved tokens instead of 76,
+and all three held. The artefact got worse (65% of rows pinned on one value, up from
+51%), the lead got stronger (out-of-sample AUC 0.90, and the split intervals no longer
+overlap), and the declared-socials reversal is now measured on cells of 49, 120 and 56
+rather than 18, 35 and 20. Figures below are updated in place.
 
 **Version 5 changes — the first pillar added because something was *measured*, and
 one prior flagged as suspect.**
@@ -21,22 +28,24 @@ moved — but two of its results changed this file.
   to measure it with: every market field was a 24h level. The one ratio available
   between two windows, `(txns_6h/6) / (txns_24h/24)`, scores AUC 0.70 against a
   1.5x-in-6h outcome and is worth **nothing** — a token younger than six hours has
-  `txns_6h == txns_24h`, so it pins at exactly 4.0 (39 of 76 rows sat on that value)
-  and reads 0.500 inside a single age band. It was age wearing a disguise. Pillar G
-  reads fields chosen so the same question survives that check, and drops its own
-  window ratios when they pin.
+  `txns_6h == txns_24h`, so it pins at exactly 4.0 (39 of 76 rows then; **65% of 239
+  rows now**) and reads 0.500 inside a single age band. It was age wearing a disguise.
+  Pillar G reads fields chosen so the same question survives that check, and drops its
+  own window ratios when they pin.
 - **The declared-socials prior in Pillar C is flagged.** In the collected sample the
-  surge rate *falls* as declared socials rise (1 social: 0.56, three: 0.15), the
-  opposite sign to the published 17.4x graduation lift. Both can be true: the
+  surge rate *falls* as declared socials rise (one social: **0.33** [0.21, 0.47], three:
+  **0.14** [0.07, 0.26], on 49 and 56 rows), the opposite sign to the published 17.4x
+  graduation lift. Both can be true: the
   published figure is measured over the launch population, and this sample is
   conditioned on already being above $250k, which is conditioning on a collider. The
   weighting below is **unchanged** — a sample of 85 with three tokens in one cell does
   not overturn 832,941 launches — but do not carry the lift into this lifecycle point
   as though it had been verified here. See `docs/x-investigation.md` §2.
 - **One feature survives every check** against a 1.5x-in-6h outcome: top-10
-  concentration excluding LP, *lower being better*, out-of-sample AUC 0.74 with 1% tie
-  mass and the same direction in every age band. It is already a hard filter at 35%;
-  as a graded signal it is a lead, not an edge, and carries no weight.
+  concentration excluding LP, *lower being better*, out-of-sample AUC **0.90** with 1%
+  tie mass and the same direction in all four age bands. It is already a hard filter at
+  35%; as a graded signal it is a lead, not an edge, and carries no weight. Measured on
+  the 114 rows where a safety source answered concentration at all — its own selection.
 
 **Version 4 changes — a deliberate weakening of one hard filter, stated plainly.**
 The first live collection run scored **zero of thirteen** real tokens. Every one was
@@ -80,8 +89,8 @@ the strongest known signal takes you from ~0.1% to ~1.9%. Score honestly against
 
 **A third thing follows that the version 5 note spells out: these figures are about
 graduation from the launch population, and this screener samples tokens that have already
-graduated.** 92% of the tokens collected so far declare an X account, so the feature is
-near-constant here and ranks nothing (AUC 0.46, 92% tie mass). Do not read the lift as though
+graduated.** 88% of the tokens collected so far declare an X account, so the feature is
+near-constant here and ranks nothing (AUC 0.48, 88% tie mass, on 239 rows). Do not read the lift as though
 it had been reproduced at this lifecycle point.
 
 ---

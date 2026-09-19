@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-19T18:21:27+00:00",
+  "generated_at": "2026-09-19T18:28:49+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
-  "prompt_version": 5,
+  "prompt_version": 6,
   "weights_version": "priors-v3",
   "weights": {
     "attention_velocity": 0.28,

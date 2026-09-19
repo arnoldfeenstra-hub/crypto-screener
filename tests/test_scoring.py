@@ -352,8 +352,11 @@ class TestPromptWiring:
     def test_the_prompt_version_is_read_from_the_file(self):
         # Bumped in the same commit as any edit to prompts/score.md, because the
         # version is stamped on every scored row and is the only way back from a
-        # score to the weights that produced it. 5 added Pillar G at weight 0.00.
-        assert prompt_version() == 5
+        # score to the weights that produced it. 5 added Pillar G at weight 0.00;
+        # 6 re-ran its findings on 239 resolved tokens instead of 76 and moved no
+        # weight. Narrative-only edits bump it too -- the rule is every edit, so
+        # that a stored version always names one exact file.
+        assert prompt_version() == 6
 
     def test_the_no_edge_threshold_matches_the_prompt(self):
         assert NO_EDGE_THRESHOLD == 55.0

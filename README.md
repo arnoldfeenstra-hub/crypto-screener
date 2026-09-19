@@ -233,11 +233,14 @@ python -m calibration.backtest --label max_multiple_24h --threshold 2.0
 It reports two columns a bare AUC hides, and both exist because of one result.
 
 The only rate-of-change feature the pre-schema-7 rows could express —
-`(txns_6h/6) / (txns_24h/24)` — scores **AUC 0.70** against a 1.5x-in-6h outcome,
+`(txns_6h/6) / (txns_24h/24)` — scored **AUC 0.70** against a 1.5x-in-6h outcome,
 across three horizons. It is worth nothing. A token younger than six hours has
-`txns_6h == txns_24h`, so the ratio pins at exactly 4.0: **39 of 76 rows sat on
-that single value**, and inside one age band the AUC is **0.500**. It was age
-wearing a disguise, and it would have shipped.
+`txns_6h == txns_24h`, so the ratio pins at exactly 4.0: **39 of the 76 rows then
+resolved sat on that single value**, and inside one age band the AUC was **0.500**. It was age
+wearing a disguise, and it would have shipped. On the current 239-token sample it
+pins **65%** of rows on that same 4.0 and still fails stratification — the
+artefact did not wash out with more data, which is the point of checking for it
+rather than waiting.
 
 - **Tie mass** — the share of rows at the modal value. AUC scores ties as
   half-wins, so a feature that assigns one value to half the sample can post a
@@ -245,15 +248,23 @@ wearing a disguise, and it would have shipped.
 - **AUC by age band** — the same figure computed inside each stratum. A pooled
   separation that vanishes in every stratum is measuring the stratum.
 
-Against a 1.5x-in-6h outcome on 76 resolved tokens (base rate **28.9%**
-[20.0%, 40.0%] — note this is *not* the ~2% graduation rate in CLAUDE.md, because
+Against a 1.5x-in-6h outcome on **239 resolved tokens** (base rate **21.8%**
+[17.0%, 27.4%] — note this is *not* the ~2% graduation rate in CLAUDE.md, because
 these tokens are sampled above $250k and have already cleared that bar), exactly
 one feature survives both checks: **top-10 concentration excluding LP, lower being
-better** — out-of-sample AUC 0.74, 1% tie mass, same direction in every age band.
-Splitting the sample on it in-sample gives 39% [26%, 55%] against 18% [9%, 33%].
+better** — out-of-sample AUC **0.90**, 1% tie mass, same direction in all four age
+bands. Splitting the sample on it gives **37% [26%, 50%]** against **11% [5%, 21%]**,
+and those intervals do not overlap.
 
-That is a lead to collect against. It is not an edge, it was found on the same 76
-rows it is quoted from, and no weight in `prompts/score.md` moved because of it.
+It is measured on the 114 rows where a safety source answered concentration at all,
+which is its own selection: tokens GoPlus and RugCheck could read may differ from
+the ones they could not.
+
+That is a lead to collect against. It is not an edge — it was found on the sample it
+is quoted from, and no weight in `prompts/score.md` moved because of it. What the
+merge from `main` did change is confidence: the finding was first seen on 76 rows
+and survived the sample nearly tripling, which is the one thing a small-sample lead
+can do to earn more attention.
 
 ## Momentum & flow
 

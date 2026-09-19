@@ -14,10 +14,11 @@ three horizons: the trade-count acceleration ``(txns_6h/6) / (txns_24h/24)``. It
 looked like the best signal in the dataset and it was worth nothing. Two of the
 checks here are why that is now known rather than shipped.
 
-**Tie mass.** 39 of 76 rows sat at *exactly* 4.0. A token younger than six hours
-has ``txns_6h == txns_24h`` -- the same trades, counted twice -- so the ratio is
-pinned at ``24/6`` by arithmetic. Half the sample was not ranked by the feature at
-all, and AUC counts ties as half-wins, which hides that.
+**Tie mass.** 39 of 76 rows sat at *exactly* 4.0 -- and 65% of 239 rows do today,
+so the artefact did not wash out with more data. A token younger than six hours has
+``txns_6h == txns_24h`` -- the same trades, counted twice -- so the ratio is pinned
+at ``24/6`` by arithmetic. Most of the sample was not ranked by the feature at all,
+and AUC counts ties as half-wins, which hides that.
 
 **Stratified AUC.** Inside a single age band the same feature scored 0.500 --
 nothing. Pooled, it scored 0.70 because young tokens both surge more often *and*
