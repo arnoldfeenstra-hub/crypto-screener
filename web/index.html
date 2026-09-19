@@ -578,7 +578,18 @@ function renderBacktest(d) {
   const node = document.getElementById('backtest');
   const b = d && d.backtest;
   if (!node) return;
-  if (!b || !b.rows) {
+  // Two different nothings, and saying the wrong one would be the exact mistake
+  // this section exists to catch. An export written before the backtest existed
+  // carries no block at all -- the collector regenerates it on its next run. An
+  // export that carries the block with no rows means the outcomes genuinely have
+  // not resolved. Only the second is a statement about the tokens.
+  if (!b) {
+    node.innerHTML = '<p style="margin:0;color:var(--muted)">This dataset was exported '
+      + 'before the backtest existed, so it carries no measurement. The next collector '
+      + 'run writes one.</p>';
+    return;
+  }
+  if (!b.rows) {
     node.innerHTML = '<p style="margin:0;color:var(--muted)">No outcomes have resolved yet, so nothing has been measured.</p>';
     return;
   }
