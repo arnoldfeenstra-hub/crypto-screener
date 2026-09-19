@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-19T14:18:51+00:00",
+  "generated_at": "2026-09-19T15:24:05+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -63,13 +63,13 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 200,
-    "outcome_observations": 5898,
+    "outcome_observations": 5928,
     "social_observations": 800,
-    "labelled_snapshots": 241,
-    "excluded_on_evidence": 53,
+    "labelled_snapshots": 242,
+    "excluded_on_evidence": 52,
     "excluded_as_unmeasured": 139,
     "safety_checked": 245,
-    "safety_observations": 2807
+    "safety_observations": 2836
   },
   "calibration": {
     "verdict": "not_ready",
@@ -1173,21 +1173,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806152119,
+        "collected_at_ms": 1789831374864,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 90.0880358222492,
+        "lp_locked_pct": 95.68266805206726,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "4QwJ4AXMtSjnCwgM9kiDpsGtXmjEd3hAVRkDg3o3bDQs",
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "metadata_mutable"
         ]
       },
@@ -1200,7 +1199,6 @@
       "rejected_by": [],
       "indeterminate_on": [
         "sellability",
-        "liquidity_lock",
         "concentration"
       ],
       "pillar_scores": {
@@ -1716,7 +1714,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806153001,
+        "collected_at_ms": 1789831375710,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -1730,8 +1728,7 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "Copycat token",
-          "High market cap per holder"
+          "Copycat token"
         ]
       },
       "data_completeness": 0.3888888888888889,
@@ -1808,22 +1805,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806154124,
+        "collected_at_ms": 1789831376835,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 90.19906079139928,
+        "lp_locked_pct": 93.94380689366581,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
-        "risk_labels": [
-          "High market cap per holder"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.3888888888888889,
       "fields_present": 21,
@@ -2447,21 +2442,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806154970,
+        "collected_at_ms": 1789831378699,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.67086215095053,
+        "lp_locked_pct": 99.64679883229779,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "CsRcxcH5QA7tJA18ESkhkf14AW7u42PqmyzXiLiwUPm9",
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -2539,7 +2533,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789806137217,
+        "collected_at_ms": 1789831359937,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -2629,25 +2623,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806156118,
+        "collected_at_ms": 1789831377765,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.99913176133512,
+        "lp_locked_pct": 99.99913464878333,
         "top10_ex_lp_pct": 100.0,
-        "holder_count": 258,
+        "holder_count": 0,
         "deployer_address": "51KJkHXQMw7UFcgPHX4wBc5wUtWZYpyeAxWJ94uyojBj",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": [
-          "High market cap per holder",
-          "High ownership",
-          "Single holder ownership",
-          "Top 10 holders high ownership"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.4444444444444444,
       "fields_present": 24,
@@ -3218,10 +3207,10 @@
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 1.130810992244855,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 0.07383194713855834,
+      "survived_24h": false,
       "survived_7d": null
     },
     {
@@ -3307,10 +3296,10 @@
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 4.219456424658385,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 6.925439287774893e-05,
+      "survived_24h": true,
       "survived_7d": null
     },
     {
@@ -3401,10 +3390,10 @@
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 1.9384452666263414,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 0.13694822220191827,
+      "survived_24h": true,
       "survived_7d": null
     },
     {
@@ -3493,10 +3482,10 @@
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 1.0,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 0.0,
+      "survived_24h": true,
       "survived_7d": null
     },
     {
@@ -3584,10 +3573,10 @@
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 2.8597397723910487,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 0.0,
+      "survived_24h": true,
       "survived_7d": null
     },
     {
@@ -3636,7 +3625,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789806139211,
+        "collected_at_ms": 1789831361937,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
@@ -3644,8 +3633,8 @@
         "freeze_active": false,
         "lp_burned": true,
         "lp_locked_pct": 99.98747629517713,
-        "top10_ex_lp_pct": 32.381347493227516,
-        "holder_count": 1250,
+        "top10_ex_lp_pct": 23.535849163213403,
+        "holder_count": 1498,
         "deployer_address": "0x38280d9c8fae3b59cb6cf1b37020bd68ba726d86",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -3907,7 +3896,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806158025,
+        "collected_at_ms": 1789831381057,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -3921,7 +3910,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -3999,22 +3987,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806157117,
+        "collected_at_ms": 1789831379849,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 98.37889564058757,
+        "lp_locked_pct": 98.49029659184134,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "WLHv2UAZm6z4KyaaELi5pjdbJh6RESMva1Rnn8pJVVh",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": [
-          "High market cap per holder"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.3888888888888889,
       "fields_present": 21,
@@ -4090,7 +4076,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806159021,
+        "collected_at_ms": 1789831381768,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -4104,7 +4090,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -5004,21 +4989,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806160130,
+        "collected_at_ms": 1789831382849,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 91.8624367343988,
+        "lp_locked_pct": 92.0197847641452,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "metadata_mutable"
         ]
       },
@@ -5098,26 +5082,24 @@
         "universe_boost_total": 2470.0
       },
       "safety": {
-        "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806161076,
-        "honeypot": false,
-        "buy_tax_pct": 0.0,
-        "sell_tax_pct": 0.0,
+        "source": "rugcheck",
+        "collected_at_ms": 1789831384825,
+        "honeypot": null,
+        "buy_tax_pct": null,
+        "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 2.182082103828502e-09,
+        "lp_locked_pct": 2.1819145948012718e-09,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "DjcLGynTRDDZYsKzCztjkTkksgefx43y5RtVSnLZfZJP",
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Large Amount of LP Unlocked",
           "Low amount of LP Providers",
-          "Mutable metadata",
-          "metadata_mutable"
+          "Mutable metadata"
         ]
       },
       "data_completeness": 0.3888888888888889,
@@ -5128,6 +5110,7 @@
       "excluded": true,
       "rejected_by": [],
       "indeterminate_on": [
+        "sellability",
         "liquidity_lock",
         "concentration"
       ],
@@ -5195,22 +5178,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806164115,
+        "collected_at_ms": 1789831386821,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 97.66769566692011,
+        "lp_locked_pct": 97.92368538887851,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "2RRmV3jGpM6zBQxyhPyjarHadWNepbmoNDiMPWaVe5Sv",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": [
-          "High market cap per holder"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.4444444444444444,
       "fields_present": 24,
@@ -5286,7 +5267,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806163079,
+        "collected_at_ms": 1789831383722,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -5300,7 +5281,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -5378,22 +5358,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806162112,
+        "collected_at_ms": 1789831385837,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 92.78000844444615,
+        "lp_locked_pct": 74.10570570425148,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "3MQTLEkELp3Pi8nJfQfgvoEGQhMhgvz3earZEb8b5bdJ",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": [
-          "High market cap per holder"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.3888888888888889,
       "fields_present": 21,
@@ -6560,7 +6538,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806166073,
+        "collected_at_ms": 1789831387863,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -6574,7 +6552,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -6652,7 +6629,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806167049,
+        "collected_at_ms": 1789831390806,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -6666,7 +6643,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -6744,7 +6720,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806168024,
+        "collected_at_ms": 1789831391738,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -6758,7 +6734,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -6836,7 +6811,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806169022,
+        "collected_at_ms": 1789831388740,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
@@ -6850,7 +6825,6 @@
         "deployer_prior_rugs": null,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Large Amount of LP Unlocked",
           "Low Liquidity",
           "metadata_mutable"
@@ -6934,16 +6908,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806165107,
+        "collected_at_ms": 1789831389749,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 93.54605485080694,
-        "top10_ex_lp_pct": 27.59154888876333,
-        "holder_count": 1284,
+        "lp_locked_pct": 93.68695093942662,
+        "top10_ex_lp_pct": 27.39,
+        "holder_count": 0,
         "deployer_address": "DmfGYa5Z4zyUEduD62SCBoJfj7N322D4ogtkv194fLv7",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -7934,34 +7908,30 @@
         "universe_boost_total": 2150.0
       },
       "safety": {
-        "source": "rugcheck",
-        "collected_at_ms": 1789806170162,
-        "honeypot": null,
-        "buy_tax_pct": null,
-        "sell_tax_pct": null,
+        "source": "goplus+rugcheck",
+        "collected_at_ms": 1789831393715,
+        "honeypot": false,
+        "buy_tax_pct": 0.0,
+        "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 10.848830780741837,
-        "holder_count": 405,
+        "top10_ex_lp_pct": 10.83,
+        "holder_count": 0,
         "deployer_address": "7zpeAEpq7jHJ473dyWqJz3RkgD7ohRCTPcEEJWXoxGAf",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": [
-          "High holder correlation"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.3888888888888889,
       "fields_present": 21,
       "fields_expected": 54,
-      "score": null,
-      "rank": null,
-      "excluded": true,
+      "score": 18.186087081949065,
+      "rank": 9,
+      "excluded": false,
       "rejected_by": [],
-      "indeterminate_on": [
-        "sellability"
-      ],
+      "indeterminate_on": [],
       "pillar_scores": {
         "attention_velocity": null,
         "community_depth": null,
@@ -8026,22 +7996,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806171128,
+        "collected_at_ms": 1789831392838,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 98.43998249612928,
+        "lp_locked_pct": 98.38834272006483,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "B1PaBZmhuUSA1iyLGgrEGSohM4g8R4WAjHxq4Ytg63pX",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": [
-          "High market cap per holder"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.3888888888888889,
       "fields_present": 21,
@@ -8117,21 +8085,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806172028,
+        "collected_at_ms": 1789831395790,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.96906509722534,
+        "lp_locked_pct": 99.96876096005754,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "8o6XMP3NLHQKydX3zuR7rXSYJuJX1wCPhk1tTcs7EmLm",
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -8209,16 +8176,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806173260,
+        "collected_at_ms": 1789831394967,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 49.63208258666395,
-        "top10_ex_lp_pct": 65.77934644128045,
-        "holder_count": 911,
+        "lp_locked_pct": 55.198281903774436,
+        "top10_ex_lp_pct": 20.42,
+        "holder_count": 0,
         "deployer_address": "8YcbyX92UHTU23HZv3ccP9o13qibErQkKaUjoxqxd7SJ",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -8232,9 +8199,7 @@
       "score": null,
       "rank": null,
       "excluded": true,
-      "rejected_by": [
-        "concentration"
-      ],
+      "rejected_by": [],
       "indeterminate_on": [
         "sellability",
         "liquidity_lock"
@@ -8572,11 +8537,11 @@
         "universe_boost_total": 1930.0
       },
       "safety": {
-        "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806175024,
-        "honeypot": false,
-        "buy_tax_pct": 0.0,
-        "sell_tax_pct": 0.0,
+        "source": "rugcheck",
+        "collected_at_ms": 1789831397791,
+        "honeypot": null,
+        "buy_tax_pct": null,
+        "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
@@ -8587,7 +8552,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -8599,6 +8563,7 @@
       "excluded": true,
       "rejected_by": [],
       "indeterminate_on": [
+        "sellability",
         "concentration"
       ],
       "pillar_scores": {
@@ -8665,22 +8630,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806176124,
+        "collected_at_ms": 1789831398824,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.99504145874882,
+        "lp_locked_pct": 99.99589196773718,
         "top10_ex_lp_pct": null,
         "holder_count": 0,
         "deployer_address": "6S1RXjHBD9jxJkgFAZnReEk7Jx6NNHrpBJ1Wg6bEUH2a",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": [
-          "High market cap per holder"
-        ]
+        "risk_labels": []
       },
       "data_completeness": 0.4444444444444444,
       "fields_present": 24,
@@ -8756,7 +8719,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1789806174043,
+        "collected_at_ms": 1789831396771,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -8770,7 +8733,6 @@
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Low Liquidity"
         ]
       },
@@ -8939,7 +8901,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789806143302,
+        "collected_at_ms": 1789831365935,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
@@ -8947,8 +8909,8 @@
         "freeze_active": false,
         "lp_burned": false,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 43.0467456043691,
-        "holder_count": 791,
+        "top10_ex_lp_pct": 42.85932642916914,
+        "holder_count": 796,
         "deployer_address": "0x60ee572fca6ccb82b416ea377d59e6dc05b3ea1f",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -16871,16 +16833,16 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789787913685,
+        "collected_at_ms": 1789831363953,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.96363138671256,
-        "top10_ex_lp_pct": 72.81560958961576,
-        "holder_count": 1493,
+        "lp_locked_pct": 99.96379294358859,
+        "top10_ex_lp_pct": 75.21176778479013,
+        "holder_count": 1474,
         "deployer_address": "0xdd753903f06538c6cc8187f1e03bb276e1ca96c6",
         "deployer_prior_rugs": 0,
         "rugged": null,
