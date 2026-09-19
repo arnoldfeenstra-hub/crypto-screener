@@ -27,7 +27,28 @@ from collectors.safety import SafetyReport
 from collectors.schema import now_ms
 from collectors.store import Store
 
-TS = 1788912000000
+# Thirty minutes ago, not a fixed date -- and that is a bug fix, not a style
+# choice.
+#
+# This was a constant: 2026-09-09T00:00:00Z. Every snapshot these tests build was
+# stamped with it, while run_cycle read the real clock, so the fixtures aged in
+# real time. `due_for_repricing` returns False past the 7d horizon, so on
+# 2026-09-16 the re-pricing test quietly stopped exercising re-pricing: the cycle
+# found nothing due, wrote no observations, and the assertion failed for a reason
+# that had nothing to do with the code under test. A test that passes for a week
+# and then fails on a calendar boundary is worse than one that never passed.
+#
+# Anchoring to an age instead of a date fixes the whole class at once: every
+# fixture is always half an hour old, which is inside every horizon and every
+# re-price interval, whatever day the suite runs on.
+TS = now_ms() - 30 * 60_000
+
+# Two days ago, for the one test that needs a snapshot old enough that every
+# social offset (t+0, +1h, +6h, +24h) is already overdue. It used to get that for
+# free from TS being stale, which is why it broke when TS stopped being stale --
+# the requirement was real and invisible. Named, so it stays visible, and inside
+# the 7d horizon so the row is still due a re-price.
+STALE_TS = now_ms() - 2 * 24 * 60 * 60_000
 
 
 def token(chain: str, contract: str, **fields) -> TokenMetrics:
@@ -558,7 +579,7 @@ class TestSocialCollection:
             tmp_path,
             [
                 self.social_token(
-                    "SoL7", "FFF", "https://t.me/realgroup", observed_at_ms=TS
+                    "SoL7", "FFF", "https://t.me/realgroup", observed_at_ms=STALE_TS
                 )
             ],
             with_social=True,
