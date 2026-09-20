@@ -1,20 +1,18 @@
 {
   "schema_version": 6,
-  "updated_at": "2026-09-20T12:25:53+00:00",
+  "updated_at": "2026-09-20T13:20:57+00:00",
   "rows": {
     "snapshots": 272,
     "trigger_events": 272,
-    "labels": 26793,
-    "outcome_observations": 6937,
-    "scores": 25263,
+    "labels": 27063,
+    "outcome_observations": 6971,
+    "scores": 25463,
     "social_observations": 800,
-    "safety_observations": 3398
+    "safety_observations": 3427
   },
   "appended_last_run": {
-    "snapshots": 2,
-    "trigger_events": 2,
     "labels": 270,
-    "outcome_observations": 66,
+    "outcome_observations": 34,
     "scores": 200,
     "safety_observations": 29
   },
