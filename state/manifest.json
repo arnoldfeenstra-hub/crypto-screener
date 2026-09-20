@@ -1,20 +1,20 @@
 {
   "schema_version": 6,
-  "updated_at": "2026-09-20T00:27:28+00:00",
+  "updated_at": "2026-09-20T01:19:16+00:00",
   "rows": {
-    "snapshots": 257,
-    "trigger_events": 257,
-    "labels": 23643,
-    "outcome_observations": 6369,
-    "scores": 22863,
+    "snapshots": 258,
+    "trigger_events": 258,
+    "labels": 23898,
+    "outcome_observations": 6398,
+    "scores": 23063,
     "social_observations": 800,
-    "safety_observations": 3074
+    "safety_observations": 3103
   },
   "appended_last_run": {
-    "snapshots": 2,
-    "trigger_events": 2,
+    "snapshots": 1,
+    "trigger_events": 1,
     "labels": 255,
-    "outcome_observations": 52,
+    "outcome_observations": 29,
     "scores": 200,
     "safety_observations": 29
   },
