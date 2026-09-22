@@ -850,6 +850,26 @@ class TestTheDeployedPage:
         # pointed at a deployment yet.
         assert "SCREENER_URL" in body
 
+    def test_something_notices_when_the_collector_stops_writing(self):
+        """collect.yml failing is not the same as anyone noticing. Its push was
+        refused on a file-size limit from 2026-09-20 and every hourly run for two
+        days collected, failed and lost its rows. health.yml now fails when the
+        manifest every successful run rewrites goes stale."""
+        import yaml
+
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github" / "workflows" / "health.yml").read_text(encoding="utf-8")
+        )
+        job = workflow["jobs"]["collector"]
+        body = " ".join(str(step.get("run", "")) for step in job["steps"])
+        assert "state/manifest.json" in body
+        assert "updated_at" in body
+        assert "exit(1)" in body
+        hours = float(job["steps"][0]["env"]["MAX_AGE_HOURS"])
+        # Tighter than the six-hour schedule is pointless, looser than a few missed
+        # runs is a day of data.
+        assert 1 < hours <= 6
+
     def test_a_workflow_runs_the_tests_on_every_push(self):
         """The suite is only a check if something runs it without being asked.
 

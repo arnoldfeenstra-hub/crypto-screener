@@ -81,9 +81,16 @@ python -m export_web --db data/screener.duckdb
 
 ## Where the dataset lives
 
-`state/*.jsonl` — an append-only JSONL journal, committed to the repo. It is rebuilt into
+`state/` — an append-only JSONL journal, committed to the repo. It is rebuilt into
 DuckDB at the start of each run and appended to at the end, so the database is a working
 copy and the journal is the dataset.
+
+Each table is a directory of daily shards, `state/<table>/<YYYY-MM-DD>.jsonl`, and a shard
+rolls over (`.1`, `.2`, …) before it reaches 45 MiB. GitHub refuses any file over 100 MiB,
+and on 2026-09-20 `state/scores.jsonl` crossed that line: every run for the next two days
+collected, failed to push, and lost its rows with the runner. The single-file journals from
+before sharding (`state/<table>.jsonl`) are still read — first — and never written again.
+`state/manifest.json` records the largest file's size beside the limit.
 
 JSONL rather than the DuckDB file because the DuckDB file is one binary blob rewritten in
 full on every run: a job firing twice an hour would add a multi-megabyte object to git

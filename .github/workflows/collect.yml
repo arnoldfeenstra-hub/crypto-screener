@@ -5,10 +5,16 @@
 # per-token social history is not. A token that dies today is only in the dataset
 # if something was watching today. This workflow is that something.
 #
-# State lives in state/*.jsonl -- an append-only journal (collectors/journal.py)
-# committed back to the repo after each run. It is rebuilt into DuckDB at the start
-# of a run and appended to at the end, so nothing is ever rewritten and the diff of
-# each commit is exactly the rows that were added.
+# State lives in state/ -- an append-only journal (collectors/journal.py) committed
+# back to the repo after each run, one directory per table and one shard per UTC
+# day. It is rebuilt into DuckDB at the start of a run and appended to at the end,
+# so nothing is ever rewritten and the diff of each commit is exactly the rows that
+# were added.
+#
+# The shards exist because GitHub refuses a push containing any file over 100 MiB.
+# When state/scores.jsonl crossed it on 2026-09-20, this job kept running, kept
+# collecting, and kept failing at the push below -- and every run's rows went with
+# its runner. A red run here means data is being lost, not merely delayed.
 #
 # A note on cost, because it decides the interval you actually want:
 #

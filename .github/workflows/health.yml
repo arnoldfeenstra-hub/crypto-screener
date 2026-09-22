@@ -31,6 +31,13 @@
 #
 # Until it is set the job succeeds with a notice naming it, rather than putting a
 # red cross on a repository nobody has pointed at a deployment yet.
+#
+# The second job asks a different question: is the collector still writing?
+# collect.yml failing is not the same as it being noticed. From 2026-09-20 its
+# push was refused on a file-size limit and every hourly run for two days
+# collected, failed, and lost its rows -- a red run nobody opened. This job reads
+# state/manifest.json, which every successful collector commit rewrites, and fails
+# when it is older than three hours. It needs no deployment and no secret.
 
 name: health
 
@@ -91,3 +98,39 @@ jobs:
             echo "::warning title=Live endpoint::/api/screener returned $API. The page still works -- it falls back to the exported dataset."
             head -c 600 /tmp/api.json || true
           fi
+
+  collector:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check the collector committed recently
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.event.repository.default_branch }}
+          MAX_AGE_HOURS: "3"
+        run: |
+          set -o pipefail
+          curl -sS --fail --max-time 30 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github.raw" \
+            "https://api.github.com/repos/$REPO/contents/state/manifest.json?ref=$REF" \
+            -o manifest.json
+          python3 - <<'PY'
+          import datetime, json, os, sys
+
+          manifest = json.load(open("manifest.json"))
+          written = datetime.datetime.fromisoformat(manifest["updated_at"])
+          age = datetime.datetime.now(datetime.UTC) - written
+          hours = age.total_seconds() / 3600
+          limit = float(os.environ["MAX_AGE_HOURS"])
+          print(f"journal last written {manifest['updated_at']} ({hours:.1f} h ago)")
+          if hours > limit:
+              print(
+                  f"::error title=Collector stale::The journal has not been written for "
+                  f"{hours:.1f} h. Every hour the collector does not commit is an hour of "
+                  f"data lost for good -- open the latest collect run."
+              )
+              sys.exit(1)
+          PY

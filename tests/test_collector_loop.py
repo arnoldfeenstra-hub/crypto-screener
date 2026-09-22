@@ -17,6 +17,7 @@ makes real requests impossible anyway.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -265,6 +266,210 @@ class TestJournal:
         )
         assert manifest["rows"]["snapshots"] == 1
         assert manifest["schema_version"] >= 3
+
+
+    # -- Shards ----------------------------------------------------------------
+    #
+    # On 2026-09-20 state/scores.jsonl reached 100.52 MB. GitHub refused every
+    # push after that, and each hourly run collected, failed to commit, and lost
+    # its rows with the runner. These pin the layout that makes that impossible.
+
+    def test_no_append_grows_a_shard_past_the_cap(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(journal, "SHARD_MAX_BYTES", 400)
+        rows = [{"snapshot_id": f"s{i:03d}", "ticker": "$T" * 10} for i in range(60)]
+        journal.append_rows("snapshots", rows[:25], tmp_path)
+        journal.append_rows("snapshots", rows[25:], tmp_path)
+        files = journal.files_for("snapshots", tmp_path)
+        assert len(files) > 1
+        assert all(path.stat().st_size <= 400 for path in files)
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            r["snapshot_id"] for r in rows
+        ]
+
+    def test_the_pre_shard_file_is_read_first_and_never_written_again(self, tmp_path):
+        legacy = journal.legacy_path("snapshots", tmp_path)
+        legacy.write_text(json.dumps({"snapshot_id": "old"}) + "\n", encoding="utf-8")
+        before = legacy.read_bytes()
+        journal.append_rows("snapshots", [{"snapshot_id": "new"}], tmp_path)
+        assert legacy.read_bytes() == before
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            "old",
+            "new",
+        ]
+
+    def test_days_and_rollovers_read_back_in_the_order_they_were_written(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(journal, "SHARD_MAX_BYTES", 60)
+        monkeypatch.setattr(journal, "_utc_today", lambda: "2026-09-22")
+        journal.append_rows("snapshots", [{"snapshot_id": f"a{i}"} for i in range(3)], tmp_path)
+        monkeypatch.setattr(journal, "_utc_today", lambda: "2026-09-23")
+        journal.append_rows("snapshots", [{"snapshot_id": "b0"}], tmp_path)
+        names = [path.name for path in journal.files_for("snapshots", tmp_path)]
+        assert names[0].startswith("2026-09-22") and names[-1] == "2026-09-23.jsonl"
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            "a0",
+            "a1",
+            "a2",
+            "b0",
+        ]
+
+    def test_rollovers_sort_by_number_not_by_text(self, tmp_path):
+        folder = journal.shard_dir("snapshots", tmp_path)
+        folder.mkdir(parents=True)
+        for name, snapshot_id in (
+            ("2026-09-22.10.jsonl", "c"),
+            ("2026-09-22.9.jsonl", "b"),
+            ("2026-09-22.jsonl", "a"),
+        ):
+            (folder / name).write_text(
+                json.dumps({"snapshot_id": snapshot_id}) + "\n", encoding="utf-8"
+            )
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            "a",
+            "b",
+            "c",
+        ]
+
+    def test_a_file_that_is_not_named_like_a_shard_is_not_read(self, tmp_path):
+        folder = journal.shard_dir("snapshots", tmp_path)
+        folder.mkdir(parents=True)
+        (folder / "notes.txt").write_text("not journal\n", encoding="utf-8")
+        (folder / "2026-09-22.jsonl.bak").write_text(
+            json.dumps({"snapshot_id": "x"}) + "\n", encoding="utf-8"
+        )
+        assert journal.read_rows("snapshots", tmp_path) == []
+
+    def test_a_row_in_the_pre_shard_file_is_not_appended_again(self, tmp_path):
+        """The first run after sharding must not copy the old journal into shards."""
+        from collectors.schema import Market, Snapshot
+
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(
+                    chain="solana",
+                    contract="A",
+                    trigger="mcap_250k",
+                    source="test",
+                    market=Market(mcap_usd=300_000.0),
+                )
+            )
+            journal.sync(store, tmp_path)
+            # Put what was just written where it lived before sharding existed.
+            [shard] = journal.files_for("snapshots", tmp_path)
+            shard.rename(journal.legacy_path("snapshots", tmp_path))
+            again = journal.sync(store, tmp_path)
+        assert "snapshots" not in again
+        assert journal.summarise(tmp_path)["snapshots"] == 1
+
+    def test_the_manifest_says_how_close_the_largest_file_is_to_the_limit(self, tmp_path):
+        from collectors.schema import Snapshot
+
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(chain="solana", contract="A", trigger="mcap_250k", source="t")
+            )
+            journal.sync(store, tmp_path)
+        manifest = json.loads((tmp_path / journal.MANIFEST_NAME).read_text(encoding="utf-8"))
+        assert manifest["github_file_limit_mb"] == 100
+        assert 0 <= manifest["largest_file_mb"] < 1
+
+    # -- Restore -------------------------------------------------------------
+    #
+    # In DuckDB a failed statement aborts the transaction, so the old restore's
+    # "catch the duplicate and carry on" raised on the next row -- and when the
+    # duplicate was the last row, COMMIT rolled the whole table back while the
+    # restore reported every row written.
+
+    @staticmethod
+    def _journal_with_a_second_row_for_token_a(tmp_path, *, last: bool):
+        from collectors.schema import Market, Snapshot
+
+        with Store() as store:
+            for contract in ("A", "B", "C"):
+                store.append_snapshot(
+                    Snapshot(
+                        chain="solana",
+                        contract=contract,
+                        trigger="mcap_250k",
+                        source="test",
+                        market=Market(mcap_usd=300_000.0),
+                    )
+                )
+            journal.sync(store, tmp_path)
+        rows = journal.read_rows("snapshots", tmp_path)
+        first_a = next(r for r in rows if r["contract"] == "A")
+        second_a = {**first_a, "snapshot_id": "a-second-id", "market_mcap_usd": 1.0}
+        others = [r for r in rows if r is not first_a]
+        ordered = [first_a, *others, second_a] if last else [first_a, second_a, *others]
+        for path in journal.files_for("snapshots", tmp_path):
+            path.unlink()
+        journal.append_rows("snapshots", ordered, tmp_path)
+        return first_a
+
+    @pytest.mark.parametrize("last", [False, True])
+    def test_a_duplicate_token_in_the_journal_keeps_the_first_row_and_every_other(
+        self, tmp_path, last
+    ):
+        first_a = self._journal_with_a_second_row_for_token_a(tmp_path, last=last)
+        with Store() as restored:
+            loaded = journal.restore(restored, tmp_path)
+            assert loaded["snapshots"] == 3
+            assert restored.snapshot_count() == 3
+            ids = {row["snapshot_id"] for row in restored.recent_snapshots(10)}
+        assert first_a["snapshot_id"] in ids and "a-second-id" not in ids
+
+    def test_a_failed_bulk_load_still_restores_row_by_row(self, tmp_path, monkeypatch):
+        import duckdb
+
+        from collectors.schema import Snapshot
+
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(chain="solana", contract="A", trigger="mcap_250k", source="t")
+            )
+            journal.sync(store, tmp_path)
+
+        def refuse(*args, **kwargs):
+            raise duckdb.IOException("simulated: the temporary file could not be read")
+
+        monkeypatch.setattr(Store, "_bulk_load", refuse)
+        with Store() as restored:
+            assert journal.restore(restored, tmp_path)["snapshots"] == 1
+            assert restored.snapshot_count() == 1
+
+    def test_restoring_onto_a_partial_database_adds_only_the_missing_rows(self, tmp_path):
+        from collectors.schema import Snapshot
+
+        with Store() as store:
+            for contract in ("A", "B"):
+                store.append_snapshot(
+                    Snapshot(chain="solana", contract=contract, trigger="mcap_250k", source="t")
+                )
+            journal.sync(store, tmp_path)
+        with Store() as partial:
+            partial.append_snapshot(
+                Snapshot(chain="solana", contract="A", trigger="mcap_250k", source="t")
+            )
+            loaded = journal.restore(partial, tmp_path)
+            assert loaded["snapshots"] == 1  # B; the journal's A clashes on (chain, contract)
+            assert partial.snapshot_count() == 2
+
+    def test_every_file_in_the_committed_state_is_under_githubs_limit(self):
+        """The check that would have caught the outage before it happened.
+
+        Legacy single-file journals are frozen by sharding, so this can only fail
+        if something starts writing an unsharded file again.
+        """
+        state = Path(__file__).resolve().parent.parent / "state"
+        if not state.is_dir():
+            pytest.skip("no state/ directory in this checkout")
+        oversized = [
+            (str(path.relative_to(state)), path.stat().st_size)
+            for path in state.rglob("*")
+            if path.is_file() and path.stat().st_size >= journal.GITHUB_FILE_LIMIT_BYTES
+        ]
+        assert oversized == []
 
 
 # ---------------------------------------------------------------------------
