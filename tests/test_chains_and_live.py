@@ -997,6 +997,20 @@ class TestTheCollectorCanActuallyStart:
             "will drift from the imports again; it already did once."
         )
 
+    def test_a_typed_chain_list_reaches_the_collector_as_one_argument(self):
+        """Unquoted, a workflow_dispatch value like "solana, bnb" split at the space
+        and argparse rejected the run. The array form keeps it one argument."""
+        import yaml
+
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
+        )
+        script = " ".join(
+            str(step.get("run", "")) for step in workflow["jobs"]["collect"]["steps"]
+        )
+        assert 'CHAIN_ARG=(--chains "$CHAINS")' in script
+        assert '"${CHAIN_ARG[@]}"' in script
+
 
 # ---------------------------------------------------------------------------
 # Finding a chain nobody has boosted a token on
@@ -1217,6 +1231,56 @@ class TestSeededTokens:
         entry = feed.discover()[("solana", "SoL1")]
         assert entry["discovery"] == "boost_top"
         assert entry["boost_total"] == 500
+
+    def test_a_lowercase_evm_seed_finds_its_checksummed_pool(self, monkeypatch):
+        """DexScreener answers an address in any case and returns it checksummed;
+        a seed pasted from a URL or an explorer is often lowercase. Compared
+        verbatim, it matched no pool and was dropped without a log line."""
+        from collectors.dexscreener import DexScreenerFeed
+
+        class CaseBlind(QuietChainClient):
+            def pairs_for_tokens(self, addresses):
+                if self.address.lower() in {a.lower() for a in addresses}:
+                    return _quiet_chain_pairs(self.chain_id, self.address)
+                return []
+
+        monkeypatch.setenv(chains.CHAIN_ID_ENV, "robinhood=robinhoodchain")
+        chains.reload_overrides()
+        try:
+            feed = DexScreenerFeed(
+                client=CaseBlind(),
+                chain_names=("robinhood",),
+                seed_contracts=(ROBINHOOD_TOKEN.lower(),),
+            )
+            polled = feed.poll()
+            # Stored under the API's spelling, so it matches every later cycle.
+            assert [m.contract for m in polled] == [ROBINHOOD_TOKEN]
+            assert polled[0].entry_path == "seed"
+        finally:
+            monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+            chains.reload_overrides()
+
+    def test_a_seed_on_two_chains_resolves_to_the_requested_one(self, monkeypatch):
+        """One EVM address can exist on several chains. Keeping only the last chain
+        it came back on dropped a seed that was also on a chain the run asked for."""
+        from collectors.dexscreener import DexScreenerFeed
+
+        class TwoChains(QuietChainClient):
+            def pairs_for_tokens(self, addresses):
+                return _quiet_chain_pairs("robinhoodchain", self.address) + _quiet_chain_pairs(
+                    "bsc", self.address
+                )
+
+        monkeypatch.setenv(chains.CHAIN_ID_ENV, "robinhood=robinhoodchain")
+        chains.reload_overrides()
+        try:
+            feed = DexScreenerFeed(
+                client=TwoChains(), chain_names=("robinhood",), seed_contracts=(ROBINHOOD_TOKEN,)
+            )
+            assert [m.chain for m in feed.poll()] == ["robinhood"]
+        finally:
+            monkeypatch.delenv(chains.CHAIN_ID_ENV, raising=False)
+            chains.reload_overrides()
 
     def test_the_env_list_is_parsed_without_inventing_an_empty_address(self):
         from collectors.dexscreener import seed_contracts_from_env

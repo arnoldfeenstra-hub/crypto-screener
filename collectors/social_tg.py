@@ -168,7 +168,13 @@ class TelegramCollector:
     def run(self, *, as_of_ms: int | None = None, limit: int = 200) -> list[SocialObservation]:
         as_of = as_of_ms if as_of_ms is not None else now_ms()
         written: list[SocialObservation] = []
-        for snapshot in self.store.snapshots_for_labelling()[:limit]:
+        # Newest first, and the newest `limit` of them. snapshots_for_labelling() is
+        # oldest first, and slicing that kept the *oldest* `limit`: once the
+        # dataset passed 200 snapshots (2026-09-18) no new token was polled again,
+        # and every later token's t+0/+1h/+6h/+24h counts -- archived nowhere, so
+        # never recoverable -- went uncollected. The newest 200 cover every
+        # snapshot still inside the +24h offset at any realistic trigger rate.
+        for snapshot in list(reversed(self.store.snapshots_for_labelling()))[:limit]:
             age = int((as_of - snapshot["ts"]) // 60_000)
             done = self.store.social_offsets_collected(snapshot["snapshot_id"], PLATFORM)
             for offset in due_offsets(age, done):

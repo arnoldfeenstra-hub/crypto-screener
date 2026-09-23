@@ -17,6 +17,7 @@ makes real requests impossible anyway.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -917,3 +918,57 @@ class TestXCollection:
         # The cycle still scored and journalled; the failure is a row, not a crash.
         assert "scored" in summary
         assert summary["social_x"]["with_errors"] >= 1
+
+    def test_a_zero_budget_makes_no_calls(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram(), x_client=client,
+                        x_max_searches=0)
+        assert client.calls == 0
+        assert summary["social_x"]["skipped_for_budget"] >= 1
+
+
+class TestTheBudgetReachesTheCycle:
+    """collect.main resolves X_MAX_SEARCHES_PER_CYCLE; these pin how."""
+
+    @staticmethod
+    def _main(monkeypatch, *, dotenv: dict[str, str] | None = None) -> tuple[int, dict]:
+        import collect
+
+        seen: dict = {}
+
+        def fake_load_config():
+            # What load_dotenv does: fill in what the real environment left unset.
+            for key, value in (dotenv or {}).items():
+                if key not in os.environ:
+                    monkeypatch.setenv(key, value)
+
+        monkeypatch.setattr(collect, "load_config", fake_load_config)
+        monkeypatch.setattr(collect, "run_cycle", lambda **kw: seen.update(kw) or {})
+        return collect.main([]), seen
+
+    def test_a_blank_variable_does_not_take_the_collector_down(self, monkeypatch):
+        """collect.yml passes an undefined repository variable as an empty string.
+        int("") at argparse time crashed every scheduled run before it restored."""
+        monkeypatch.setenv("X_MAX_SEARCHES_PER_CYCLE", "")
+        code, seen = self._main(monkeypatch)
+        assert code == 0
+        assert seen["x_max_searches"] is None
+
+    def test_a_budget_in_dotenv_is_honoured_like_the_token_beside_it(self, monkeypatch):
+        """The token in .env switched X on; the budget in .env was read before .env
+        was loaded, so the metered source ran uncapped."""
+        monkeypatch.delenv("X_MAX_SEARCHES_PER_CYCLE", raising=False)
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        _, seen = self._main(
+            monkeypatch, dotenv={"X_BEARER_TOKEN": "t", "X_MAX_SEARCHES_PER_CYCLE": "40"}
+        )
+        assert seen["x_max_searches"] == 40
+
+    def test_a_malformed_budget_stops_the_run_by_name(self, monkeypatch, capsys):
+        monkeypatch.setenv("X_MAX_SEARCHES_PER_CYCLE", "forty")
+        code, seen = self._main(monkeypatch)
+        assert code == 2
+        assert seen == {}
+        assert "X_MAX_SEARCHES_PER_CYCLE" in capsys.readouterr().err

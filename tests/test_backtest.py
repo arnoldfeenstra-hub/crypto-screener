@@ -165,6 +165,61 @@ class TestGenuineFeature:
         assert "not as a measured edge" in report.verdict()
 
 
+class TestOutOfSample:
+    """"Separated out of sample" is a claim, so it is checked rather than assumed."""
+
+    @staticmethod
+    def build():
+        # Time-ordered. On the earlier 70% the feature is high on the surges; on
+        # the later 30% it is low on them. Pooled, it still separates -- and both
+        # age bands agree with the pool, because both hold earlier rows.
+        specs = []
+        for index in range(100):
+            surged = index % 5 == 0
+            sign = 1.0 if index < 70 else -1.0
+            value = 10.0 + sign * (5.0 if surged else 0.0) + (index % 7) * 0.1
+            age = 30.0 if index % 2 == 0 else 5000.0
+            specs.append((1_000_000 + index, age, {"f": value}, surged))
+        return make_rows(specs)
+
+    def test_a_direction_that_reverses_on_the_later_rows_is_not_a_lead(self):
+        result = evaluate_feature("f", self.build())
+        assert result.separates and result.survives_strata  # the in-sample picture
+        assert result.out_of_sample_area is not None and result.out_of_sample_area < 0.5
+        assert not result.holds_out_of_sample
+        assert "in sample only" in result.verdict()
+        assert run(self.build()).leads() == ()
+
+    def test_the_out_of_sample_figure_carries_its_own_interval(self):
+        rows = TestGenuineFeature().build()
+        payload = evaluate_feature("real", rows).to_dict()
+        low, high = payload["auc_out_of_sample_ci"]
+        assert 0.0 <= low <= payload["auc_out_of_sample"] <= high <= 1.0
+
+
+class TestDirection:
+    def test_the_lift_is_taken_at_the_tail_the_feature_predicts_from(self):
+        # Lower is better: the surges are the smallest values. The raw top decile
+        # is the worst decile, which is how the sample's one lead read 0.00.
+        specs = [
+            (1_000_000 + index, 30.0 + index, {"conc": float(index)}, index < 10)
+            for index in range(100)
+        ]
+        result = evaluate_feature("conc", make_rows(specs))
+        assert result.area is not None and result.area < 0.5
+        assert result.decile_lift is not None and result.decile_lift > 1.0
+
+    def test_a_perfectly_backwards_feature_sorts_first(self):
+        specs = [
+            (1_000_000 + index, 30.0, {"backwards": float(index), "weak": float(index % 3)},
+             index < 10)
+            for index in range(40)
+        ]
+        report = run(make_rows(specs))
+        assert report.results[0].name == "backwards"
+        assert report.results[0].area == 0.0
+
+
 class TestControlFeature:
     def test_age_is_never_judged_against_its_own_strata(self):
         specs = [
@@ -206,6 +261,17 @@ class TestGateAndFraming:
         )
         assert "Phase 0's gate is NOT met" in report.verdict()
         assert "no weight in prompts/score.md may be changed on it" in report.verdict()
+
+    def test_snapshots_without_a_social_series_do_not_meet_the_gate(self):
+        """The same gate calibration.fit.ExitCriteria enforces: 300 triggered tokens
+        *with a complete social series*. Counting snapshots alone called it met
+        while the calibration panel reading the same dataset said it was not."""
+        rows = make_rows([(1, 30.0, {"x": 1.0}, True), (2, 30.0, {"x": 0.0}, False)])
+        short = run(rows, triggered_tokens=400, dead_per_survivor=30.0, complete_social=12)
+        assert not short.gate_met
+        assert "Phase 0's gate is NOT met" in short.verdict()
+        met = run(rows, triggered_tokens=400, dead_per_survivor=30.0, complete_social=350)
+        assert met.gate_met
 
     def test_the_payload_declares_it_is_not_a_calibration(self):
         report = run(make_rows([(1, 30.0, {"x": 1.0}, True), (2, 30.0, {"x": 0.0}, False)]))

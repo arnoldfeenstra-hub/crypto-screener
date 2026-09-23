@@ -29,6 +29,7 @@ import argparse
 import json
 import logging
 import os
+import sys
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -55,6 +56,36 @@ API_BASE = "https://api.x.com/2"
 TIER1_FOLLOWERS = 100_000
 # An account posting more than this many distinct tickers a day is a paid caller.
 PAID_CALLER_TICKERS_PER_DAY = 3
+
+# The per-cycle search budget. Read by collect.py and by this module's CLI, in both
+# cases *after* load_config() has loaded .env -- reading it at argparse time, before
+# .env is loaded, honoured the token in .env and silently ignored the budget beside it.
+MAX_SEARCHES_ENV = "X_MAX_SEARCHES_PER_CYCLE"
+
+
+def max_searches_from_env(raw: str | None = None) -> int | None:
+    """The per-cycle X search budget from ``X_MAX_SEARCHES_PER_CYCLE``.
+
+    Unset *or blank* is no cap: GitHub Actions passes an undefined repository
+    variable as an empty string, and that must not crash the collector before it
+    has restored anything. ``0`` is a budget of zero searches -- never "unlimited",
+    which is what ``int(...) or None`` made of it -- because this is the one
+    metered source and a cap set to 0 to pause spending has to pause it. Anything
+    that is not a non-negative whole number raises, naming the variable, rather
+    than being read as no cap.
+    """
+    text = (raw if raw is not None else os.environ.get(MAX_SEARCHES_ENV, "")).strip()
+    if not text:
+        return None
+    try:
+        value = int(text)
+    except ValueError:
+        raise ValueError(
+            f"{MAX_SEARCHES_ENV}={text!r} is not a whole number of searches"
+        ) from None
+    if value < 0:
+        raise ValueError(f"{MAX_SEARCHES_ENV}={text!r} is negative")
+    return value
 
 
 class XError(RuntimeError):
@@ -250,7 +281,14 @@ class XCollector:
         written: list[SocialObservation] = []
         self.skipped_for_budget = 0
         searches = 0
-        for snapshot in self.store.snapshots_for_labelling()[:limit]:
+        # Newest first, and the newest `limit` of them. snapshots_for_labelling() is
+        # oldest first, and slicing that kept the *oldest* `limit` snapshots: once
+        # the dataset passed `limit` no new token was ever polled, and a budget was
+        # spent on week-old tokens' overdue offsets. (The Telegram collector's
+        # identical slice is why its series stops at the 200th snapshot.) Newest
+        # first also puts the on-time t+0 polls ahead of the backlog when the budget
+        # binds.
+        for snapshot in list(reversed(self.store.snapshots_for_labelling()))[:limit]:
             age = int((as_of - snapshot["ts"]) // 60_000)
             done = self.store.social_offsets_collected(snapshot["snapshot_id"], PLATFORM)
             for offset in due_offsets(age, done):
@@ -280,7 +318,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--max-searches",
         type=int,
-        default=int(os.environ.get("X_MAX_SEARCHES_PER_CYCLE", "0")) or None,
+        default=None,
         help=(
             "stop after this many API calls (default: X_MAX_SEARCHES_PER_CYCLE, "
             "or unlimited). X search is the one metered source in this repo."
@@ -294,6 +332,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s %(message)s",
     )
     config = load_config()
+    try:
+        max_searches = (
+            args.max_searches if args.max_searches is not None else max_searches_from_env()
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     token = os.environ.get("X_BEARER_TOKEN")
     client = XClient(bearer_token=token) if token else None
     if client is None:
@@ -304,7 +349,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with Store(args.db or str(config.db_path)) as store:
         collector = XCollector(store, client)
-        written = collector.run(limit=args.limit, max_searches=args.max_searches)
+        written = collector.run(limit=args.limit, max_searches=max_searches)
         payload = {
             "observations_written": len(written),
             "with_counts": sum(1 for o in written if o.error is None),

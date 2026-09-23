@@ -444,12 +444,13 @@ def _window_ratio(
     """``(short rate / long rate, saturated)`` for two nested windows.
 
     The second element is the part that matters. The short window is contained in
-    the long one, so a token younger than the long window has identical figures in
-    both and the ratio equals ``long_hours / short_hours`` exactly -- 4.0 for
+    the long one, so a token younger than the *short* window has identical figures
+    in both and the ratio equals ``long_hours / short_hours`` exactly -- 4.0 for
     6h-in-24h, 6.0 for 1h-in-6h. That is arithmetic about the token's age, not a
     measurement of its momentum, and calibration/backtest.py showed it reading as
     a strong signal precisely because it is an age proxy. Flagged here so the
-    caller can drop it rather than score it.
+    caller can drop it rather than score it. A token between the two windows is not
+    pinned but is still read through its age, which only the caller can see.
     """
     short_rate = _ratio(short, short_hours)
     long_rate = _ratio(long, long_hours)
@@ -477,8 +478,10 @@ def momentum_flow(candidate: dict[str, Any]) -> PillarScore:
     * **Pressure trend**: the hour's buy pressure against the day's. Rising is a
       bid arriving; falling at a high level is the distribution shape Pillar A
       describes and Pillar D's cohort flow would confirm if it were collected.
-    * **Volume acceleration**, 1h against 6h, *dropped when saturated*.
-    * **Price slope**: the hour's move against the six-hour average hourly move.
+    * **Volume acceleration**, 1h against 6h, *dropped until the six-hour window
+      has filled* -- before that the ratio reads the token's age.
+    * **Price slope**: the hour's move against the six-hour average hourly move,
+      or the hour's move alone while the six-hour window is still filling.
 
     Weighted 0.00 into the composite -- see :data:`MOMENTUM_PRIOR_WEIGHT`.
     """
@@ -500,6 +503,15 @@ def momentum_flow(candidate: dict[str, Any]) -> PillarScore:
                 "(1h) -- selling into the day's bid"
             )
 
+    # A token younger than the six-hour window has not filled it: its 6h figures
+    # cover `age` hours of trading, not six, so a sixth of them understates the
+    # hourly rate by age/6. A perfectly flat 2h-old token then reads 3.0x
+    # "acceleration" -- scored 100 -- where the same token at 8h reads 1.0x. The
+    # two windows being *identical*, which _window_ratio flags, is only the
+    # under-an-hour end of that range; the age on the candidate covers all of it.
+    age_hours = candidate.get("age_hours")
+    long_window_open = age_hours is not None and age_hours < 6.0
+
     accel_ratio, saturated = _window_ratio(
         m.get("volume_1h_usd"), 1.0, m.get("volume_6h_usd"), 6.0
     )
@@ -508,6 +520,11 @@ def momentum_flow(candidate: dict[str, Any]) -> PillarScore:
         notes.append(
             "1h and 6h volume are identical -- the token is younger than six hours, "
             "so the acceleration is pinned by arithmetic and is not scored"
+        )
+    elif long_window_open and accel_ratio is not None:
+        notes.append(
+            f"the token is {age_hours:.1f}h old, younger than the six-hour window, so "
+            "1h volume against the 6h rate reads its age and is not scored"
         )
     elif accel_ratio is not None:
         acceleration = _scale(accel_ratio, 0.3, 3.0)
@@ -519,18 +536,20 @@ def momentum_flow(candidate: dict[str, Any]) -> PillarScore:
     slope = None
     change_1h = m.get("price_change_1h_pct")
     change_6h = m.get("price_change_6h_pct")
-    if change_1h is not None and change_6h is not None:
+    if change_1h is not None and change_6h is not None and not long_window_open:
         # The six-hour figure is a cumulative move; a sixth of it is its average
         # hour. Above that average the last hour is the fastest part of the move.
         hourly_average = change_6h / 6.0
         slope = _scale(change_1h - hourly_average, -10.0, 10.0)
-        if change_6h > 25 and change_1h < 0:
-            notes.append(
-                f"up {change_6h:.0f}% over 6h and down {change_1h:.1f}% in the last "
-                "hour -- the move is rolling over"
-            )
     elif change_1h is not None:
+        # No six-hour average to compare against -- none reported, or the window
+        # has not filled -- so the hour's move is scored on its own.
         slope = _scale(change_1h, -10.0, 10.0)
+    if change_1h is not None and change_6h is not None and change_6h > 25 and change_1h < 0:
+        notes.append(
+            f"up {change_6h:.0f}% over 6h and down {change_1h:.1f}% in the last "
+            "hour -- the move is rolling over"
+        )
 
     return PillarScore(
         "momentum_flow",

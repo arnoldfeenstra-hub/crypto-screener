@@ -239,11 +239,13 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
     # measured rather than only what the weights guess. It is not a calibration --
     # the payload says so in its own field -- and the leads list is empty far more
     # often than not, which is the honest common case and is rendered as such.
-    survivors, dead = store.survivor_counts("7d")
+    # The gate inputs are the ones the progress block below reports, so the two
+    # cannot disagree about whether Phase 0 is done.
     backtest = run_backtest(
         backtest_rows(store),
         triggered_tokens=triggered,
         dead_per_survivor=(dead / survivors) if survivors else None,
+        complete_social=complete_social,
     )
 
     excluded_evidence = sum(
@@ -290,9 +292,10 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             ),
             "caveat": (
                 "Weight 0.00 in the composite. A ratio between two nested windows "
-                "saturates -- a token younger than the long window has identical "
-                "counts in both -- so those components are dropped when pinned "
-                "rather than scored. The buy/sell split is a ratio inside one "
+                "reads a token's age until the longer window has filled -- and pins "
+                "at the window ratio when every trade falls in the shorter one -- so "
+                "those components are dropped for a token younger than the longer "
+                "window rather than scored. The buy/sell split is a ratio inside one "
                 "window and does not saturate."
             ),
         },

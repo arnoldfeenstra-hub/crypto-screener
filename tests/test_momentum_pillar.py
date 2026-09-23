@@ -121,6 +121,35 @@ class TestWindowSaturation:
         result = momentum_flow(candidate(volume_1h_usd=60_000.0, volume_6h_usd=180_000.0))
         assert result.components["volume_acceleration"] is not None
 
+    def test_a_token_younger_than_the_window_is_not_scored_on_it(self):
+        """Identical windows are only the under-an-hour end of the artefact.
+
+        A 2h-old token trading perfectly flat has 1h = 10k and 6h = 20k -- two
+        hours of trading, not six -- which reads as 3.0x the 6h rate and scored
+        100. The same flat token at 8h reads 1.0x. That gap is its age.
+        """
+        young = momentum_flow(
+            {"age_hours": 2.0, "momentum": {"volume_1h_usd": 10_000.0, "volume_6h_usd": 20_000.0}}
+        )
+        assert young.components["volume_acceleration"] is None
+        assert any("younger than the six-hour window" in note for note in young.notes)
+        grown = momentum_flow(
+            {"age_hours": 8.0, "momentum": {"volume_1h_usd": 10_000.0, "volume_6h_usd": 60_000.0}}
+        )
+        assert grown.components["volume_acceleration"] is not None
+
+    def test_a_young_tokens_price_slope_is_its_hour_alone(self):
+        # Up 10% in two hours is 5%/h, not the 1.7%/h a sixth of it implies; the
+        # six-hour average does not exist yet, so the hour is scored on its own.
+        young = momentum_flow(
+            {
+                "age_hours": 2.0,
+                "momentum": {"price_change_1h_pct": 5.0, "price_change_6h_pct": 10.0},
+            }
+        )
+        alone = momentum_flow({"momentum": {"price_change_1h_pct": 5.0}})
+        assert young.components["price_slope"] == alone.components["price_slope"]
+
     def test_draining_attention_is_called_out(self):
         result = momentum_flow(candidate(volume_1h_usd=5_000.0, volume_6h_usd=180_000.0))
         assert any("attention is draining" in note for note in result.notes)
@@ -163,10 +192,49 @@ class TestNothingResolvesToNothing:
 
 
 class TestWiredThrough:
-    def test_the_group_is_a_feature_group_and_counts_toward_completeness(self):
+    def test_the_group_is_stored_but_not_counted_toward_completeness(self):
         assert "momentum" in FEATURE_GROUPS
         snapshot = Snapshot(chain="solana", contract="C", trigger="mcap_250k", source="t")
-        assert snapshot.completeness()[1] == 65
+        assert snapshot.completeness()[1] == 54
+
+    def test_momentum_data_moves_neither_completeness_nor_the_score(self):
+        """The zero-weight claim, end to end. The composite-only identity test
+        pinned data_completeness in its input, so it could not see this: the
+        modifier multiplies the final score, and counting momentum's fields lifted
+        a typical new row's completeness from 21/54 to 32/65."""
+        common = dict(
+            chain="solana",
+            contract="C" * 32,
+            observed_at_ms=1_789_000_000_000,
+            source="dexscreener",
+            ticker="$M",
+            mcap_usd=300_000.0,
+            liquidity_usd=45_000.0,
+            volume_24h_usd=900_000.0,
+            first_seen_at_ms=1_788_999_000_000,
+        )
+        flow = dict(
+            volume_1h_usd=90_000.0,
+            volume_6h_usd=300_000.0,
+            txns_1h=120,
+            buys_1h=80,
+            sells_1h=40,
+            buys_24h=900,
+            sells_24h=700,
+            price_change_5m_pct=0.4,
+            price_change_1h_pct=6.0,
+            price_change_6h_pct=22.0,
+            price_change_24h_pct=48.0,
+        )
+        bare = build_snapshot(TokenMetrics(**common), evaluate(300_000.0, None))
+        full = build_snapshot(TokenMetrics(**common, **flow), evaluate(300_000.0, None))
+        assert full.momentum.buys_1h == 80 and bare.momentum.buys_1h is None
+        assert full.completeness() == bare.completeness()
+
+        bare_score = score_candidate(candidate_from_row(bare.to_row()), regime="neutral")
+        full_score = score_candidate(candidate_from_row(full.to_row()), regime="neutral")
+        assert full_score.score == pytest.approx(bare_score.score)
+        assert full_score.pillar_scores()["momentum_flow"] is not None
 
     def test_the_schema_version_was_bumped_with_the_group(self):
         # The group landed at 7. The assertion is >= rather than == because later

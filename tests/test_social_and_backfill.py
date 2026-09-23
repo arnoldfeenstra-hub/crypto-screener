@@ -32,7 +32,13 @@ from collectors.social_tg import (
     extract_handle,
     parse_preview,
 )
-from collectors.social_x import XCollector, XError, build_query, parse_search
+from collectors.social_x import (
+    XCollector,
+    XError,
+    build_query,
+    max_searches_from_env,
+    parse_search,
+)
 from collectors.store import AppendOnlyViolation, Store
 
 T0 = 1788912000000
@@ -131,6 +137,30 @@ class TestXParsing:
             build_query(None, None)
 
 
+class TestXSearchBudget:
+    """X_MAX_SEARCHES_PER_CYCLE: the one number standing between a cycle and a bill."""
+
+    def test_unset_or_blank_is_no_cap_not_a_crash(self):
+        # GitHub Actions passes an undefined repository variable as "".
+        assert max_searches_from_env("") is None
+        assert max_searches_from_env("   ") is None
+
+    def test_zero_is_zero_searches_not_unlimited(self):
+        assert max_searches_from_env("0") == 0
+
+    def test_a_number_is_the_cap(self):
+        assert max_searches_from_env(" 40 ") == 40
+
+    @pytest.mark.parametrize("raw", ["forty", "4.5", "-1"])
+    def test_anything_else_is_refused_by_name(self, raw):
+        with pytest.raises(ValueError, match="X_MAX_SEARCHES_PER_CYCLE"):
+            max_searches_from_env(raw)
+
+    def test_the_environment_is_read_when_no_value_is_passed(self, monkeypatch):
+        monkeypatch.setenv("X_MAX_SEARCHES_PER_CYCLE", "7")
+        assert max_searches_from_env() == 7
+
+
 class TestXCollector:
     def _store_with_snapshot(self) -> tuple[Store, Snapshot]:
         store = Store()
@@ -193,6 +223,48 @@ class TestXCollector:
             again = collector.run(as_of_ms=T0 + 90 * MIN)
             assert again == []
             assert store.social_observation_count() == 2
+
+    @staticmethod
+    def _store_with_snapshots(count: int) -> tuple[Store, list[Snapshot]]:
+        store = Store()
+        snaps = [
+            Snapshot(
+                chain="solana", contract=f"Tok{i}", trigger="mcap_250k", source="test",
+                ticker=f"$T{i}", ts=T0 + i * 60 * MIN, market=Market(mcap_usd=300_000.0),
+            )
+            for i in range(count)
+        ]
+        for snap in snaps:
+            store.append_snapshot(snap)
+        return store, snaps
+
+    def test_the_newest_snapshots_are_polled_not_the_oldest(self):
+        """The limit keeps the newest snapshots. Keeping the oldest -- a slice of an
+        oldest-first list -- meant that once the dataset outgrew the limit, no new
+        token was ever polled again; the Telegram series stopped at the 200th."""
+
+        class Fake:
+            def search_recent(self, *a, **k):
+                return {"data": []}
+
+        store, snaps = self._store_with_snapshots(3)
+        with store:
+            written = XCollector(store, Fake()).run(as_of_ms=T0 + 3 * 60 * MIN, limit=2)
+            assert {o.snapshot_id for o in written} == {s.snapshot_id for s in snaps[1:]}
+
+    def test_a_binding_budget_goes_to_the_newest_token_first(self):
+        class Fake:
+            def search_recent(self, *a, **k):
+                return {"data": []}
+
+        store, snaps = self._store_with_snapshots(3)
+        with store:
+            collector = XCollector(store, Fake())
+            written = collector.run(as_of_ms=T0 + 2 * 60 * MIN + 10 * MIN, max_searches=1)
+            assert [(o.snapshot_id, o.offset_minutes) for o in written] == [
+                (snaps[-1].snapshot_id, 0)
+            ]
+            assert collector.skipped_for_budget > 0
 
     def test_a_duplicate_offset_write_is_refused(self):
         store, snap = self._store_with_snapshot()
@@ -293,6 +365,31 @@ class TestTelegramCollector:
             )
             assert observation.members == 4200
             assert observation.handle == "mychannel"
+
+    def test_the_newest_snapshots_are_polled_not_the_oldest(self):
+        """The series stopped at the 200th snapshot on 2026-09-18: the limit kept
+        the oldest 200 of an oldest-first list, so no newer token was ever polled.
+        79 snapshots went uncollected before this was caught, 26 of them with a
+        Telegram group -- counts that are archived nowhere."""
+
+        class Fake:
+            def fetch(self, handle):
+                return {"exists": True, "members": 100, "online": 5}
+
+        store = Store()
+        snaps = [
+            Snapshot(
+                chain="solana", contract=f"Tok{i}", trigger="mcap_250k", source="test",
+                ticker=f"$T{i}", ts=T0 + i * 60 * MIN, market=Market(mcap_usd=300_000.0),
+                telegram_url="https://t.me/group" + str(i),
+            )
+            for i in range(3)
+        ]
+        with store:
+            for snap in snaps:
+                store.append_snapshot(snap)
+            written = TelegramCollector(store, Fake()).run(as_of_ms=T0 + 3 * 60 * MIN, limit=2)
+            assert {o.snapshot_id for o in written} == {s.snapshot_id for s in snaps[1:]}
 
     def test_the_preview_path_leaves_speaker_fields_null(self):
         """It cannot read them, so it says so rather than implying a dead room."""

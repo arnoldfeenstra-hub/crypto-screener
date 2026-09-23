@@ -128,10 +128,12 @@ jobs:
           set -o pipefail
           SAFETY=""
           if [ "${{ inputs.safety }}" = "false" ]; then SAFETY="--no-safety"; fi
-          CHAIN_ARG=""
-          if [ -n "$CHAINS" ]; then CHAIN_ARG="--chains $CHAINS"; fi
+          # An array, so a typed "solana, bnb" stays one argument, as it was when
+          # this line read --chains "$CHAINS"; unquoted, it split at the space.
+          CHAIN_ARG=()
+          if [ -n "$CHAINS" ]; then CHAIN_ARG=(--chains "$CHAINS"); fi
           python -m collect \
-            $CHAIN_ARG \
+            "${CHAIN_ARG[@]}" \
             --regime "$REGIME" \
             --state state \
             --export web/screener-data.json \

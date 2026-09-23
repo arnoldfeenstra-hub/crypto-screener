@@ -44,7 +44,7 @@ from collectors.outcomes import OutcomeTracker
 from collectors.safety import SafetySource
 from collectors.social_base import OFFSET_TOLERANCE_MINUTES
 from collectors.social_tg import TelegramCollector, TelegramPreviewClient
-from collectors.social_x import XClient, XCollector
+from collectors.social_x import XClient, XCollector, max_searches_from_env
 from collectors.store import Store
 from collectors.trigger_watcher import TriggerWatcher
 from scoring.runner import ScoringRunner
@@ -277,7 +277,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--x-max-searches",
         type=int,
-        default=int(os.environ.get("X_MAX_SEARCHES_PER_CYCLE", "0")) or None,
+        # Resolved after load_config(), not here: an argparse default is evaluated
+        # before .env is loaded, which honoured X_BEARER_TOKEN from .env and dropped
+        # the budget set beside it -- an uncapped metered source.
+        default=None,
         help=(
             "cap the X searches one cycle may make (default: "
             "X_MAX_SEARCHES_PER_CYCLE, else unlimited). Every other source here is "
@@ -310,6 +313,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     try:
+        x_max_searches = (
+            args.x_max_searches
+            if args.x_max_searches is not None
+            else max_searches_from_env()
+        )
         summary = run_cycle(
             chain_names=args.chains.split(","),
             state_dir=args.state,
@@ -320,7 +328,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_tokens_per_poll=args.max_tokens_per_poll,
             score_limit=args.score_limit,
             export_to=args.export,
-            x_max_searches=args.x_max_searches,
+            x_max_searches=x_max_searches,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -574,6 +574,18 @@ def _batched(items: Sequence[str], size: int) -> list[list[str]]:
 SEED_TOKENS_ENV = "SCREENER_SEED_TOKENS"
 
 
+def _address_key(address: str) -> str:
+    """How two spellings of one address are recognised as the same address.
+
+    An EVM address is hex, and its mixed case is only a checksum: DexScreener
+    returns the checksummed form, while a seed pasted from a URL or an explorer is
+    often lowercase. Compared verbatim, that seed matched no pool and was dropped
+    without a word. A base58 Solana mint is case-sensitive, so anything that is not
+    ``0x`` hex is compared exactly.
+    """
+    return address.lower() if address[:2] in ("0x", "0X") else address
+
+
 def seed_contracts_from_env(raw: str | None = None) -> tuple[str, ...]:
     """Token addresses from ``SCREENER_SEED_TOKENS``, comma separated.
 
@@ -684,7 +696,8 @@ class DexScreenerFeed:
         # left unresolved here because a seed is an address with no chainId
         # attached -- poll() fills it in from what the API actually returns.
         for contract in self.seed_contracts:
-            if not any(key[1] == contract for key in found):
+            wanted_key = _address_key(contract)
+            if not any(_address_key(key[1]) == wanted_key for key in found):
                 found[(_SEED_CHAIN, contract)] = {
                     "chain": _SEED_CHAIN,
                     "contract": contract,
@@ -711,44 +724,50 @@ class DexScreenerFeed:
                 log.exception("pair lookup failed for a batch of %d", len(batch))
 
         # Seeds arrive as an address with no chain. The response carries the chain,
-        # so it is matched by contract and the API's answer is used -- the one place
-        # a key is completed rather than looked up.
-        by_contract: dict[str, tuple[str, PairAggregate]] = {
-            contract: (chain, aggregate)
-            for (chain, contract), aggregate in aggregates.items()
-        }
-        wanted = set(self.chain_names)
+        # so it is matched by address and the API's answer is used -- the one place
+        # a key is completed rather than looked up. Every chain an address came
+        # back on is kept: the same EVM address can exist on several chains, and
+        # keeping only one of them could drop a seed that also lives on a chain
+        # this run did ask for.
+        by_address: dict[str, list[tuple[str, PairAggregate]]] = {}
+        for (chain, contract), aggregate in aggregates.items():
+            by_address.setdefault(_address_key(contract), []).append((chain, aggregate))
 
         out: list[TokenMetrics] = []
-        for chain, contract in keys:
+        for key in keys:
+            chain, contract = key
             if chain == _SEED_CHAIN:
-                resolved = by_contract.get(contract)
-                if resolved is None:
+                found_on = by_address.get(_address_key(contract), [])
+                in_scope = [
+                    (name, aggregate) for name, aggregate in found_on if name in self.chain_names
+                ]
+                if not in_scope:
+                    if found_on:
+                        # A seeded address that turned out to live only on chains
+                        # this run did not ask for. Dropped rather than collected:
+                        # seeding must not widen the sample's chain set by a side
+                        # effect, or the chain filter stops describing what was
+                        # polled.
+                        log.info(
+                            "seeded token %s is on %s, which was not requested",
+                            contract,
+                            ", ".join(sorted({name for name, _ in found_on})),
+                        )
+                    else:
+                        log.warning("seeded token %s returned no pool", contract)
                     continue
-                chain, aggregate = resolved
-                if chain not in wanted:
-                    # A seeded address that turned out to live on a chain this run
-                    # did not ask for. Dropped rather than collected: seeding must
-                    # not widen the sample's chain set by a side effect, or the
-                    # chain filter stops describing what was polled.
-                    log.info(
-                        "seeded token %s is on %s, which was not requested", contract, chain
-                    )
-                    continue
+                # In the run's own chain order, so a seed on two requested chains
+                # resolves the same way every cycle.
+                in_scope.sort(key=lambda match: self.chain_names.index(match[0]))
+                aggregate = in_scope[0][1]
             else:
-                aggregate = aggregates.get((chain, contract))  # type: ignore[assignment]
+                aggregate = aggregates.get(key)  # type: ignore[assignment]
                 if aggregate is None:
                     # Discovered but not yet pooled, or the lookup failed. Nothing
                     # to snapshot: with no market data the trigger cannot fire.
                     continue
             out.append(
-                to_metrics(
-                    aggregate,
-                    observed_at_ms=observed,
-                    discovery=discovered[(_SEED_CHAIN, contract)]
-                    if (_SEED_CHAIN, contract) in discovered
-                    else discovered[(chain, contract)],
-                )
+                to_metrics(aggregate, observed_at_ms=observed, discovery=discovered[key])
             )
         return out
 

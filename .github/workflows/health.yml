@@ -108,14 +108,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          REF: ${{ github.event.repository.default_branch }}
           MAX_AGE_HOURS: "3"
+        # No ?ref=: the contents API reads the default branch, which is where the
+        # collector commits. github.event.repository is absent on schedule events,
+        # so a ref taken from it would be empty.
         run: |
           set -o pipefail
           curl -sS --fail --max-time 30 \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github.raw" \
-            "https://api.github.com/repos/$REPO/contents/state/manifest.json?ref=$REF" \
+            "https://api.github.com/repos/$REPO/contents/state/manifest.json" \
             -o manifest.json
           python3 - <<'PY'
           import datetime, json, os, sys

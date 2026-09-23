@@ -301,3 +301,39 @@ class TestTheRefreshButton:
     def test_a_failed_refresh_keeps_the_rows_already_on_screen(self):
         page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
         assert "stale and labelled is better than blank" in page
+
+    def test_a_failed_live_refetch_is_not_announced_as_a_re_poll(self):
+        """A failed re-fetch leaves the earlier LIVE body in place, so LIVE being set
+        says nothing about whether this refresh answered. The note keys on the
+        fetch's own result, and the live panel says when its rows are stale."""
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "const liveFresh = live.status === 'fulfilled' && live.value === true;" in page
+        assert "The live view still shows the earlier fetch" in page
+        assert "The last refresh failed" in page
+
+    def test_the_button_is_wired_even_when_nothing_loaded(self):
+        # When neither source answers on load, retrying is the one thing left.
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert page.index("addEventListener('click', doRefresh)") < page.index(
+            "if (!COLLECTED && !LIVE)"
+        )
+
+
+class TestTheBacktestGate:
+    def test_the_backtest_is_given_the_gate_the_progress_block_reports(self, monkeypatch):
+        """Phase 0 is done at 300 tokens *with a complete social series*. The
+        backtest counted snapshots, so it could call the gate met while the
+        progress block beside it, reading the same dataset, said it was not."""
+        import export_web
+
+        seen: dict = {}
+        real = export_web.run_backtest
+
+        def spy(rows, **kwargs):
+            seen.update(kwargs)
+            return real(rows, **kwargs)
+
+        monkeypatch.setattr(export_web, "run_backtest", spy)
+        with store_with("dexscreener") as store:
+            payload = build_payload(store)
+        assert seen["complete_social"] == payload["progress"]["complete_social_series"]

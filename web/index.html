@@ -257,7 +257,7 @@
     <h2>What has actually been measured</h2>
     <p class="lede">Not a calibration. Every collected feature, scored against what the
       tokens went on to do, with a forward-in-time split and the interval that says how
-      little 76 tokens can settle. No weight in the model is set from any of it.</p>
+      little a sample this size can settle. No weight in the model is set from any of it.</p>
     <div class="card" id="backtest"></div>
   </section>
 
@@ -683,8 +683,14 @@ function renderLivePanel() {
   const parts = [];
   if (LIVE && LIVE.live) {
     const l = LIVE.live;
+    // LIVE_ERROR alongside LIVE means the latest re-fetch failed and these rows
+    // are from an earlier one. Said here, so stale is labelled rather than passed
+    // off as current.
+    const stale = LIVE_ERROR
+      ? `<br><br><b>The last refresh failed</b> (${esc(LIVE_ERROR)}); these rows are from the earlier fetch${LIVE.generated_at ? ' at ' + esc(LIVE.generated_at) : ''}.`
+      : '';
     parts.push(`<div class="live-note"><strong>Live data — real tokens from DexScreener.</strong>
-      ${esc(LIVE.live_notice || '')}
+      ${esc(LIVE.live_notice || '')}${stale}
       <br><br>Polled <b>${fmtInt(l.polled)}</b> ${l.polled === 1 ? 'token' : 'tokens'} across
       ${esc((l.chains_requested || []).join(', '))};
       <b>${fmtInt(l.triggered)}</b> ${l.triggered === 1 ? 'is' : 'are'} at or above the trigger and listed below,
@@ -803,7 +809,11 @@ function doRefresh() {
   button.disabled = true;
   button.textContent = 'Refreshing…';
   refreshNote('Re-fetching…');
-  return Promise.allSettled([loadCollected(), loadLive()]).then(() => {
+  return Promise.allSettled([loadCollected(), loadLive()]).then(([, live]) => {
+    // Whether *this* fetch answered. LIVE alone cannot say: a failed re-fetch
+    // leaves the earlier body in place, and reading that as fresh would announce
+    // a re-poll that did not happen.
+    const liveFresh = live.status === 'fulfilled' && live.value === true;
     syncSourceOption();
     if (COLLECTED) {
       renderProgress(COLLECTED); renderVerdict(COLLECTED);
@@ -814,15 +824,31 @@ function doRefresh() {
     button.textContent = 'Refresh';
     const at = new Date().toLocaleTimeString();
     refreshNote(
-      LIVE
+      liveFresh
         ? `Refreshed ${at}. The live view re-polled DexScreener just now; the collected dataset changes only when the collector commits, which is hourly.`
-        : `Refreshed ${at}. ${LIVE_ERROR || 'No live endpoint on this deployment.'} Showing the collected dataset, which changes only when the collector commits.`
+        : LIVE
+          ? `Refreshed ${at}. ${LIVE_ERROR || 'The live endpoint did not answer.'} The live view still shows the earlier fetch; the collected dataset changes only when the collector commits.`
+          : `Refreshed ${at}. ${LIVE_ERROR || 'No live endpoint on this deployment.'} Showing the collected dataset, which changes only when the collector commits.`
     );
   });
 }
 
 Promise.allSettled([loadCollected(), loadLive()]).then(() => {
   syncSourceOption();
+  // Wired, and the parts that need no data drawn, before the early return below:
+  // when neither source answered on load, Refresh is the one useful control left,
+  // and a retry that succeeds needs the filters working. render() and renderRows()
+  // both return early while there is nothing to show.
+  document.getElementById('refresh').addEventListener('click', doRefresh);
+  document.getElementById('source-filter').addEventListener('change', render);
+  for (const id of ['q', 'chain-filter', 'trigger-filter', 'status-filter', 'sort-by']) {
+    document.getElementById(id).addEventListener('input', renderRows);
+  }
+  renderGlossary();
+  document.getElementById('footer').innerHTML =
+    `Every token is snapshotted once, at the same trigger, and no row is ever edited or deleted —
+     the dead tokens are the dataset. Scores are computed from uncalibrated priors and are logged,
+     never acted on; this repo holds no exchange keys and can place no orders.`;
   if (!COLLECTED && !LIVE) {
     document.getElementById('warning').innerHTML =
       '<strong>Could not load any data.</strong>screener-data.json is missing and /api/screener did not answer.';
@@ -832,18 +858,7 @@ Promise.allSettled([loadCollected(), loadLive()]).then(() => {
     renderProgress(COLLECTED); renderVerdict(COLLECTED);
     renderFacts(COLLECTED); renderBacktest(COLLECTED);
   }
-  renderGlossary();
   render();
-  document.getElementById('footer').innerHTML =
-    `Every token is snapshotted once, at the same trigger, and no row is ever edited or deleted —
-     the dead tokens are the dataset. Scores are computed from uncalibrated priors and are logged,
-     never acted on; this repo holds no exchange keys and can place no orders.`;
-
-  document.getElementById('refresh').addEventListener('click', doRefresh);
-  document.getElementById('source-filter').addEventListener('change', render);
-  for (const id of ['q', 'chain-filter', 'trigger-filter', 'status-filter', 'sort-by']) {
-    document.getElementById(id).addEventListener('input', renderRows);
-  }
 });
 </script>
 </body>

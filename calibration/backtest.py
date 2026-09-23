@@ -301,6 +301,9 @@ class FeatureResult:
     tie_share: float
     tie_value: float | None
     strata: dict[str, float | None] = field(default_factory=dict)
+    # The out-of-sample AUC's own interval. .claude/rules/stats.md asks for an
+    # interval on every reported figure, and this is the one that gets quoted.
+    out_of_sample_interval: tuple[float, float] | None = None
 
     @property
     def separates(self) -> bool:
@@ -309,6 +312,18 @@ class FeatureResult:
             return False
         low, high = self.interval
         return low > 0.5 or high < 0.5
+
+    @property
+    def holds_out_of_sample(self) -> bool:
+        """The direction learned on the earlier rows still orders the later ones.
+
+        ``out_of_sample_area`` is scored with the training half's direction, so
+        above 0.5 means that direction held on rows it never saw. ``separates`` is
+        computed over every row, held-out ones included, so without this check a
+        feature whose later rows ran the other way was still called a lead that
+        "separated out of sample".
+        """
+        return self.out_of_sample_area is not None and self.out_of_sample_area > 0.5
 
     @property
     def is_control(self) -> bool:
@@ -357,6 +372,13 @@ class FeatureResult:
             return "no separation (interval spans 0.5)"
         if not self.survives_strata:
             return "confounded with age: separation does not survive stratification"
+        if self.out_of_sample_area is None:
+            return "separates in sample only -- no out-of-sample split to confirm it"
+        if not self.holds_out_of_sample:
+            return (
+                "separates in sample only -- the direction learned on the earlier "
+                "rows did not hold on the later ones"
+            )
         return "separates, out of sample, within age bands -- a lead, not a result"
 
     def to_dict(self) -> dict[str, Any]:
@@ -367,6 +389,10 @@ class FeatureResult:
             "auc": self.area,
             "auc_ci": list(self.interval) if self.interval else None,
             "auc_out_of_sample": self.out_of_sample_area,
+            "auc_out_of_sample_ci": (
+                list(self.out_of_sample_interval) if self.out_of_sample_interval else None
+            ),
+            "holds_out_of_sample": self.holds_out_of_sample,
             "top_decile_lift": self.decile_lift,
             "tie_share": self.tie_share,
             "tie_value": self.tie_value,
@@ -403,7 +429,11 @@ def evaluate_feature(
 
     area = auc(labels, scores)
     interval = auc_interval(labels, scores)
-    lift = top_decile_lift(labels, scores)
+    # Taken at the tail the feature predicts from. top_decile_lift ranks highest
+    # first, so for a lower-is-better feature the raw top decile is its *worst*
+    # decile -- which read as a lift of 0.00 on the one lead the sample has.
+    pooled_direction = 1.0 if area is None or area >= 0.5 else -1.0
+    lift = top_decile_lift(labels, [pooled_direction * s for s in scores])
 
     # Forward in time, never at random (.claude/rules/stats.md). The direction is
     # taken from the training half only; the test half is scored with that
@@ -411,6 +441,7 @@ def evaluate_feature(
     cut = int(len(usable) * (1.0 - test_fraction))
     train, test = usable[:cut], usable[cut:]
     out_of_sample = None
+    out_of_sample_interval = None
     train_labels = [int(r.outcome or 0) for r in train]
     test_labels = [int(r.outcome or 0) for r in test]
     splits_usable = (
@@ -422,9 +453,9 @@ def evaluate_feature(
     if splits_usable:
         train_area = auc(train_labels, [float(r.features[name]) for r in train])  # type: ignore[arg-type]
         direction = 1.0 if (train_area is None or train_area >= 0.5) else -1.0
-        out_of_sample = auc(
-            test_labels, [direction * float(r.features[name]) for r in test]  # type: ignore[arg-type]
-        )
+        oriented = [direction * float(r.features[name]) for r in test]  # type: ignore[arg-type]
+        out_of_sample = auc(test_labels, oriented)
+        out_of_sample_interval = auc_interval(test_labels, oriented)
 
     strata: dict[str, float | None] = {}
     for band_name, _, _ in AGE_BANDS:
@@ -446,6 +477,7 @@ def evaluate_feature(
         tie_share=share,
         tie_value=value,
         strata=strata,
+        out_of_sample_interval=out_of_sample_interval,
     )
 
 
@@ -459,6 +491,7 @@ class BacktestReport:
     gate_met: bool
     triggered_tokens: int
     dead_per_survivor: float | None
+    complete_social: int = 0
 
     @property
     def base(self) -> float:
@@ -474,7 +507,11 @@ class BacktestReport:
         return tuple(
             r
             for r in self.results
-            if r.separates and r.survives_strata and not r.degenerate and not r.is_control
+            if r.separates
+            and r.holds_out_of_sample
+            and r.survives_strata
+            and not r.degenerate
+            and not r.is_control
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -487,6 +524,7 @@ class BacktestReport:
             "base_rate_ci": list(wilson_interval(self.positives, self.rows)) if self.rows else None,
             "phase0_gate_met": self.gate_met,
             "triggered_tokens": self.triggered_tokens,
+            "complete_social_series": self.complete_social,
             "min_triggered_tokens": MIN_TRIGGERED_TOKENS,
             "dead_per_survivor": self.dead_per_survivor,
             "min_dead_per_survivor": MIN_DEAD_PER_SURVIVOR,
@@ -516,10 +554,11 @@ class BacktestReport:
                 else f"{self.dead_per_survivor:.1f}"
             )
             head += (
-                f"Phase 0's gate is NOT met ({self.triggered_tokens}/"
-                f"{MIN_TRIGGERED_TOKENS} triggered tokens, {ratio}/"
-                f"{MIN_DEAD_PER_SURVIVOR} dead per survivor), so nothing below is a "
-                "calibration and no weight in prompts/score.md may be changed on it. "
+                f"Phase 0's gate is NOT met ({self.complete_social}/"
+                f"{MIN_TRIGGERED_TOKENS} triggered tokens with a complete social "
+                f"series, {ratio}/{MIN_DEAD_PER_SURVIVOR} dead per survivor), so "
+                "nothing below is a calibration and no weight in prompts/score.md may "
+                "be changed on it. "
             )
         if leads:
             head += (
@@ -583,6 +622,7 @@ def run(
     threshold: float = DEFAULT_THRESHOLD,
     triggered_tokens: int = 0,
     dead_per_survivor: float | None = None,
+    complete_social: int = 0,
 ) -> BacktestReport:
     names: list[str] = []
     for row in rows:
@@ -591,13 +631,22 @@ def run(
                 names.append(name)
     results = tuple(evaluate_feature(name, rows) for name in names)
     # Strongest separation first, in either direction, so a feature that predicts
-    # the outcome backwards is as visible as one that predicts it forwards.
+    # the outcome backwards is as visible as one that predicts it forwards. An AUC
+    # of exactly 0.0 is the strongest backwards result there is, not a missing one.
     results = tuple(
-        sorted(results, key=lambda r: (abs((r.area or 0.5) - 0.5)), reverse=True)
+        sorted(
+            results,
+            key=lambda r: abs(r.area - 0.5) if r.area is not None else 0.0,
+            reverse=True,
+        )
     )
     positives = sum(int(r.outcome or 0) for r in rows)
+    # Phase 0's gate as calibration.fit.ExitCriteria states it: 300 triggered
+    # tokens *with a complete social series*, not 300 snapshots. Counting
+    # snapshots alone let this report call the gate met while the calibration
+    # panel beside it, reading the same dataset, said it was not.
     gate_met = (
-        triggered_tokens >= MIN_TRIGGERED_TOKENS
+        complete_social >= MIN_TRIGGERED_TOKENS
         and dead_per_survivor is not None
         and dead_per_survivor >= MIN_DEAD_PER_SURVIVOR
     )
@@ -610,6 +659,7 @@ def run(
         gate_met=gate_met,
         triggered_tokens=triggered_tokens,
         dead_per_survivor=dead_per_survivor,
+        complete_social=complete_social,
     )
 
 
@@ -702,6 +752,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             threshold=args.threshold,
             triggered_tokens=store.snapshot_count(),
             dead_per_survivor=(dead / survivors) if survivors else None,
+            complete_social=store.snapshots_with_complete_social(),
         )
 
     print(json.dumps(report.to_dict(), indent=2) if args.json else render(report))

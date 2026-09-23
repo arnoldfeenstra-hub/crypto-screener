@@ -71,9 +71,11 @@ from typing import Any
 # and keep the old one -- the old rows are still the graveyard.
 SCHEMA_VERSION = 8
 
-# Groups whose leaf fields count toward the Data Completeness modifier in
-# prompts/score.md. Identity and bookkeeping columns are excluded: they are always
-# present, so counting them would inflate completeness toward 1.0 for every row.
+# Feature groups: stored as columns and, except those in
+# COMPLETENESS_EXCLUDED_GROUPS below, counted toward the Data Completeness modifier
+# in prompts/score.md. Identity and bookkeeping columns are excluded: they are
+# always present, so counting them would inflate completeness toward 1.0 for every
+# row.
 FEATURE_GROUPS = (
     "market",
     "momentum",
@@ -92,6 +94,22 @@ FEATURE_GROUPS = (
 
 # Feature fields that live directly on Snapshot rather than inside a group.
 FEATURE_SCALARS = ("age_at_trigger_minutes", "listings", "regime")
+
+# Groups stored like any other feature group but left out of data_completeness
+# until the pillar that reads them carries a fitted weight.
+#
+# The Data Completeness modifier multiplies the final score, so a group counted
+# here moves every score even at weight 0.00. Counting momentum's 11 fields would
+# lift a typical new row from 21/54 to 32/65 -- about 1.27x on the score of a
+# token otherwise identical to one collected before schema 7 -- and would make
+# data_completeness mean one thing before the change and another after, in a
+# column calibration reads. No stored row has momentum yet, so leaving it out
+# keeps the measure continuous with every row in the journal. (mindshare, also
+# at weight 0.00, is counted: it has been since schema 2, and taking it out now
+# would be the same discontinuity in the other direction.) When Phase 2 gives
+# momentum_flow a fitted weight, momentum joins the count in the same commit,
+# with prompt_version bumped.
+COMPLETENESS_EXCLUDED_GROUPS = frozenset({"momentum"})
 
 
 def now_ms() -> int:
@@ -397,6 +415,8 @@ class Snapshot:
             if getattr(self, name) is not None:
                 present += 1
         for group_name in FEATURE_GROUPS:
+            if group_name in COMPLETENESS_EXCLUDED_GROUPS:
+                continue
             group = getattr(self, group_name)
             for f in fields(group):
                 expected += 1
