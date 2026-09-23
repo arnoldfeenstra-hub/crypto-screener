@@ -41,7 +41,7 @@ import requests
 
 from collectors.config import load_config
 from collectors.schema import now_ms
-from collectors.social_base import OFFSETS_MINUTES, SocialObservation, due_offsets
+from collectors.social_base import OFFSETS_MINUTES, SocialObservation, due_offsets, newest_first
 from collectors.store import Store
 
 log = logging.getLogger("social_tg")
@@ -168,7 +168,7 @@ class TelegramCollector:
     def run(self, *, as_of_ms: int | None = None, limit: int = 200) -> list[SocialObservation]:
         as_of = as_of_ms if as_of_ms is not None else now_ms()
         written: list[SocialObservation] = []
-        for snapshot in self.store.snapshots_for_labelling()[:limit]:
+        for snapshot in newest_first(self.store.snapshots_for_labelling(), limit):
             age = int((as_of - snapshot["ts"]) // 60_000)
             done = self.store.social_offsets_collected(snapshot["snapshot_id"], PLATFORM)
             for offset in due_offsets(age, done):

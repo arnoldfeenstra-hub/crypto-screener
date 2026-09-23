@@ -25,6 +25,7 @@ from collectors.social_base import (
     derive_x_metrics,
     due_offsets,
     nearest_offset,
+    newest_first,
 )
 from collectors.social_tg import (
     TelegramCollector,
@@ -63,6 +64,29 @@ class TestOffsets:
     def test_a_missed_offset_stays_due(self):
         """A late count beats a hole, but it is filed under the offset it was for."""
         assert 60 in due_offsets(2000, collected=[0])
+
+
+class TestNewestFirst:
+    def test_the_newest_are_kept_whatever_order_they_arrive_in(self):
+        """The store hands snapshots over oldest-first; polling must not rely on it."""
+        snapshots = [
+            {"snapshot_id": "middle", "ts": T0 + 10 * MIN},
+            {"snapshot_id": "newest", "ts": T0 + 20 * MIN},
+            {"snapshot_id": "oldest", "ts": T0},
+        ]
+        assert [s["snapshot_id"] for s in newest_first(snapshots, 2)] == ["newest", "middle"]
+
+
+def triggered_in_order(store: Store, *names: str) -> None:
+    """One snapshot per name, ten minutes apart, in the order given."""
+    for n, name in enumerate(names):
+        store.append_snapshot(
+            Snapshot(
+                chain="solana", contract=f"{name}Mint", trigger="mcap_250k", source="test",
+                ticker=f"${name.upper()}", ts=T0 + n * 10 * MIN,
+                market=Market(mcap_usd=300_000.0), telegram_url=f"https://t.me/{name}_group",
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +231,18 @@ class TestXCollector:
                                        offset_minutes=0, mentions_window=999)]
                 )
 
+    def test_the_newest_snapshots_are_polled_not_the_oldest(self):
+        """Same cap and same helper as the Telegram collector, so the two cannot drift."""
+
+        class Fake:
+            def search_recent(self, *a, **k):
+                return {"data": []}
+
+        with Store() as store:
+            triggered_in_order(store, "oldest", "middle", "newest")
+            written = XCollector(store, Fake()).run(as_of_ms=T0 + 30 * MIN, limit=2)
+            assert [o.handle for o in written] == ["$NEWEST", "$MIDDLE"]
+
 
 # ---------------------------------------------------------------------------
 # Telegram
@@ -308,6 +344,22 @@ class TestTelegramCollector:
             )
             assert observation.unique_speakers is None
             assert observation.messages_window is None
+
+    def test_the_newest_snapshots_are_polled_not_the_oldest(self):
+        """Once the dataset outgrew ``limit``, an oldest-first slice starved every new token.
+
+        The same finished tokens were re-read every cycle, and nothing triggered
+        since was polled at all: member counts never taken, which no archive holds.
+        """
+
+        class Fake:
+            def fetch(self, handle):
+                return {"exists": True, "members": 4200, "online": 130}
+
+        with Store() as store:
+            triggered_in_order(store, "oldest", "middle", "newest")
+            written = TelegramCollector(store, Fake()).run(as_of_ms=T0 + 30 * MIN, limit=2)
+            assert [o.handle for o in written] == ["newest_group", "middle_group"]
 
 
 # ---------------------------------------------------------------------------
