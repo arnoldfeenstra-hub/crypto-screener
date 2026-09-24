@@ -33,9 +33,10 @@
 # error anywhere to notice. Merge to the default branch, or drive it by hand from
 # the Actions tab (Run workflow), which works on any branch.
 #
-# It cannot trade and holds no credentials: DexScreener, GoPlus and RugCheck are
-# all keyless, and the only secret in use is the token GitHub provides for the
-# commit.
+# It cannot trade. DexScreener, GoPlus and RugCheck are all keyless; the only
+# secrets in use are the token GitHub provides for the commit and, when the X
+# collector is switched on, X_BEARER_TOKEN -- a read-only search key, set under
+# Settings -> Secrets and variables -> Actions, never in the repository.
 
 name: collect
 
@@ -123,7 +124,15 @@ jobs:
           # run summary says so -- see docs/x-investigation.md. The budget caps
           # what a single cycle may spend; every other source is keyless.
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          X_MAX_SEARCHES_PER_CYCLE: ${{ vars.X_MAX_SEARCHES_PER_CYCLE }}
+          # 5 searches a cycle unless the variable says otherwise, because the
+          # first cycle after the secret is added is the expensive one: a missed
+          # offset stays due, so the newest 200 snapshots bring up to 800 overdue
+          # searches, enough to spend a month's read quota in one hour. 5 an hour
+          # is ~120 a day, about what ~30 new tokens at four offsets need, and
+          # newest-first ordering spends it on fresh tokens before the backlog.
+          # Set the variable to raise it, or to 0 to stop searching; an unset
+          # variable is "", which is falsy here, so it falls through to 5.
+          X_MAX_SEARCHES_PER_CYCLE: ${{ vars.X_MAX_SEARCHES_PER_CYCLE || '5' }}
         run: |
           set -o pipefail
           SAFETY=""
