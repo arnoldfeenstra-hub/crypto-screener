@@ -9,8 +9,9 @@ until one of those changes, this is the module that puts real rows in the databa
 
 What it can and cannot see
 --------------------------
-It reports market cap, FDV, liquidity, volume, transaction counts, pool age and
-declared socials. It does **not** report holder counts, mint or freeze authority,
+It reports market cap, FDV, liquidity, volume and transaction counts over four
+windows (5m, 1h, 6h, 24h) with the buy/sell split, per-window price change, pool
+age and declared socials. It does **not** report holder counts, mint or freeze authority,
 deployer history, or bundling. Those stay ``None`` -- hard rule 3 -- with two
 consequences worth stating plainly rather than discovering later:
 
@@ -75,6 +76,13 @@ RATE_LIMIT_PER_MINUTE: dict[str, int] = {
 
 # `/latest/dex/tokens/{addresses}` takes a comma-separated list, capped upstream.
 MAX_ADDRESSES_PER_REQUEST = 30
+
+# Placeholder chain for a seeded address before the API has said where it lives.
+# A seed is an address and nothing else -- `/latest/dex/tokens/{address}` needs no
+# chainId and returns one, so the chain is read off the response rather than
+# assumed. It never reaches a row: poll() replaces it with what came back, or
+# drops the seed.
+_SEED_CHAIN = "?"
 
 
 class DexScreenerError(RuntimeError):
@@ -349,8 +357,16 @@ class PairAggregate:
     volume_1h_usd: float | None = None
     txns_24h: int | None = None
     txns_6h: int | None = None
+    txns_1h: int | None = None
     buys_24h: int | None = None
     sells_24h: int | None = None
+    buys_1h: int | None = None
+    sells_1h: int | None = None
+    # Price changes as DexScreener reports them, per window. Read from the deepest
+    # pool rather than summed -- a percentage is not additive across pools.
+    price_change_5m_pct: float | None = None
+    price_change_1h_pct: float | None = None
+    price_change_6h_pct: float | None = None
     price_change_24h_pct: float | None = None
     boosts_active: float | None = None
     pair_count: int = 0
@@ -412,20 +428,34 @@ def parse_pairs(payload: Any) -> dict[tuple[str, str], PairAggregate]:
         created = [_as_int(p.get("pairCreatedAt")) for p in pairs]
         created_known = [c for c in created if c is not None and c > 0]
 
-        txn_windows: dict[str, list[int | None]] = {"h24": [], "h6": []}
-        buys: list[int | None] = []
-        sells: list[int | None] = []
+        # h1 joins h24 and h6 because a 6h-over-24h ratio is the only rate of
+        # change the earlier windows could express, and it saturates: a token
+        # younger than six hours has txns_6h == txns_24h by construction, so the
+        # ratio pins at 4.0 and measures age instead of momentum. The hour window
+        # moves that boundary in by five hours; the buy/sell split does not
+        # saturate at all, because it is a ratio between two counts over the same
+        # window rather than between two windows.
+        txn_windows: dict[str, list[int | None]] = {"h24": [], "h6": [], "h1": []}
+        splits: dict[str, tuple[list[int | None], list[int | None]]] = {
+            "h24": ([], []),
+            "h1": ([], []),
+        }
         for pair in pairs:
-            for window in ("h24", "h6"):
+            for window in ("h24", "h6", "h1"):
                 block = _get(pair, "txns", window)
                 if not isinstance(block, dict):
                     txn_windows[window].append(None)
+                    if window in splits:
+                        splits[window][0].append(None)
+                        splits[window][1].append(None)
                     continue
                 b, s = _as_int(block.get("buys")), _as_int(block.get("sells"))
                 txn_windows[window].append(None if b is None and s is None else (b or 0) + (s or 0))
-                if window == "h24":
-                    buys.append(b)
-                    sells.append(s)
+                if window in splits:
+                    splits[window][0].append(b)
+                    splits[window][1].append(s)
+        buys, sells = splits["h24"]
+        buys_1h, sells_1h = splits["h1"]
 
         socials = [declared_socials(p) for p in pairs]
         link_urls = [declared_social_urls(p) for p in pairs]
@@ -449,8 +479,14 @@ def parse_pairs(payload: Any) -> dict[tuple[str, str], PairAggregate]:
             volume_1h_usd=_sum_optional(_as_float(_get(p, "volume", "h1")) for p in pairs),
             txns_24h=_as_int(_sum_optional(txn_windows["h24"])),
             txns_6h=_as_int(_sum_optional(txn_windows["h6"])),
+            txns_1h=_as_int(_sum_optional(txn_windows["h1"])),
             buys_24h=_as_int(_sum_optional(buys)),
             sells_24h=_as_int(_sum_optional(sells)),
+            buys_1h=_as_int(_sum_optional(buys_1h)),
+            sells_1h=_as_int(_sum_optional(sells_1h)),
+            price_change_5m_pct=_as_float(_get(primary, "priceChange", "m5")),
+            price_change_1h_pct=_as_float(_get(primary, "priceChange", "h1")),
+            price_change_6h_pct=_as_float(_get(primary, "priceChange", "h6")),
             price_change_24h_pct=_as_float(_get(primary, "priceChange", "h24")),
             boosts_active=_sum_optional(_as_float(_get(p, "boosts", "active")) for p in pairs),
             pair_count=len(pairs),
@@ -504,8 +540,14 @@ def to_metrics(
         volume_1h_usd=aggregate.volume_1h_usd,
         txns_24h=aggregate.txns_24h,
         txns_6h=aggregate.txns_6h,
+        txns_1h=aggregate.txns_1h,
         buys_24h=aggregate.buys_24h,
         sells_24h=aggregate.sells_24h,
+        buys_1h=aggregate.buys_1h,
+        sells_1h=aggregate.sells_1h,
+        price_change_5m_pct=aggregate.price_change_5m_pct,
+        price_change_1h_pct=aggregate.price_change_1h_pct,
+        price_change_6h_pct=aggregate.price_change_6h_pct,
         price_change_24h_pct=aggregate.price_change_24h_pct,
         pair_count=aggregate.pair_count,
         boosts_active=aggregate.boosts_active,
@@ -516,6 +558,7 @@ def to_metrics(
         declared_website=_pick("declared_website"),
         telegram_url=_pick("telegram_url"),
         x_url=_pick("x_url"),
+        entry_path=discovery.get("discovery"),
         listings=["dex"],
         raw={"dex_ids": list(aggregate.dex_ids), "discovery": discovery.get("discovery")},
     )
@@ -526,6 +569,41 @@ def to_metrics(
 
 def _batched(items: Sequence[str], size: int) -> list[list[str]]:
     return [list(items[i : i + size]) for i in range(0, len(items), size)]
+
+
+SEED_TOKENS_ENV = "SCREENER_SEED_TOKENS"
+
+
+def _address_key(address: str) -> str:
+    """How two spellings of one address are recognised as the same address.
+
+    An EVM address is hex, and its mixed case is only a checksum: DexScreener
+    returns the checksummed form, while a seed pasted from a URL or an explorer is
+    often lowercase. Compared verbatim, that seed matched no pool and was dropped
+    without a word. A base58 Solana mint is case-sensitive, so anything that is not
+    ``0x`` hex is compared exactly.
+    """
+    return address.lower() if address[:2] in ("0x", "0X") else address
+
+
+def seed_contracts_from_env(raw: str | None = None) -> tuple[str, ...]:
+    """Token addresses from ``SCREENER_SEED_TOKENS``, comma separated.
+
+    Configuration, like ``SCREENER_CHAIN_IDS``, and for the neighbouring reason:
+    the operator knows a token exists on a chain the discovery endpoints cannot
+    see, and saying so is an assertion they are entitled to make. Order is
+    preserved and duplicates are dropped; whitespace and empty entries are
+    skipped rather than turned into a request for the empty address.
+    """
+    import os
+
+    text = raw if raw is not None else os.environ.get(SEED_TOKENS_ENV, "")
+    out: list[str] = []
+    for item in text.split(","):
+        address = item.strip()
+        if address and address not in out:
+            out.append(address)
+    return tuple(out)
 
 
 @dataclass
@@ -547,12 +625,27 @@ class DexScreenerFeed:
     source_name: str = SOURCE_NAME
     max_tokens_per_poll: int = 120
     include_profiles: bool = True
+    # Token addresses to poll regardless of whether anyone boosted or profiled them.
+    #
+    # Discovery is boosted and profiled tokens, which is a paid-for sample: a chain
+    # can be live, trading, and produce an empty poll forever because nobody has
+    # spent anything on a token there. Binding such a chain's id and collecting
+    # nothing looks identical to a quiet chain -- the exact failure
+    # collectors/chains.py refuses to guess its way into.
+    #
+    # A seed is an operator saying "this token exists, look at it". It does not
+    # bypass the trigger: a seeded token is observed on identical terms and enters
+    # the dataset only if it crosses, like every other token. What it does change
+    # is the *sample*, so every row records how it arrived (`entry_path`), and a
+    # seeded token counts in the mindshare universe it was polled with.
+    seed_contracts: tuple[str, ...] = ()
 
     @classmethod
     def for_chains(
         cls, chain_names: Sequence[str], client: DexScreenerClient | None = None, **kwargs: Any
     ) -> DexScreenerFeed:
         resolved = chains.resolve_requested(list(chain_names))
+        kwargs.setdefault("seed_contracts", seed_contracts_from_env())
         return cls(
             client=client or DexScreenerClient(),
             chain_names=tuple(resolved),
@@ -596,6 +689,20 @@ class DexScreenerFeed:
                     for flag in ("declared_telegram", "declared_x", "declared_website"):
                         if existing.get(flag) is None:
                             existing[flag] = entry.get(flag)
+
+        # Seeds last, and they never overwrite a discovery entry: a token that was
+        # both boosted and seeded arrived by the boost, and its boost figures are
+        # real mindshare inputs that a seed placeholder would erase. The chain is
+        # left unresolved here because a seed is an address with no chainId
+        # attached -- poll() fills it in from what the API actually returns.
+        for contract in self.seed_contracts:
+            wanted_key = _address_key(contract)
+            if not any(_address_key(key[1]) == wanted_key for key in found):
+                found[(_SEED_CHAIN, contract)] = {
+                    "chain": _SEED_CHAIN,
+                    "contract": contract,
+                    "discovery": "seed",
+                }
         return found
 
     def poll(self) -> list[TokenMetrics]:
@@ -616,13 +723,49 @@ class DexScreenerFeed:
             except DexScreenerError:
                 log.exception("pair lookup failed for a batch of %d", len(batch))
 
+        # Seeds arrive as an address with no chain. The response carries the chain,
+        # so it is matched by address and the API's answer is used -- the one place
+        # a key is completed rather than looked up. Every chain an address came
+        # back on is kept: the same EVM address can exist on several chains, and
+        # keeping only one of them could drop a seed that also lives on a chain
+        # this run did ask for.
+        by_address: dict[str, list[tuple[str, PairAggregate]]] = {}
+        for (chain, contract), aggregate in aggregates.items():
+            by_address.setdefault(_address_key(contract), []).append((chain, aggregate))
+
         out: list[TokenMetrics] = []
         for key in keys:
-            aggregate = aggregates.get(key)
-            if aggregate is None:
-                # Discovered but not yet pooled, or the lookup failed. Nothing to
-                # snapshot: with no market data the trigger cannot fire anyway.
-                continue
+            chain, contract = key
+            if chain == _SEED_CHAIN:
+                found_on = by_address.get(_address_key(contract), [])
+                in_scope = [
+                    (name, aggregate) for name, aggregate in found_on if name in self.chain_names
+                ]
+                if not in_scope:
+                    if found_on:
+                        # A seeded address that turned out to live only on chains
+                        # this run did not ask for. Dropped rather than collected:
+                        # seeding must not widen the sample's chain set by a side
+                        # effect, or the chain filter stops describing what was
+                        # polled.
+                        log.info(
+                            "seeded token %s is on %s, which was not requested",
+                            contract,
+                            ", ".join(sorted({name for name, _ in found_on})),
+                        )
+                    else:
+                        log.warning("seeded token %s returned no pool", contract)
+                    continue
+                # In the run's own chain order, so a seed on two requested chains
+                # resolves the same way every cycle.
+                in_scope.sort(key=lambda match: self.chain_names.index(match[0]))
+                aggregate = in_scope[0][1]
+            else:
+                aggregate = aggregates.get(key)  # type: ignore[assignment]
+                if aggregate is None:
+                    # Discovered but not yet pooled, or the lookup failed. Nothing
+                    # to snapshot: with no market data the trigger cannot fire.
+                    continue
             out.append(
                 to_metrics(aggregate, observed_at_ms=observed, discovery=discovered[key])
             )
@@ -668,8 +811,18 @@ class DexScreenerPriceSource:
         return out
 
 
-def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
-    """Every ``chainId`` the discovery endpoints actually return, with counts.
+# Broad queries used to widen chain discovery beyond the boost endpoints. Quote
+# assets and stablecoins, because whatever else a chain has, it has a pool against
+# one of these. Deliberately not chain names: searching "robinhood" would return
+# tokens *called* Robinhood on every other chain, which is the kind of near-miss
+# that reads as a discovery.
+DISCOVERY_QUERIES: tuple[str, ...] = ("USDC", "USDT", "WETH", "WBTC")
+
+
+def discover_chain_ids(
+    client: DexScreenerClient, *, queries: Sequence[str] | None = DISCOVERY_QUERIES
+) -> dict[str, dict[str, Any]]:
+    """Every ``chainId`` the API actually returns, with counts and how it was seen.
 
     The answer to "what is Robinhood Chain's DexScreener id" is not something this
     repo can hardcode honestly -- see ``collectors/chains.py``. This asks the API
@@ -677,10 +830,24 @@ def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
     so an unregistered id can be bound with ``SCREENER_CHAIN_IDS`` without a code
     change.
 
-    A chain with no boosted or profiled tokens at this moment will not appear. That
-    is a fact about the sample, not proof the chain is absent from DexScreener.
+    Two sources, because one was not enough. The boost and profile endpoints only
+    ever return chains that have a *boosted or profiled token right now*, which is
+    a small and paid-for sample: a chain can be live, trading and entirely absent
+    from it. The search endpoint answers about anything that trades, so sweeping a
+    handful of quote assets surfaces chains the discovery endpoints never will.
+    Which source saw an id is reported per id rather than pooled, because "seen
+    only in search" and "seen in boosts" mean different things about the chain.
     """
     seen: dict[str, int] = {}
+    via: dict[str, set[str]] = {}
+
+    def note(raw_id: Any, source: str) -> None:
+        if not raw_id:
+            return
+        raw = str(raw_id)
+        seen[raw] = seen.get(raw, 0) + 1
+        via.setdefault(raw, set()).add(source)
+
     for fetch in (
         client.token_boosts_top,
         client.token_boosts_latest,
@@ -692,9 +859,18 @@ def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
             log.exception("discovery endpoint failed during chain discovery")
             continue
         for entry in entries if isinstance(entries, list) else []:
-            if isinstance(entry, dict) and entry.get("chainId"):
-                raw = str(entry["chainId"])
-                seen[raw] = seen.get(raw, 0) + 1
+            if isinstance(entry, dict):
+                note(entry.get("chainId"), "discovery")
+
+    for query in queries or ():
+        try:
+            pairs = client.search(query)
+        except DexScreenerError:
+            log.exception("search failed during chain discovery (q=%s)", query)
+            continue
+        for pair in pairs if isinstance(pairs, list) else []:
+            if isinstance(pair, dict):
+                note(pair.get("chainId"), "search")
 
     out: dict[str, dict[str, Any]] = {}
     for raw, count in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
@@ -702,11 +878,146 @@ def discover_chain_ids(client: DexScreenerClient) -> dict[str, dict[str, Any]]:
         entry = chains.get(raw)
         out[raw] = {
             "tokens_seen": count,
+            "seen_via": sorted(via.get(raw, ())),
             "canonical_name": name,
             "registered": bool(entry and entry.known),
             "bound_to_a_source": bool(entry and entry.has_dexscreener_source),
         }
     return out
+
+
+def resolve_token_chain(client: DexScreenerClient, address: str) -> dict[str, Any]:
+    """What chain is this token on? Ask the endpoint that does not need to be told.
+
+    ``/latest/dex/tokens/{address}`` takes an address and **no chainId**, and every
+    pair it returns carries the ``chainId`` DexScreener files it under. So a single
+    token address somebody already has is enough to learn a chain's id -- which is
+    the missing step for a chain nobody here can otherwise name.
+
+    That matters most for exactly the chain that has the problem. ``--discover-chains``
+    asks the boost, profile and search endpoints, and a chain can be live and absent
+    from all of them; a token address is direct evidence, and the id comes back from
+    the API rather than from anyone's memory of a URL.
+
+    Reports the id **raw**, beside the canonical name it maps to today. Those differ
+    precisely when the chain is not bound yet, which is the case this exists for.
+    """
+    try:
+        payload = client.pairs_for_tokens([address])
+    except DexScreenerError as exc:
+        return {"address": address, "error": str(exc), "chain_ids": []}
+
+    # Both envelope shapes, exactly as parse_pairs accepts them. The real client
+    # unwraps `{"pairs": [...]}` to a list, but this reads the raw chainId rather
+    # than the canonical name -- the whole point -- so it cannot reuse parse_pairs
+    # for that half, and must not disagree with it about what a payload is.
+    if isinstance(payload, dict):
+        raw_pairs = payload.get("pairs") or []
+    elif isinstance(payload, list):
+        raw_pairs = payload
+    else:
+        raw_pairs = []
+
+    raw_ids: dict[str, int] = {}
+    for pair in raw_pairs:
+        if isinstance(pair, dict) and pair.get("chainId"):
+            raw = str(pair["chainId"])
+            raw_ids[raw] = raw_ids.get(raw, 0) + 1
+
+    aggregates = parse_pairs(payload)
+    tokens = [
+        {
+            "chain": chain,
+            "ticker": aggregate.ticker,
+            "mcap_usd": aggregate.mcap_usd,
+            "liquidity_usd": aggregate.liquidity_usd,
+            "pairs": aggregate.pair_count,
+        }
+        for (chain, _), aggregate in aggregates.items()
+    ]
+
+    unbound = [
+        raw for raw in raw_ids if chains.dexscreener_id(chains.canonical(raw)) != raw
+    ]
+    return {
+        "address": address,
+        "chain_ids": sorted(raw_ids),
+        "pairs_by_chain_id": raw_ids,
+        "tokens": tokens,
+        "not_bound": unbound,
+        "conclusion": (
+            f"No pool came back for {address}. Either the address is wrong, or "
+            "DexScreener has not indexed it."
+            if not raw_ids
+            else (
+                "DexScreener files this token under chainId "
+                + ", ".join(repr(r) for r in sorted(raw_ids))
+                + ". "
+                + (
+                    f'Bind it: {chains.CHAIN_ID_ENV}="<chain>={sorted(unbound)[0]}".'
+                    if unbound
+                    else "It is already bound in collectors/chains.py."
+                )
+            )
+        ),
+    }
+
+
+def verify_chain_id(
+    client: DexScreenerClient, candidate: str, *, queries: Sequence[str] | None = None
+) -> dict[str, Any]:
+    """Ask the API whether one candidate ``chainId`` is real, and show the evidence.
+
+    This is the other half of discovery and the half that matters for a chain the
+    discovery endpoints cannot see. A human can read a ``chainId`` straight out of
+    a DexScreener URL -- ``dexscreener.com/<chainId>/<pair>`` -- but a string read
+    off a page is a hypothesis, and binding a wrong one produces the single worst
+    failure available here: requests that match nothing, forever, looking exactly
+    like a quiet chain.
+
+    So the candidate is tested rather than trusted. ``pairs`` is how many pools
+    came back carrying that id and ``sample`` is what they were; zero of both means
+    nothing was found *by these queries*, which is not the same as the id being
+    wrong, and the returned ``conclusion`` says so in those words.
+    """
+    found: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for query in queries or DISCOVERY_QUERIES:
+        try:
+            pairs = client.search(query)
+        except DexScreenerError as exc:
+            errors.append(f"{query}: {exc}")
+            continue
+        for pair in pairs if isinstance(pairs, list) else []:
+            if isinstance(pair, dict) and str(pair.get("chainId")) == candidate:
+                found.append(
+                    {
+                        "ticker": _get(pair, "baseToken", "symbol"),
+                        "contract": _get(pair, "baseToken", "address"),
+                        "dex": pair.get("dexId"),
+                        "liquidity_usd": _as_float(_get(pair, "liquidity", "usd")),
+                    }
+                )
+    canonical_name = chains.canonical(candidate)
+    return {
+        "candidate": candidate,
+        "pairs": len(found),
+        "sample": found[:5],
+        "queries": list(queries or DISCOVERY_QUERIES),
+        "query_errors": errors,
+        "canonical_name": canonical_name,
+        "already_bound": chains.dexscreener_id(canonical_name) == candidate,
+        "conclusion": (
+            f"DexScreener returns pools on {candidate!r}. Bind it with "
+            f'{chains.CHAIN_ID_ENV}="<chain>={candidate}".'
+            if found
+            else (
+                f"No pool carrying {candidate!r} came back from these queries. That is "
+                "not proof the id is wrong -- the chain may simply have no pool "
+                "matching them -- so try other queries before concluding anything."
+            )
+        ),
+    }
 
 
 def merge_discovery(metrics: TokenMetrics, discovery: dict[str, Any]) -> TokenMetrics:
@@ -740,14 +1051,46 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--resolve-token",
+        metavar="ADDRESS",
+        help=(
+            "ask which chain a token address is on. /latest/dex/tokens takes no "
+            "chainId and returns one, so a single address you already have is "
+            "enough to learn a chain's id -- including a chain that never shows up "
+            "in --discover-chains because nobody has boosted a token on it."
+        ),
+    )
+    parser.add_argument(
+        "--verify-chain-id",
+        metavar="CHAIN_ID",
+        help=(
+            "test one candidate chainId against the live API and show the pools it "
+            "found. Read the candidate out of a DexScreener URL "
+            "(dexscreener.com/<chainId>/<pair>); this says whether it is real "
+            "before you bind it."
+        ),
+    )
+    parser.add_argument(
         "--chains",
-        default=",".join(chains.DEFAULT_CHAINS),
+        default=",".join(chains.default_chain_names()),
         help=f"comma-separated (supported: {', '.join(chains.supported_names())})",
     )
     parser.add_argument("--limit", type=int, default=5, help="tokens to show")
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
+
+    if args.resolve_token:
+        print(json.dumps(resolve_token_chain(DexScreenerClient(), args.resolve_token), indent=2))
+        return 0
+
+    if args.verify_chain_id:
+        try:
+            print(json.dumps(verify_chain_id(DexScreenerClient(), args.verify_chain_id), indent=2))
+        except DexScreenerError as exc:
+            print(json.dumps({"error": str(exc)}, indent=2))
+            return 1
+        return 0
 
     if args.discover_chains:
         try:
@@ -765,9 +1108,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "not_bound_to_a_source": unbound,
                     "hint": (
                         f'{chains.CHAIN_ID_ENV}="robinhood=<id>" binds one without a '
-                        "code change. A chain with no boosted or profiled tokens right "
-                        "now will not appear here; that is a fact about this sample, "
-                        "not proof the chain is absent from DexScreener."
+                        "code change, and a bound chain is collected by default. Ids "
+                        'seen only via "search" are still real; ids seen via '
+                        '"discovery" additionally had a boosted or profiled token at '
+                        "this moment. A chain absent from both may still exist on "
+                        "DexScreener -- check a candidate with --verify-chain-id."
                     ),
                 },
                 indent=2,

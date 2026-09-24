@@ -69,11 +69,17 @@ class Chain:
 # the id is known, neither of which needs a code change:
 #
 #   1. `python -m collectors.dexscreener --discover-chains` prints every chainId
-#      the live discovery endpoints actually return, flagged known/unknown. That
-#      is how you find the id.
-#   2. `SCREENER_CHAIN_IDS="robinhood=<that id>"` binds it. `--chains robinhood`
-#      then collects exactly like any other chain -- same trigger, same filters,
-#      same mindshare universe.
+#      the API returns -- from the boost and profile endpoints *and* from a search
+#      sweep, because a live chain with nothing boosted on it never appears in the
+#      first and does appear in the second.
+#   2. `python -m collectors.dexscreener --verify-chain-id <id>` tests one
+#      candidate and shows the pools it found. A chainId can be read straight out
+#      of a DexScreener URL (`dexscreener.com/<chainId>/<pair>`), but a string read
+#      off a page is a hypothesis; binding a wrong one gives requests that match
+#      nothing forever and look exactly like a quiet chain.
+#   3. `SCREENER_CHAIN_IDS="robinhood=<that id>"` binds it. It is then collected by
+#      default -- see default_chain_names() -- on identical terms to every other
+#      chain: same trigger, same filters, same mindshare universe.
 #
 # Until then `--chains robinhood` fails by name. That is the deliberate choice:
 # a silent skip and a quiet chain look identical in the counts afterwards.
@@ -99,6 +105,28 @@ CHAINS: Final[tuple[Chain, ...]] = (
 CHAIN_ID_ENV = "SCREENER_CHAIN_IDS"
 
 DEFAULT_CHAINS: Final[tuple[str, ...]] = ("solana", "bnb", "base", "ethereum")
+
+
+def default_chain_names() -> list[str]:
+    """The default chain set, plus every chain the operator has bound by hand.
+
+    :data:`DEFAULT_CHAINS` is the set with a source compiled in. A chain bound
+    through ``SCREENER_CHAIN_IDS`` -- Robinhood Chain being the one the brief names
+    -- was bound by somebody typing its id deliberately, which is a stronger
+    statement of intent than a default list can make. So binding it is enough to
+    have it collected: there is no second place to remember to add the name, and
+    no silent gap between "the id is configured" and "the chain is polled".
+
+    Order is stable and the defaults come first, so a chain filter built from this
+    reads the same way between runs.
+    """
+    names = list(DEFAULT_CHAINS)
+    for name in _overrides():
+        chain = _BY_NAME.get(name)
+        if chain is not None and chain.has_dexscreener_source and name not in names:
+            names.append(name)
+    return names
+
 
 def _overrides(raw: str | None = None) -> dict[str, str]:
     """Parse ``SCREENER_CHAIN_IDS``. A malformed entry is skipped, not guessed at."""
@@ -221,6 +249,27 @@ def is_evm(value: str | None) -> bool | None:
 def dexscreener_id(value: str | None) -> str | None:
     chain = get(value)
     return chain.dexscreener_id if chain else None
+
+
+DEXSCREENER_WEB_BASE = "https://dexscreener.com"
+
+
+def dexscreener_token_url(chain: str | None, contract: str | None) -> str | None:
+    """The DexScreener page for one token, or ``None`` when it cannot be built.
+
+    Built here rather than in the page, for the same reason ``canonical`` exists:
+    the URL takes DexScreener's ``chainId``, not this repo's canonical name, and a
+    page that built ``/bnb/0x...`` from the stored ``chain`` column would produce a
+    dead link on every BNB row. One mapping, in the module that owns it.
+
+    ``None`` for a chain with no bound id -- Robinhood Chain until somebody binds
+    one -- because a link built from a guessed id goes somewhere wrong rather than
+    nowhere, and a 404 a reader has to diagnose is worse than a missing button.
+    """
+    chain_id = dexscreener_id(chain)
+    if not chain_id or not contract:
+        return None
+    return f"{DEXSCREENER_WEB_BASE}/{chain_id}/{contract}"
 
 
 def from_dexscreener(chain_id: str | None) -> str | None:

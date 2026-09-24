@@ -48,7 +48,7 @@ import json
 import logging
 import uuid
 from collections.abc import Iterable, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
 from collectors.config import load_config
@@ -148,6 +148,14 @@ class Labels:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# The fields of a label row that carry a measurement. The rest say which row it is,
+# what it belongs to and when it was computed -- none of which is information about
+# the token.
+LABEL_VALUE_FIELDS: tuple[str, ...] = tuple(
+    f.name for f in fields(Labels) if f.name.startswith(("max_", "survived_", "time_"))
+)
 
 
 def _usable(observations: Iterable[PriceObservation]) -> list[PriceObservation]:
@@ -311,7 +319,14 @@ class OutcomeTracker:
         }
 
     def refresh_labels(self, *, as_of_ms: int | None = None) -> list[Labels]:
-        """Recompute and append labels for every snapshot with a price path."""
+        """Recompute labels for every snapshot and append the ones that changed.
+
+        A label moves only when a horizon closes, so most cycles recompute exactly
+        what is already stored. Appending that again recorded nothing and cost a
+        row per snapshot per run, forever: 29,257 label rows for 279 snapshots by
+        2026-09-20, growing with the square of the dataset. An unchanged label is
+        skipped; a changed one is appended beside the old, which stays in place.
+        """
         as_of = as_of_ms if as_of_ms is not None else now_ms()
         written: list[Labels] = []
         for snap in self.store.snapshots_for_labelling():
@@ -324,12 +339,13 @@ class OutcomeTracker:
                 as_of_ms=as_of,
                 source=self.source,
             )
-            if all(
-                getattr(labels, f) is None
-                for f in labels.__dataclass_fields__
-                if f.startswith(("max_", "survived_", "time_"))
-            ):
+            if all(getattr(labels, name) is None for name in LABEL_VALUE_FIELDS):
                 continue  # nothing knowable yet; do not write an empty row
+            previous = self.store.latest_labels(snap["snapshot_id"])
+            if previous is not None and all(
+                previous.get(name) == getattr(labels, name) for name in LABEL_VALUE_FIELDS
+            ):
+                continue  # already recorded, value for value
             self.store.append_labels(labels)
             written.append(labels)
         return written

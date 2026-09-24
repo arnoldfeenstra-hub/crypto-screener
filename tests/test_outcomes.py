@@ -248,6 +248,31 @@ class TestTrackerAgainstTheStore:
             assert latest is not None
             assert latest["max_multiple_24h"] == pytest.approx(4.0)
 
+    def test_an_unchanged_label_is_not_appended_again(self):
+        """A label moves only when a horizon closes. Re-recording the same values
+        every cycle grew the table with the square of the dataset: 29,257 rows
+        for 279 snapshots by 2026-09-20."""
+        store, snap = self._seeded()
+        with store:
+            tracker = OutcomeTracker(store)
+            tracker.record([obs(30, 400_000.0, snap.snapshot_id)])
+            assert len(tracker.refresh_labels(as_of_ms=T0 + 2 * HOUR)) == 1
+            # Nothing observed and no horizon closed since.
+            assert tracker.refresh_labels(as_of_ms=T0 + 3 * HOUR) == []
+            assert store._con.execute("SELECT count(*) FROM labels").fetchone()[0] == 1
+
+    def test_a_label_is_appended_again_when_a_horizon_closes(self):
+        store, snap = self._seeded()
+        with store:
+            tracker = OutcomeTracker(store)
+            tracker.record([obs(30, 400_000.0, snap.snapshot_id)])
+            tracker.refresh_labels(as_of_ms=T0 + 2 * HOUR)
+            tracker.record([obs(300, 600_000.0, snap.snapshot_id)])
+            later = tracker.refresh_labels(as_of_ms=T0 + 7 * HOUR)
+            assert len(later) == 1
+            assert later[0].max_multiple_6h == pytest.approx(6.0)
+            assert store._con.execute("SELECT count(*) FROM labels").fetchone()[0] == 2
+
     def test_nothing_knowable_writes_no_row(self):
         store, snap = self._seeded()
         with store:

@@ -5,10 +5,16 @@
 # per-token social history is not. A token that dies today is only in the dataset
 # if something was watching today. This workflow is that something.
 #
-# State lives in state/*.jsonl -- an append-only journal (collectors/journal.py)
-# committed back to the repo after each run. It is rebuilt into DuckDB at the start
-# of a run and appended to at the end, so nothing is ever rewritten and the diff of
-# each commit is exactly the rows that were added.
+# State lives in state/ -- an append-only journal (collectors/journal.py) committed
+# back to the repo after each run, one directory per table and one shard per UTC
+# day. It is rebuilt into DuckDB at the start of a run and appended to at the end,
+# so nothing is ever rewritten and the diff of each commit is exactly the rows that
+# were added.
+#
+# The shards exist because GitHub refuses a push containing any file over 100 MiB.
+# When state/scores.jsonl crossed it on 2026-09-20, this job kept running, kept
+# collecting, and kept failing at the push below -- and every run's rows went with
+# its runner. A red run here means data is being lost, not merely delayed.
 #
 # A note on cost, because it decides the interval you actually want:
 #
@@ -50,8 +56,8 @@ on:
   workflow_dispatch:
     inputs:
       chains:
-        description: "Comma-separated chains to poll"
-        default: "solana,bnb,base,ethereum"
+        description: "Comma-separated chains to poll (blank = the collector's own default set)"
+        default: ""
         required: false
       regime:
         description: "Tape regime recorded on this batch (hot / neutral / cold)"
@@ -96,18 +102,38 @@ jobs:
       - name: Collect
         id: collect
         env:
-          CHAINS: ${{ inputs.chains || 'solana,bnb,base,ethereum' }}
+          # Blank by default, on purpose. `collect.py` derives its own chain list
+          # from collectors/chains.py, which already includes anything bound below
+          # -- so binding Robinhood Chain is the whole decision and there is no
+          # second place here to forget to add the name. A value typed into the
+          # workflow_dispatch box still wins.
+          CHAINS: ${{ inputs.chains }}
           REGIME: ${{ inputs.regime || 'neutral' }}
           # Bind a chain whose DexScreener id this repo does not ship, e.g.
-          # "robinhood=<id>". Find the id with:
+          # "robinhood=<id>". Two commands find and check one:
           #   python -m collectors.dexscreener --discover-chains
+          #   python -m collectors.dexscreener --verify-chain-id <candidate>
           SCREENER_CHAIN_IDS: ${{ vars.SCREENER_CHAIN_IDS }}
+          # Token addresses to poll regardless of whether anyone boosted them.
+          # Discovery is boosted and profiled tokens -- a paid-for sample -- so a
+          # chain can be live and produce an empty poll forever. A seed says "this
+          # token exists, look at it"; it does not bypass the trigger.
+          SCREENER_SEED_TOKENS: ${{ vars.SCREENER_SEED_TOKENS }}
+          # The one metered source here. Absent, the X collector stays off and the
+          # run summary says so -- see docs/x-investigation.md. The budget caps
+          # what a single cycle may spend; every other source is keyless.
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          X_MAX_SEARCHES_PER_CYCLE: ${{ vars.X_MAX_SEARCHES_PER_CYCLE }}
         run: |
           set -o pipefail
           SAFETY=""
           if [ "${{ inputs.safety }}" = "false" ]; then SAFETY="--no-safety"; fi
+          # An array, so a typed "solana, bnb" stays one argument, as it was when
+          # this line read --chains "$CHAINS"; unquoted, it split at the space.
+          CHAIN_ARG=()
+          if [ -n "$CHAINS" ]; then CHAIN_ARG=(--chains "$CHAINS"); fi
           python -m collect \
-            --chains "$CHAINS" \
+            "${CHAIN_ARG[@]}" \
             --regime "$REGIME" \
             --state state \
             --export web/screener-data.json \

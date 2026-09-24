@@ -1,0 +1,251 @@
+{
+  "weights_version": "fitted-v1",
+  "written_at": "2026-09-24T14:01:34+00:00",
+  "method": "calibration/fit.py: logistic regression on the seven pillar scores, one row per token as scored at its trigger, split forward in time (last 30% held out). Coefficients clamped at zero, renormalised to sum to 1 and rounded to two places (LogisticModel.deployable_weights).",
+  "label": "max_multiple_6h",
+  "threshold": 1.5,
+  "weights": {
+    "attention_velocity": 0.0,
+    "community_depth": 0.0,
+    "lineage_meta_fit": 0.0,
+    "onchain_structure": 0.55,
+    "asymmetry_timing": 0.37,
+    "mindshare": 0.08,
+    "momentum_flow": 0.0
+  },
+  "replaces": {
+    "weights_version": "priors-v3",
+    "weights": {
+      "attention_velocity": 0.28,
+      "community_depth": 0.2,
+      "lineage_meta_fit": 0.15,
+      "onchain_structure": 0.22,
+      "asymmetry_timing": 0.15,
+      "mindshare": 0.0,
+      "momentum_flow": 0.0
+    }
+  },
+  "coefficients": {
+    "attention_velocity": 0.0,
+    "attention_velocity__missing": -0.3593407027466626,
+    "community_depth": -0.1638051164893214,
+    "community_depth__missing": 0.17051221751559797,
+    "lineage_meta_fit": -0.7322282348058514,
+    "lineage_meta_fit__missing": 0.0,
+    "onchain_structure": 0.5688656296026031,
+    "onchain_structure__missing": 0.0,
+    "asymmetry_timing": 0.38343384425374344,
+    "asymmetry_timing__missing": 0.0,
+    "mindshare": 0.08055876452142371,
+    "mindshare__missing": 0.0,
+    "momentum_flow": 0.0,
+    "momentum_flow__missing": -0.3593407027466626,
+    "bias": -0.7638007090745745
+  },
+  "train": {
+    "tokens": 190,
+    "from": "2026-09-12T18:43:12+00:00",
+    "to": "2026-09-17T22:17:01+00:00",
+    "base_rate": 0.23684210526315788
+  },
+  "test": {
+    "tokens": 82,
+    "positives": 17,
+    "from": "2026-09-17T22:17:01+00:00",
+    "to": "2026-09-20T12:22:10+00:00",
+    "base_rate": 0.2073170731707317,
+    "base_rate_ci95": [
+      0.13366280607539827,
+      0.3071677469431848
+    ],
+    "regimes": {
+      "neutral": 82
+    }
+  },
+  "out_of_sample": {
+    "fitted": {
+      "auc": 0.6733031674208145,
+      "auc_ci95": [
+        0.520100178966652,
+        0.8265061558749771
+      ],
+      "top_decile_lift": 1.8088235294117647,
+      "top_decile_lift_ci95": [
+        0.660060251520278,
+        3.348793877889897
+      ]
+    },
+    "replaced": {
+      "auc": 0.6389140271493212,
+      "auc_ci95": [
+        0.4832942147211059,
+        0.7945338395775365
+      ],
+      "top_decile_lift": 2.4117647058823533,
+      "top_decile_lift_ci95": [
+        1.038083952917896,
+        3.7854454588468105
+      ]
+    },
+    "logistic_model": {
+      "auc": 0.6389140271493212,
+      "auc_ci95": [
+        0.4832942147211059,
+        0.7945338395775365
+      ]
+    },
+    "final_score": {
+      "in_force": {
+        "auc": 0.6289592760180995,
+        "auc_ci95": [
+          0.47284047066189605,
+          0.785078081374303
+        ],
+        "top_decile_lift": 1.2058823529411766,
+        "top_decile_lift_ci95": [
+          0.34477473449166274,
+          2.849404112563982
+        ]
+      },
+      "fitted": {
+        "auc": 0.6597285067873303,
+        "auc_ci95": [
+          0.5054406918610772,
+          0.8140163217135834
+        ],
+        "top_decile_lift": 1.8088235294117647,
+        "top_decile_lift_ci95": [
+          0.660060251520278,
+          3.348793877889897
+        ]
+      }
+    },
+    "concordance_benchmark": 0.858
+  },
+  "held_out_by_label": [
+    {
+      "label": "max_multiple_1h",
+      "threshold": 2.0,
+      "n": 87,
+      "positives": 5,
+      "base_rate": 0.05747126436781609,
+      "in_force": {
+        "auc": 0.6463414634146342,
+        "auc_ci95": [
+          0.37710444491379613,
+          0.9155784819154722
+        ]
+      },
+      "fitted": {
+        "auc": 0.724390243902439,
+        "auc_ci95": [
+          0.46527603355578784,
+          0.9835044542490902
+        ]
+      }
+    },
+    {
+      "label": "max_multiple_6h",
+      "threshold": 2.0,
+      "n": 81,
+      "positives": 13,
+      "base_rate": 0.16049382716049382,
+      "in_force": {
+        "auc": 0.5950226244343891,
+        "auc_ci95": [
+          0.41940068446848616,
+          0.7706445644002922
+        ]
+      },
+      "fitted": {
+        "auc": 0.6436651583710408,
+        "auc_ci95": [
+          0.4696228188778774,
+          0.8177074978642042
+        ]
+      }
+    },
+    {
+      "label": "max_multiple_24h",
+      "threshold": 2.0,
+      "n": 62,
+      "positives": 12,
+      "base_rate": 0.1935483870967742,
+      "in_force": {
+        "auc": 0.62,
+        "auc_ci95": [
+          0.4346192228120828,
+          0.8053807771879171
+        ]
+      },
+      "fitted": {
+        "auc": 0.5966666666666667,
+        "auc_ci95": [
+          0.4105844344756733,
+          0.7827488988576601
+        ]
+      }
+    },
+    {
+      "label": "max_multiple_72h",
+      "threshold": 2.0,
+      "n": 0,
+      "positives": 0,
+      "base_rate": null
+    },
+    {
+      "label": "max_multiple_7d",
+      "threshold": 2.0,
+      "n": 0,
+      "positives": 0,
+      "base_rate": null
+    },
+    {
+      "label": "survived_24h",
+      "threshold": null,
+      "n": 62,
+      "positives": 38,
+      "base_rate": 0.6129032258064516,
+      "in_force": {
+        "auc": 0.2894736842105263,
+        "auc_ci95": [
+          0.15288948253031734,
+          0.42605788589073534
+        ]
+      },
+      "fitted": {
+        "auc": 0.26864035087719296,
+        "auc_ci95": [
+          0.1352490042875918,
+          0.4020316974667941
+        ]
+      }
+    },
+    {
+      "label": "survived_7d",
+      "threshold": null,
+      "n": 0,
+      "positives": 0,
+      "base_rate": null
+    }
+  ],
+  "checks": {
+    "phase_0_exit_criteria_met": false,
+    "positive_events_in_test": true,
+    "out_of_sample_auc_above_chance": true,
+    "beats_the_priors_out_of_sample": true,
+    "top_decile_beats_base_rate": true
+  },
+  "phase_0_exit_criteria": {
+    "triggered_tokens": 279,
+    "complete_social": 0,
+    "survivors": 24,
+    "dead": 28,
+    "dead_per_survivor": 1.1666666666666667,
+    "min_triggered_tokens": 300,
+    "min_dead_per_survivor": 20,
+    "met": false,
+    "explanation": "triggered=279 complete_social=0/300 dead_per_survivor=1.2/20 -> NOT met, keep collecting"
+  },
+  "forced_past_exit_criteria": true
+}

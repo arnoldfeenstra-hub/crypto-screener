@@ -4,10 +4,11 @@ Memecoin screener built to [CLAUDE.md](CLAUDE.md) and [BUILD_BRIEF.md](BUILD_BRI
 
 **What this is: a data collector with a scorer attached.** It watches new pools across
 Solana, BNB Chain, Base and Ethereum, snapshots each token once at a fixed trigger, tracks
-forward outcomes, filters for safety, and scores what survives. Per CLAUDE.md the scoring
-weights are **uncalibrated priors — guesses** — until Phase 2 replaces them with fitted
-coefficients, and Phase 2 needs weeks of forward collection that has not happened. Nothing
-it emits is a prediction, and there is no code path that can place an order.
+forward outcomes, filters for safety, and scores what survives. The scoring weights are the
+**first fitted vector** (`fitted-v1`): a fit on 190 tokens that ranks the tokens after them
+only a little better than the guesses it replaced, adopted before Phase 0's gate was met —
+see [Calibration](#calibration-the-weights-in-force). It has not established an edge.
+Nothing it emits is a prediction, and there is no code path that can place an order.
 
 Data comes from **DexScreener**, which needs no API key. The deployed page also carries a
 live endpoint (`api/screener.py`) that fetches DexScreener at request time, so it shows real
@@ -20,19 +21,21 @@ tokens whether or not a collector has ever run.
 | 0.0 live source (DexScreener, keyless, multi-chain) | Built |
 | 0.1 trigger watcher | Built |
 | 0.2 snapshot writer | Built |
-| 0.3 social collectors (X + Telegram) | Telegram runs on the schedule, keyless. X is built but unscheduled: it needs `X_BEARER_TOKEN` |
+| 0.3 social collectors (X + Telegram) | Telegram runs on the schedule, keyless. X now runs on the same schedule **when `X_BEARER_TOKEN` is set**, under a per-cycle search budget — see [docs/x-investigation.md](docs/x-investigation.md) |
 | 0.4 outcome tracker | Built |
 | 0.5 on-chain backfill | Built |
-| 0.6 mindshare (share-of-attention variable) | Built, weight 0.00 in the composite |
+| 0.6 mindshare (share-of-attention variable) | Built, weight 0.08 in the composite (fitted) |
+| 0.6b momentum & flow (buy/sell split, short-window volume and price change) | Built, weight 0.00 in the composite — no fit has seen it yet |
 | 0.7 safety source (GoPlus + RugCheck, keyless) | Built, answers 6 of the 8 hard filters |
 | 0.8 scheduled collector + append-only journal | Built, `collect.py` + GitHub Actions |
 | 1 hard filters | Built, 8/8 filters, and they now answer |
 | 1 scoring runner | Built, paper mode only |
-| 2 calibration (fit + report) | Built, gated on Phase 0 exit criteria |
+| 2 calibration (fit + report) | Built. First fit adopted as `fitted-v1`, **forced past the Phase 0 gate** — [why](#calibration-the-weights-in-force) |
+| 2- exploratory backtest (`calibration/backtest.py`) | Built, runs now, fits nothing |
 | 3 live ranking | **Not built, and should not be** — gated on Phase 2 measuring an edge |
-| Web viewer | Built, `web/` + `api/screener.py`, chain and mindshare filters |
+| Web viewer | Built, `web/` + `api/screener.py`; refresh button, per-coin DexScreener link, column glossary, chain/mindshare/momentum sorts |
 
-554 tests, no network, ~8s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
+718 tests, no network, ~14s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
 
 ## Run it against real data
 
@@ -68,6 +71,8 @@ The individual steps still exist if you want them:
 ```bash
 python -m collectors.dexscreener --probe --chains solana,bnb   # see what comes back
 python -m collectors.dexscreener --discover-chains             # every chainId it returns
+python -m collectors.dexscreener --resolve-token 0xTOKEN       # which chain is it on?
+python -m collectors.dexscreener --verify-chain-id someid      # is this chainId real?
 python -m collectors.safety --probe --chain bnb 0xTOKEN        # what the filters can answer
 python -m collectors.trigger_watcher --chains solana,bnb,base --once --db data/screener.duckdb
 python -m scoring.runner --db data/screener.duckdb --safety --regime neutral
@@ -77,9 +82,16 @@ python -m export_web --db data/screener.duckdb
 
 ## Where the dataset lives
 
-`state/*.jsonl` — an append-only JSONL journal, committed to the repo. It is rebuilt into
+`state/` — an append-only JSONL journal, committed to the repo. It is rebuilt into
 DuckDB at the start of each run and appended to at the end, so the database is a working
 copy and the journal is the dataset.
+
+Each table is a directory of daily shards, `state/<table>/<YYYY-MM-DD>.jsonl`, and a shard
+rolls over (`.1`, `.2`, …) before it reaches 45 MiB. GitHub refuses any file over 100 MiB,
+and on 2026-09-20 `state/scores.jsonl` crossed that line: every run for the next two days
+collected, failed to push, and lost its rows with the runner. The single-file journals from
+before sharding (`state/<table>.jsonl`) are still read — first — and never written again.
+`state/manifest.json` records the largest file's size beside the limit.
 
 JSONL rather than the DuckDB file because the DuckDB file is one binary blob rewritten in
 full on every run: a job firing twice an hour would add a multi-megabyte object to git
@@ -203,7 +215,8 @@ member-count series it builds cannot be reconstructed later, so it is on by defa
 
 ```bash
 python -m collectors.social_tg                  # no key needed (public t.me previews)
-python -m collectors.social_x                   # needs X_BEARER_TOKEN, not on the schedule
+python -m collectors.social_x --max-searches 40 # needs X_BEARER_TOKEN; also runs inside
+                                                # `python -m collect` when the token is set
 cp .env.example .env                            # BITQUERY_TOKEN, for the Bitquery source
 python -m collectors.bitquery --probe           # verify its queries against the live schema
 python -m collectors.trigger_watcher --source bitquery --chain solana
@@ -213,6 +226,127 @@ Bitquery is still wired up and is the only source that can answer holder counts,
 a paid key and its three GraphQL queries have never run against the live endpoint. DexScreener
 is the default source because it needs neither.
 
+## What has actually been measured
+
+`calibration/backtest.py` scores every collected feature against the forward
+labels. It is **not** a calibration: it fits nothing, changes no weight, and says
+so in its own header. The weights were changed by a separate fit —
+[Calibration](#calibration-the-weights-in-force) below — and that fit had to be forced
+past the Phase 0 gate that `.claude/rules/stats.md` sets, which this dataset has not met.
+
+```bash
+python -m calibration.backtest --db data/screener.duckdb
+python -m calibration.backtest --label max_multiple_24h --threshold 2.0
+```
+
+It reports two columns a bare AUC hides, and both exist because of one result.
+
+The only rate-of-change feature the pre-schema-7 rows could express —
+`(txns_6h/6) / (txns_24h/24)` — scored **AUC 0.70** against a 1.5x-in-6h outcome,
+across three horizons. It is worth nothing. A token younger than six hours has
+`txns_6h == txns_24h`, so the ratio pins at exactly 4.0: **39 of the 76 rows then
+resolved sat on that single value**, and inside one age band the AUC was **0.500**. It was age
+wearing a disguise, and it would have shipped. On the current 272-token sample it
+pins **65%** of rows on that same 4.0 and still fails stratification — the
+artefact did not wash out with more data, which is the point of checking for it
+rather than waiting.
+
+- **Tie mass** — the share of rows at the modal value. AUC scores ties as
+  half-wins, so a feature that assigns one value to half the sample can post a
+  respectable number while ranking half the sample not at all.
+- **AUC by age band** — the same figure computed inside each stratum. A pooled
+  separation that vanishes in every stratum is measuring the stratum.
+
+Against a 1.5x-in-6h outcome on **272 resolved tokens** (base rate **22.8%**
+[18.2%, 28.1%] — note this is *not* the ~2% graduation rate in CLAUDE.md, because
+these tokens are sampled above $250k and have already cleared that bar), exactly
+one feature survives both checks: **top-10 concentration excluding LP, lower being
+better** — 1% tie mass, same direction in all four age bands. Split at its median
+(43.8%), **36% [26%, 47%]** of the less concentrated half reached 1.5x against
+**10% [5%, 18%]** of the rest, and those intervals do not overlap.
+
+Out of sample it is weaker: **AUC 0.66 [0.44, 0.88]**, an interval that spans chance.
+This README quoted 0.90 on 239 tokens; as the held-out window moved forward onto
+newer tokens the figure fell, which is what a small-sample lead looks like when part
+of its strength was luck.
+
+It is measured on the 163 rows where a safety source answered concentration at all,
+which is its own selection: tokens GoPlus and RugCheck could read may differ from
+the ones they could not.
+
+That is a lead to collect against, not an edge, and it is not a pillar: no weight
+reads it. It is already a hard filter at 35%.
+
+## Calibration: the weights in force
+
+The priors from the brief have been replaced by a fitted vector, `fitted-v1`
+(`prompts/score.md` version 7). The full record — coefficients, windows, every figure
+below with its interval, and every check by name — is
+[`scoring/weights/fitted-v1.json`](scoring/weights/fitted-v1.json); the reasoning is in
+[docs/calibration-2026-09-24.md](docs/calibration-2026-09-24.md).
+
+| Pillar | Prior | Fitted |
+|---|---|---|
+| Attention velocity | 0.28 | 0.00 — never observed at a trigger |
+| Community depth | 0.20 | 0.00 — fitted negative |
+| Lineage & meta fit | 0.15 | 0.00 — fitted negative |
+| On-chain structure | 0.22 | **0.55** |
+| Asymmetry & timing | 0.15 | **0.37** |
+| Mindshare | 0.00 | **0.08** |
+| Momentum & flow | 0.00 | 0.00 — never observed at a trigger |
+
+Fitted on 190 tokens (12–17 Sep) against a 1.5x within 6h, one row per token as it was
+scored at its trigger, and judged on the **82 that triggered next**:
+
+| On the held-out 82 | Fitted | Priors |
+|---|---|---|
+| AUC (0.50 is a coin flip; the published benchmark is 0.858) | **0.67** [0.52, 0.83] | 0.64 [0.48, 0.79] |
+| Top-decile lift over the 21% base rate | 1.81x [0.66, 3.35] | 2.41x [1.04, 3.79] |
+| AUC on the final board score | 0.66 [0.51, 0.81] | 0.63 [0.47, 0.79] |
+| AUC for surviving 24h | 0.27 [0.14, 0.40] | 0.29 [0.15, 0.43] |
+
+What that does and does not say:
+
+- **It is a small improvement on one regime, not an edge.** The intervals overlap, the
+  top decile is eight tokens, and all 82 held-out tokens came from a neutral tape.
+- **The same ranking marks tokens that die.** Below 0.50 on survival means a high score
+  goes with *less* chance of holding a fifth of the trigger market cap for 24 hours —
+  under the priors too. What it ranks is a short move, not a coin that lasts.
+- **It overrides the gate, on purpose.** `.claude/rules/stats.md` gates any fit on ≥300
+  tokens with a complete social series and ≥20 dead per survivor. Neither is reachable as
+  the collector stands: no social series completes without an X API key, and tokens that
+  reach a $250k trigger have already survived their launch, so dead-per-survivor sits near
+  1.2. The fit was adopted on the owner's instruction to calibrate, having cleared every
+  other check, and `PRIOR_WEIGHTS` keeps the priors so reverting is one assignment.
+
+Re-fit when a new window of tokens has resolved, and adopt the result only if its record
+clears the same checks against the vector then in force:
+
+```bash
+python -m calibration.report --force --record scoring/weights/fitted-v2.json
+```
+
+## Momentum & flow
+
+DexScreener has always returned 1h and 6h volume, a buy/sell split per window and
+per-window price change. Until schema 7 the parser read them and **threw them away
+at the snapshot boundary**, so every market field on a row was a 24h level — and
+`prompts/score.md` opens its scoring model with "measure acceleration, not volume"
+and closes its non-negotiables with "rate of change beats level".
+
+The `momentum` group stores them raw (`buys_1h`, `sells_1h`, `volume_1h_usd`, …)
+and `scoring/pillars.py::momentum_flow` derives the ratios at read time, so a
+revised formula re-reads every row already collected instead of stranding it.
+
+- **Buy pressure** is the component to watch: a ratio *inside* one window, so
+  unlike a between-window ratio it cannot be pinned by the token being young.
+- **Window ratios drop themselves when pinned.** 1h volume against the 6h rate is
+  not scored when the two are identical, and the pillar says why in its notes.
+- **Weight 0.00 in the composite**: none of the snapshots the weights were fitted
+  on carried these fields, so no fit has weighed them.
+  `tests/test_momentum_pillar.py` asserts the composite is numerically identical
+  with the pillar present and absent.
+
 ## Mindshare
 
 A token's **share of the attention observed across the tokens polled with it**, from three
@@ -221,11 +355,11 @@ as a share of the universe total and averaged over the ones that resolved.
 
 - It is on-chain and paid attention, **not** social mentions. It is not a substitute for the
   X collector and must not be read as one.
-- **It carries weight 0.00 in the composite score.** `.claude/rules/stats.md` allows only
-  fitted coefficients into the weight vector, and mindshare has no outcome data behind it
-  yet. So it is collected, scored, displayed, filtered on and handed to calibration — and it
-  changes no score until Phase 2 fits it. `tests/test_mindshare.py` asserts that the
-  composite is numerically identical with the pillar present and absent.
+- **Its prior weight was 0.00; the first fit gave it 0.08.** `.claude/rules/stats.md`
+  allows only fitted coefficients into the weight vector, so mindshare was collected,
+  scored and handed to calibration while moving no score, until a fit weighed it. It reads
+  24h volume, as the on-chain pillar does, so read their two weights together.
+  `tests/test_mindshare.py` checks both halves.
 - The **raw components and the universe totals they were divided by** are both stored, so the
   share can be recomputed when the formula changes rather than being stranded
   (`collectors.mindshare.recompute_share`).
@@ -248,13 +382,48 @@ Optimism, Blast, Sui, TON, Tron.
 much is a property of the chain). Its DexScreener `chainId` is *not* hardcoded, because
 nobody here has seen DexScreener return one and a guessed string produces the worst outcome
 available: a request that quietly matches nothing, indistinguishable from a quiet chain. So
-it is configuration, and switching it on takes two commands and no code change:
+it is configuration, and switching it on takes no code change.
+
+**Binding the id is necessary and not sufficient**, which is the part that surprises.
+Discovery is boosted and profiled tokens — a paid-for sample — so a chain can be live,
+trading, and produce an empty poll forever. With the id bound and nothing else done,
+`discover()` returns `{}` and `poll()` returns `[]`, which in the counts afterwards is
+indistinguishable from a quiet chain. `tests/test_chains_and_live.py::TestWhyAChainProducesNoTokens`
+asserts exactly that, so the trap stays documented in something that runs.
+
+So there are two halves, and a token address you already have drives both:
 
 ```bash
-python -m collectors.dexscreener --discover-chains     # prints every chainId seen
-export SCREENER_CHAIN_IDS="robinhood=<the id it printed>"
-python -m collect --chains solana,bnb,robinhood
+# 1. Which chain is this token on? /latest/dex/tokens takes an address and NO
+#    chainId, and every pair it returns carries one. So one address is enough to
+#    learn a chain's id -- including a chain that never appears in --discover-chains
+#    because nobody has boosted a token on it.
+python -m collectors.dexscreener --resolve-token 0xTOKEN
+
+#    (--discover-chains lists every id the boost, profile and search endpoints
+#    return; --verify-chain-id tests a candidate read off a DexScreener URL.)
+
+# 2. Bind the id, and seed the addresses discovery cannot see.
+export SCREENER_CHAIN_IDS="robinhood=<the id step 1 printed>"
+export SCREENER_SEED_TOKENS="0xTOKEN,0xANOTHER"
+python -m collect            # solana, bnb, base, ethereum AND robinhood
 ```
+
+Binding is the whole decision for *which chains run*: `collect.py`,
+`.github/workflows/collect.yml` and `api/screener.py` all ask
+`chains.default_chain_names()`, which includes anything bound through
+`SCREENER_CHAIN_IDS`. In Actions, set both as repository *variables*.
+
+**A seed says "this token exists, look at it" — never "include this".** A seeded token
+is observed on identical terms and enters the dataset only if it crosses the trigger,
+like every other token; one that turns out to live on a chain the run did not ask for is
+dropped rather than collected, because seeding must not widen the sample's chain set by a
+side effect. What it does change is the *sample*, so schema 8 records `entry_path` on
+every row — `boost_top`, `boost_latest`, `profile` or `seed`. That is the selection effect
+this README has always named and no row had ever recorded; it is a confounder for anything
+fitted on the dataset, so it is a column rather than a caveat. It sits outside
+`FEATURE_GROUPS`, like `telegram_url`, because it is bookkeeping about the collector and a
+row must not score better for having been collected.
 
 The same variable binds any chain the registry does not yet know
 (`"robinhood=abc,newchain=def"`), and the GitHub Actions workflow reads it from a repository
@@ -283,7 +452,9 @@ free pass.
 - **Discovery is boosted and profiled tokens, not every new pool.** There is no keyless
   new-pool firehose. A token reaches the sample because someone paid to boost it or filled in
   its profile, which is a real selection effect on the population *and* the denominator of
-  every mindshare figure. Stated on the page rather than hidden.
+  every mindshare figure. Stated on the page rather than hidden, and now recorded per row as
+  `entry_path`. `SCREENER_SEED_TOKENS` is the escape hatch for a token discovery will never
+  surface — it widens the sample deliberately and says so on every row it adds.
 - **The Bitquery queries are unverified.** Everything downstream is tested; this is the other
   seam where reality gets in.
 - **Telegram message rates and unique speakers are not collected.** The public t.me preview
@@ -294,8 +465,11 @@ free pass.
 - **`flows` and `launch` are never populated.** Cohort flow and bundle/sniper analysis need
   heavier per-wallet queries that aren't written. Null, not zero, so the rows stay honest —
   but `data_completeness` sits near 0.35 and the composite is multiplied by it.
-- **Three of six pillars resolve to null on Phase 0 data**, so a composite score today is
-  computed from on-chain structure and asymmetry only, renormalised over what resolved.
+- **Three of seven pillars resolve to null on Phase 0 data** — attention, community and
+  the trend half of lineage — so a composite score today is computed from on-chain
+  structure, asymmetry, mindshare and momentum, renormalised over what resolved. The
+  largest single weight in the vector (attention velocity, 0.28) **has never resolved on
+  any row ever collected**; see [docs/x-investigation.md](docs/x-investigation.md).
 - **The GoPlus and RugCheck response shapes are unverified too**, for the same reason as
   DexScreener's, and it matters more here: a price parsed wrong is a wrong number, but a
   safety field parsed wrong is a token that passes a filter it should have failed. The
@@ -335,17 +509,20 @@ collectors/
 filters/hard_filters.py    Phase 1 — the eight checks, three-way outcomes
 scoring/pillars.py         Phase 1 — deterministic pillar maths (what Phase 2 fits)
 scoring/candidate.py       Phase 1 — snapshot row → candidate packet, no store needed
-scoring/prompt_meta.py     Phase 1 — prompt_version and the SYSTEM block
+scoring/prompt_meta.py     Phase 1 — prompt_version, the SYSTEM block, the weights record
+scoring/weights/           one calibration record per fitted weights version (fitted-v1.json)
 scoring/runner.py          Phase 1 — filters → pillars → narrative → stored row
+calibration/backtest.py    exploratory — per-feature AUC, tie mass, AUC by age band
 calibration/fit.py         Phase 2 — time split, logistic fit, AUC/lift/intervals
-calibration/report.py      Phase 2 — the verdict, with two ways to say "no"
+calibration/report.py      Phase 2 — the verdict, with two ways to say "no"; --record writes a weights record
 export_web.py              DuckDB → web/screener-data.json
 api/screener.py            Vercel function: live DexScreener → scored ranking (stdlib only)
 web/                       static viewer (Vercel), chain + mindshare + safety
 state/                     the dataset, as an append-only JSONL journal (tracked in git)
 .github/workflows/         collect.yml (the schedule), ci.yml (lint + tests),
                            health.yml (is the deployment answering?)
-tests/                     554 tests, network access blocked by conftest
+docs/x-investigation.md    should x.com messages be collected, and what it costs
+tests/                     718 tests, network access blocked by conftest
 ```
 
 Four modules were split out so `api/screener.py` can share the repo's real logic instead of
@@ -395,8 +572,12 @@ rate and asserts the report says there is no edge.
 
 Phase 0 exits at ≥300 tokens with complete social series and ≥20 dead per survivor. The web
 page shows progress against exactly that, and `calibration/report.py` refuses to fit below it
-unless forced (and says so in the report if forced).
+unless forced (and says so in the report if forced). The weights in force were fitted with
+that force — see [Calibration](#calibration-the-weights-in-force) for why — and neither
+condition is reachable as the collector stands: the first needs an X API key, and the second
+will not happen at a $250k trigger, where tokens have already survived their launch.
 
-Until then the answer to "does the top decile beat the base rate out of sample" is *unknown*,
-and per BUILD_BRIEF.md §3 that is the only question that decides whether this is a screener or
-an expensive way to launder a coin flip as a decision.
+So the answer to "does the top decile beat the base rate out of sample" is still *unknown*:
+the fitted vector's top-decile lift is 1.81x with an interval from 0.66 to 3.35, which
+includes no lift at all. Per BUILD_BRIEF.md §3 that is the only question that decides
+whether this is a screener or an expensive way to launder a coin flip as a decision.
