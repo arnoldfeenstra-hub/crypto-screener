@@ -1,0 +1,89 @@
+# Mythographia: ingest from Wikipedia -> Neon, deploy to Vercel, then run the
+# Playwright QA against the live URL. Manual trigger only (Actions tab -> Run
+# workflow); it never runs on push, so it cannot touch the screener's schedule.
+#
+# Repository secrets it needs:
+#   MYTHGRAPH_DATABASE_URL   Neon connection string (never echoed)
+#   VERCEL_TOKEN             Vercel access token
+#   VERCEL_ORG_ID            from `vercel link` (.vercel/project.json)
+#   VERCEL_PROJECT_ID        likewise; a project whose root is mythgraph/ contents
+# And in the Vercel project's own env: DATABASE_URL (same Neon string).
+
+name: mythgraph
+
+on:
+  workflow_dispatch:
+    inputs:
+      ingest:
+        description: Re-fetch Wikipedia + Commons and rewrite the Neon tables
+        type: boolean
+        default: true
+      deploy:
+        description: Deploy to Vercel production and run live QA
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mythgraph
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mythgraph
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mythgraph/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      - name: Ingest Wikipedia -> Neon
+        if: inputs.ingest
+        env:
+          DATABASE_URL: ${{ secrets.MYTHGRAPH_DATABASE_URL }}
+        run: |
+          npm run db:schema
+          npm run ingest -- --out graph.json
+
+      - name: Deploy to Vercel
+        id: deploy
+        if: inputs.deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          url=$(npx --yes vercel@latest deploy --prod --yes --token="$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "Deployed: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Live QA (Playwright)
+        if: inputs.deploy
+        env:
+          QA_URL: ${{ steps.deploy.outputs.url }}/
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+          npm run qa
+          { echo '```'; cat qa/last-run.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mythgraph-qa
+          path: |
+            mythgraph/qa/screenshots/
+            mythgraph/qa/last-run.json
+            mythgraph/ingest/last-report.json
+          if-no-files-found: ignore
