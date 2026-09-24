@@ -1013,6 +1013,26 @@ class TestTheCollectorCanActuallyStart:
         assert 'CHAIN_ARG=(--chains "$CHAINS")' in script
         assert '"${CHAIN_ARG[@]}"' in script
 
+    def test_the_x_budget_defaults_to_a_cap_rather_than_to_no_cap(self):
+        """A missed offset stays due, so the first cycle after X_BEARER_TOKEN is
+        added faces up to 800 overdue searches. An unset budget variable must not
+        let one hour spend a month's read quota. The key itself is a secret."""
+        import yaml
+
+        from collectors.social_x import max_searches_from_env
+
+        workflow = yaml.safe_load(
+            (REPO_ROOT / ".github" / "workflows" / "collect.yml").read_text(encoding="utf-8")
+        )
+        (collect,) = [s for s in workflow["jobs"]["collect"]["steps"] if s.get("id") == "collect"]
+        env = collect["env"]
+        assert env["X_BEARER_TOKEN"] == "${{ secrets.X_BEARER_TOKEN }}"
+        assert env["X_MAX_SEARCHES_PER_CYCLE"] == "${{ vars.X_MAX_SEARCHES_PER_CYCLE || '5' }}"
+        # What the default renders as, and that 0 still means zero rather than
+        # unlimited, as it does when the variable is set to "0".
+        assert max_searches_from_env("5") == 5
+        assert max_searches_from_env("0") == 0
+
 
 # ---------------------------------------------------------------------------
 # Finding a chain nobody has boosted a token on
