@@ -52,6 +52,7 @@ from calibration.fit import (
     MIN_DEAD_PER_SURVIVOR,
     MIN_TRIGGERED_TOKENS,
     auc,
+    auc_interval,
     top_decile_lift,
     wilson_interval,
 )
@@ -217,49 +218,6 @@ def extract_features(
         "data_completeness": _num(row.get("data_completeness")),
     }
     return features
-
-
-def auc_interval(
-    labels: Sequence[int], scores: Sequence[float], z: float = 1.96
-) -> tuple[float, float] | None:
-    """Hanley-McNeil confidence interval for AUC. ``None`` when one class is absent.
-
-    The closed form rather than a bootstrap, because at this sample size the
-    interval's job is to be visibly wide rather than to be precise about how wide.
-    It assumes independent rows, which these are not quite -- tokens launched in
-    the same hour share a regime -- so the true interval is wider still. Reported
-    anyway: an interval that understates its width still refutes a point estimate
-    read as a result.
-
-    Perfect separation is special-cased. The closed form has zero variance there,
-    which would print an AUC of 1.0 from four rows as ``[1.00, 1.00]``.
-    """
-    area = auc(labels, scores)
-    if area is None:
-        return None
-    positives = sum(labels)
-    negatives = len(labels) - positives
-    if positives < 1 or negatives < 1:
-        return None
-    q1 = area / (2.0 - area)
-    q2 = 2.0 * area * area / (1.0 + area)
-    variance = (
-        area * (1.0 - area)
-        + (positives - 1) * (q1 - area * area)
-        + (negatives - 1) * (q2 - area * area)
-    ) / (positives * negatives)
-    if variance <= 0:
-        # Perfect separation. The closed form collapses to zero variance and would
-        # report an AUC of 1.0 as exact, which is the most confident thing this
-        # module could possibly say and would be said on the smallest samples.
-        # Every pair is concordant, so bound that proportion instead: a Wilson
-        # interval on pairs/pairs is wide when there are few pairs and narrow when
-        # there are many, which is the behaviour wanted.
-        pairs = positives * negatives
-        low, _ = wilson_interval(pairs, pairs, z)
-        return (low, 1.0) if area >= 0.5 else (0.0, 1.0 - low)
-    half = z * math.sqrt(variance)
-    return (max(0.0, area - half), min(1.0, area + half))
 
 
 def tie_mass(values: Sequence[float]) -> tuple[float, float | None]:

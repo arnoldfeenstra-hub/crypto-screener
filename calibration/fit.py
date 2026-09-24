@@ -32,6 +32,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from scoring.pillars import WEIGHTS, composite, score_candidate
+
 PHASE = "2"
 
 MIN_TRIGGERED_TOKENS = 300
@@ -56,6 +58,23 @@ FEATURE_NAMES = (
     "asymmetry_timing",
     "mindshare",
     "momentum_flow",
+)
+
+
+# The BUILD_BRIEF.md section 2 labels a model can be fitted against, each as a
+# yes/no outcome. A multiple is read as a doubling at every horizon -- the surge the
+# screener exists to find -- so the horizons answer one question and can be
+# compared (section 2: "fit five models and look at which horizon is actually
+# predictable"). Fixed here, before any fit is looked at, so the threshold cannot
+# be tuned to whichever horizon happens to look best.
+CALIBRATION_LABELS: tuple[tuple[str, float | None], ...] = (
+    ("max_multiple_1h", 2.0),
+    ("max_multiple_6h", 2.0),
+    ("max_multiple_24h", 2.0),
+    ("max_multiple_72h", 2.0),
+    ("max_multiple_7d", 2.0),
+    ("survived_24h", None),
+    ("survived_7d", None),
 )
 
 
@@ -126,6 +145,7 @@ class Row:
     deployer: str | None = None
     meta_tag: str | None = None
     regime: str | None = None
+    snapshot_id: str | None = None
 
 
 # --- metrics ----------------------------------------------------------------
@@ -168,6 +188,49 @@ def concordance(labels: Sequence[int], scores: Sequence[float]) -> float | None:
     return auc(labels, scores)
 
 
+def auc_interval(
+    labels: Sequence[int], scores: Sequence[float], z: float = 1.96
+) -> tuple[float, float] | None:
+    """Hanley-McNeil confidence interval for AUC. ``None`` when one class is absent.
+
+    The closed form rather than a bootstrap, because at this sample size the
+    interval's job is to be visibly wide rather than to be precise about how wide.
+    It assumes independent rows, which these are not quite -- tokens launched in
+    the same hour share a regime -- so the true interval is wider still. Reported
+    anyway: an interval that understates its width still refutes a point estimate
+    read as a result.
+
+    Perfect separation is special-cased. The closed form has zero variance there,
+    which would print an AUC of 1.0 from four rows as ``[1.00, 1.00]``.
+    """
+    area = auc(labels, scores)
+    if area is None:
+        return None
+    positives = sum(labels)
+    negatives = len(labels) - positives
+    if positives < 1 or negatives < 1:
+        return None
+    q1 = area / (2.0 - area)
+    q2 = 2.0 * area * area / (1.0 + area)
+    variance = (
+        area * (1.0 - area)
+        + (positives - 1) * (q1 - area * area)
+        + (negatives - 1) * (q2 - area * area)
+    ) / (positives * negatives)
+    if variance <= 0:
+        # Perfect separation. The closed form collapses to zero variance and would
+        # report an AUC of 1.0 as exact, which is the most confident thing this
+        # module could possibly say and would be said on the smallest samples.
+        # Every pair is concordant, so bound that proportion instead: a Wilson
+        # interval on pairs/pairs is wide when there are few pairs and narrow when
+        # there are many, which is the behaviour wanted.
+        pairs = positives * negatives
+        low, _ = wilson_interval(pairs, pairs, z)
+        return (low, 1.0) if area >= 0.5 else (0.0, 1.0 - low)
+    half = z * math.sqrt(variance)
+    return (max(0.0, area - half), min(1.0, area + half))
+
+
 def base_rate(labels: Sequence[int]) -> float:
     return sum(labels) / len(labels) if labels else 0.0
 
@@ -187,6 +250,26 @@ def top_decile_lift(labels: Sequence[int], scores: Sequence[float]) -> float | N
     size = max(1, len(ranked) // 10)
     decile = [label for _, label in ranked[:size]]
     return (sum(decile) / len(decile)) / overall
+
+
+def top_decile_lift_interval(
+    labels: Sequence[int], scores: Sequence[float], z: float = 1.96
+) -> tuple[float, float] | None:
+    """A Wilson interval on the top decile's positive rate, over the base rate.
+
+    The decile is a handful of rows at this sample size -- eight of eighty -- so a
+    lift of 2.4 can be one token. The base rate is held fixed, which understates
+    the width a little; it is the decile that dominates it.
+    """
+    if not labels:
+        return None
+    overall = base_rate(labels)
+    if overall == 0:
+        return None
+    ranked = sorted(zip(scores, labels, strict=True), key=lambda p: -p[0])
+    decile = [label for _, label in ranked[: max(1, len(ranked) // 10)]]
+    low, high = wilson_interval(sum(decile), len(decile), z)
+    return (low / overall, high / overall)
 
 
 def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
@@ -354,6 +437,47 @@ class FitResult:
     by_regime: dict[str, Any] = field(default_factory=dict)
     forced: bool = False
     moved_for_deployer_leakage: int = 0
+    threshold: float | None = None
+    auc_ci: tuple[float, float] | None = None
+    # The current prior weight vector, scored on the same held-out rows. The
+    # question a calibration answers is not "is the fit better than a coin" but
+    # "is it better than what the screener already does".
+    prior_auc: float | None = None
+    prior_auc_ci: tuple[float, float] | None = None
+    prior_top_decile_lift: float | None = None
+    # The vector that would actually replace the priors, scored the way the
+    # screener scores: normalised_pillar_weights() inside composite(). It is not
+    # the logistic model above -- a negative coefficient is clamped to zero and the
+    # missingness terms are dropped, because prompts/score.md holds non-negative
+    # weights that sum to one -- so it is validated separately, on the same rows.
+    deployed_auc: float | None = None
+    deployed_auc_ci: tuple[float, float] | None = None
+    deployed_top_decile_lift: float | None = None
+    deployed_top_decile_lift_ci: tuple[float, float] | None = None
+    prior_top_decile_lift_ci: tuple[float, float] | None = None
+
+    def checks(self, criteria: ExitCriteria | None) -> dict[str, bool]:
+        """Every condition .claude/rules/stats.md sets before a fitted vector may
+        replace the priors, each by name, so a refusal says which one failed.
+
+        Judged on the deployed vector, not the logistic model: the priors are
+        replaced by what the screener will compute, so that is what must clear.
+        """
+        low = self.deployed_auc_ci[0] if self.deployed_auc_ci else None
+        lift = self.deployed_top_decile_lift
+        return {
+            "phase_0_exit_criteria_met": criteria is not None and criteria.met,
+            "positive_events_in_test": self.positives_test > 0,
+            "out_of_sample_auc_above_chance": low is not None and low > 0.5,
+            "beats_the_priors_out_of_sample": (
+                self.deployed_auc is not None
+                and (self.prior_auc is None or self.deployed_auc > self.prior_auc)
+            ),
+            "top_decile_beats_base_rate": lift is not None and lift > 1.0,
+        }
+
+    def may_replace_priors(self, criteria: ExitCriteria | None) -> bool:
+        return all(self.checks(criteria).values())
 
     @property
     def beats_benchmark(self) -> bool:
@@ -367,12 +491,32 @@ class FitResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "label": self.label,
+            "threshold": self.threshold,
             "train_size": self.train_size,
             "test_size": self.test_size,
             "positives_test": self.positives_test,
             "base_rate_train": self.base_rate_train,
             "base_rate_test": self.base_rate_test,
             "out_of_sample_auc": self.auc,
+            "out_of_sample_auc_ci95": list(self.auc_ci) if self.auc_ci else None,
+            "prior_out_of_sample_auc": self.prior_auc,
+            "prior_out_of_sample_auc_ci95": (
+                list(self.prior_auc_ci) if self.prior_auc_ci else None
+            ),
+            "prior_top_decile_lift": self.prior_top_decile_lift,
+            "deployed_out_of_sample_auc": self.deployed_auc,
+            "deployed_out_of_sample_auc_ci95": (
+                list(self.deployed_auc_ci) if self.deployed_auc_ci else None
+            ),
+            "deployed_top_decile_lift": self.deployed_top_decile_lift,
+            "deployed_top_decile_lift_ci95": (
+                list(self.deployed_top_decile_lift_ci)
+                if self.deployed_top_decile_lift_ci
+                else None
+            ),
+            "prior_top_decile_lift_ci95": (
+                list(self.prior_top_decile_lift_ci) if self.prior_top_decile_lift_ci else None
+            ),
             "concordance": self.concordance,
             "concordance_benchmark": PUBLISHED_CONCORDANCE_BENCHMARK,
             "beats_benchmark": self.beats_benchmark,
@@ -407,6 +551,7 @@ def fit(
     exit_criteria: ExitCriteria | None = None,
     force: bool = False,
     test_fraction: float = 0.3,
+    threshold: float | None = None,
 ) -> FitResult:
     """Fit and evaluate out of sample. Refuses below Phase 0's exit criteria."""
     if exit_criteria is not None and not exit_criteria.met and not force:
@@ -423,6 +568,9 @@ def fit(
     test_labels = [r.label for r in split.test]
     test_scores = [model.predict(r) for r in split.test]
     positives = sum(test_labels)
+    prior_scores = [prior_score(r) for r in split.test]
+    deployed = model.normalised_pillar_weights()
+    deployed_scores = [prior_score(r, deployed) for r in split.test]
 
     by_regime: dict[str, Any] = {}
     for regime in ("hot", "neutral", "cold"):
@@ -445,31 +593,92 @@ def fit(
         by_regime=by_regime,
         forced=force and (exit_criteria is not None and not exit_criteria.met),
         moved_for_deployer_leakage=split.moved_for_deployer_leakage,
+        threshold=threshold,
+        auc_ci=auc_interval(test_labels, test_scores) if split.test else None,
+        prior_auc=auc(test_labels, prior_scores) if split.test else None,
+        prior_auc_ci=auc_interval(test_labels, prior_scores) if split.test else None,
+        prior_top_decile_lift=(
+            top_decile_lift(test_labels, prior_scores) if split.test else None
+        ),
+        deployed_auc=auc(test_labels, deployed_scores) if split.test else None,
+        deployed_auc_ci=auc_interval(test_labels, deployed_scores) if split.test else None,
+        deployed_top_decile_lift=(
+            top_decile_lift(test_labels, deployed_scores) if split.test else None
+        ),
+        deployed_top_decile_lift_ci=(
+            top_decile_lift_interval(test_labels, deployed_scores) if split.test else None
+        ),
+        prior_top_decile_lift_ci=(
+            top_decile_lift_interval(test_labels, prior_scores) if split.test else None
+        ),
     )
 
 
-def rows_from_store(store: Any, *, label: str = "survived_7d") -> list[Row]:
-    """Build training rows by joining scores to their labels.
+def prior_score(row: Row, weights: dict[str, float] | None = None) -> float:
+    """The composite the screener would rank this row by under ``weights``.
 
-    Only snapshots with a resolved outcome are included -- an unresolved token is
-    not a negative, and counting it as one would manufacture the graveyard rather
-    than observe it.
+    The current priors by default. Pillar weights only -- the completeness and
+    regime multipliers apply alike whichever vector is in force, so they do not
+    decide which vector ranks better. A row with no composite ranks last, as it
+    does on the board.
+    """
+    vector = weights or WEIGHTS
+    score, _ = composite({name: row.features.get(name) for name in vector}, vector)
+    return score if score is not None else float("-inf")
+
+
+def outcome(labels: dict[str, Any] | None, label: str, threshold: float | None) -> int | None:
+    """A label row's answer as 0/1, or ``None`` while it is unresolved.
+
+    A survival label is already yes/no. A multiple needs a threshold, and refusing
+    one without it is deliberate: a default here would be a modelling decision
+    made silently.
+    """
+    if not labels or labels.get(label) is None:
+        return None
+    value = labels[label]
+    if isinstance(value, bool):
+        return int(value)
+    if threshold is None:
+        raise ValueError(f"{label} is a multiple; pass the threshold that counts as a yes")
+    return int(value >= threshold)
+
+
+def rows_from_store(
+    store: Any, *, label: str = "survived_7d", threshold: float | None = None
+) -> list[Row]:
+    """One training row per token: its pillars at the trigger, and what it did next.
+
+    This used to be one row per *score* row. The collector re-scores its recent
+    snapshots every cycle, so each token contributed about a hundred near-copies of
+    itself: a fit weighted by how long a token stayed in the re-score window, a
+    time split that put a token's early copies in train and its later copies in
+    test, and features from re-scores that had folded in social counts taken after
+    the trigger. Each of those breaks a rule in .claude/rules/stats.md.
+
+    Now: each snapshot's first score row, computed a minute or so after the
+    trigger from what was known then, is the one row. Its pillars are recomputed
+    from the stored input packet with the current pillar code -- hard rule 6 keeps
+    that packet with every score for exactly this -- so every row in a fit shares
+    one definition of every pillar, whatever version first scored it. Only resolved
+    outcomes are included: an unresolved token is not a negative.
     """
     rows: list[Row] = []
-    for score_row in store.all_scores():
-        labels = store.latest_labels(score_row["snapshot_id"])
-        if not labels or labels.get(label) is None:
+    for score_row in store.trigger_time_scores():
+        result = outcome(store.latest_labels(score_row["snapshot_id"]), label, threshold)
+        if result is None:
             continue
-        pillars = json.loads(score_row["pillar_scores"] or "{}")
-        snapshot = json.loads(score_row["input_snapshot"] or "{}")
+        candidate = json.loads(score_row["input_snapshot"] or "{}")
+        pillars = score_candidate(candidate, regime=score_row.get("batch_regime")).pillar_scores()
         rows.append(
             Row(
                 features={name: pillars.get(name) for name in FEATURE_NAMES},
-                label=1 if labels[label] else 0,
-                ts=score_row["scored_at_ms"],
-                deployer=(snapshot.get("deployer") or {}).get("address"),
-                meta_tag=(snapshot.get("lineage") or {}).get("meta_tag"),
+                label=result,
+                ts=int(score_row["snapshot_ts"]),
+                deployer=(candidate.get("deployer") or {}).get("address"),
+                meta_tag=(candidate.get("lineage") or {}).get("meta_tag"),
                 regime=score_row.get("batch_regime"),
+                snapshot_id=score_row["snapshot_id"],
             )
         )
     return rows

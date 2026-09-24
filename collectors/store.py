@@ -574,6 +574,31 @@ class Store:
         ).fetchall()
         return [dict(zip(columns, r, strict=True)) for r in rows]
 
+    def trigger_time_scores(self) -> list[dict[str, Any]]:
+        """Each snapshot's first score row, with the snapshot's own timestamp.
+
+        The collector re-scores its recent snapshots every cycle, so a token has
+        about a hundred score rows. Only the first was computed from what was known
+        at the trigger -- later ones fold in social counts taken afterwards -- and
+        it lands a median of about a minute after the snapshot. That row is the
+        lifecycle-matched one (.claude/rules/stats.md, Fitting 1): one per token,
+        oldest trigger first. ``snapshot_ts`` is the trigger time, which is what a
+        forward-in-time split must order by.
+        """
+        columns = [name for name, _ in SCORE_COLUMNS]
+        rows = self._con.execute(
+            f"SELECT {', '.join('s.' + c for c in columns)}, snap.ts "
+            "FROM scores s JOIN snapshots snap ON snap.snapshot_id = s.snapshot_id "
+            "QUALIFY row_number() OVER ("
+            "  PARTITION BY s.snapshot_id ORDER BY s.scored_at_ms, s.score_id"
+            ") = 1 "
+            "ORDER BY snap.ts, s.snapshot_id"
+        ).fetchall()
+        return [
+            {**dict(zip(columns, row[:-1], strict=True)), "snapshot_ts": row[-1]}
+            for row in rows
+        ]
+
     def all_scores(self) -> list[dict[str, Any]]:
         """Every scored row, oldest first. Used to build calibration training rows."""
         columns = [name for name, _ in SCORE_COLUMNS]
