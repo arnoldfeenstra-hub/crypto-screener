@@ -17,6 +17,8 @@ makes real requests impossible anyway.
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -265,6 +267,210 @@ class TestJournal:
         )
         assert manifest["rows"]["snapshots"] == 1
         assert manifest["schema_version"] >= 3
+
+
+    # -- Shards ----------------------------------------------------------------
+    #
+    # On 2026-09-20 state/scores.jsonl reached 100.52 MB. GitHub refused every
+    # push after that, and each hourly run collected, failed to commit, and lost
+    # its rows with the runner. These pin the layout that makes that impossible.
+
+    def test_no_append_grows_a_shard_past_the_cap(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(journal, "SHARD_MAX_BYTES", 400)
+        rows = [{"snapshot_id": f"s{i:03d}", "ticker": "$T" * 10} for i in range(60)]
+        journal.append_rows("snapshots", rows[:25], tmp_path)
+        journal.append_rows("snapshots", rows[25:], tmp_path)
+        files = journal.files_for("snapshots", tmp_path)
+        assert len(files) > 1
+        assert all(path.stat().st_size <= 400 for path in files)
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            r["snapshot_id"] for r in rows
+        ]
+
+    def test_the_pre_shard_file_is_read_first_and_never_written_again(self, tmp_path):
+        legacy = journal.legacy_path("snapshots", tmp_path)
+        legacy.write_text(json.dumps({"snapshot_id": "old"}) + "\n", encoding="utf-8")
+        before = legacy.read_bytes()
+        journal.append_rows("snapshots", [{"snapshot_id": "new"}], tmp_path)
+        assert legacy.read_bytes() == before
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            "old",
+            "new",
+        ]
+
+    def test_days_and_rollovers_read_back_in_the_order_they_were_written(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(journal, "SHARD_MAX_BYTES", 60)
+        monkeypatch.setattr(journal, "_utc_today", lambda: "2026-09-22")
+        journal.append_rows("snapshots", [{"snapshot_id": f"a{i}"} for i in range(3)], tmp_path)
+        monkeypatch.setattr(journal, "_utc_today", lambda: "2026-09-23")
+        journal.append_rows("snapshots", [{"snapshot_id": "b0"}], tmp_path)
+        names = [path.name for path in journal.files_for("snapshots", tmp_path)]
+        assert names[0].startswith("2026-09-22") and names[-1] == "2026-09-23.jsonl"
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            "a0",
+            "a1",
+            "a2",
+            "b0",
+        ]
+
+    def test_rollovers_sort_by_number_not_by_text(self, tmp_path):
+        folder = journal.shard_dir("snapshots", tmp_path)
+        folder.mkdir(parents=True)
+        for name, snapshot_id in (
+            ("2026-09-22.10.jsonl", "c"),
+            ("2026-09-22.9.jsonl", "b"),
+            ("2026-09-22.jsonl", "a"),
+        ):
+            (folder / name).write_text(
+                json.dumps({"snapshot_id": snapshot_id}) + "\n", encoding="utf-8"
+            )
+        assert [r["snapshot_id"] for r in journal.read_rows("snapshots", tmp_path)] == [
+            "a",
+            "b",
+            "c",
+        ]
+
+    def test_a_file_that_is_not_named_like_a_shard_is_not_read(self, tmp_path):
+        folder = journal.shard_dir("snapshots", tmp_path)
+        folder.mkdir(parents=True)
+        (folder / "notes.txt").write_text("not journal\n", encoding="utf-8")
+        (folder / "2026-09-22.jsonl.bak").write_text(
+            json.dumps({"snapshot_id": "x"}) + "\n", encoding="utf-8"
+        )
+        assert journal.read_rows("snapshots", tmp_path) == []
+
+    def test_a_row_in_the_pre_shard_file_is_not_appended_again(self, tmp_path):
+        """The first run after sharding must not copy the old journal into shards."""
+        from collectors.schema import Market, Snapshot
+
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(
+                    chain="solana",
+                    contract="A",
+                    trigger="mcap_250k",
+                    source="test",
+                    market=Market(mcap_usd=300_000.0),
+                )
+            )
+            journal.sync(store, tmp_path)
+            # Put what was just written where it lived before sharding existed.
+            [shard] = journal.files_for("snapshots", tmp_path)
+            shard.rename(journal.legacy_path("snapshots", tmp_path))
+            again = journal.sync(store, tmp_path)
+        assert "snapshots" not in again
+        assert journal.summarise(tmp_path)["snapshots"] == 1
+
+    def test_the_manifest_says_how_close_the_largest_file_is_to_the_limit(self, tmp_path):
+        from collectors.schema import Snapshot
+
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(chain="solana", contract="A", trigger="mcap_250k", source="t")
+            )
+            journal.sync(store, tmp_path)
+        manifest = json.loads((tmp_path / journal.MANIFEST_NAME).read_text(encoding="utf-8"))
+        assert manifest["github_file_limit_mb"] == 100
+        assert 0 <= manifest["largest_file_mb"] < 1
+
+    # -- Restore -------------------------------------------------------------
+    #
+    # In DuckDB a failed statement aborts the transaction, so the old restore's
+    # "catch the duplicate and carry on" raised on the next row -- and when the
+    # duplicate was the last row, COMMIT rolled the whole table back while the
+    # restore reported every row written.
+
+    @staticmethod
+    def _journal_with_a_second_row_for_token_a(tmp_path, *, last: bool):
+        from collectors.schema import Market, Snapshot
+
+        with Store() as store:
+            for contract in ("A", "B", "C"):
+                store.append_snapshot(
+                    Snapshot(
+                        chain="solana",
+                        contract=contract,
+                        trigger="mcap_250k",
+                        source="test",
+                        market=Market(mcap_usd=300_000.0),
+                    )
+                )
+            journal.sync(store, tmp_path)
+        rows = journal.read_rows("snapshots", tmp_path)
+        first_a = next(r for r in rows if r["contract"] == "A")
+        second_a = {**first_a, "snapshot_id": "a-second-id", "market_mcap_usd": 1.0}
+        others = [r for r in rows if r is not first_a]
+        ordered = [first_a, *others, second_a] if last else [first_a, second_a, *others]
+        for path in journal.files_for("snapshots", tmp_path):
+            path.unlink()
+        journal.append_rows("snapshots", ordered, tmp_path)
+        return first_a
+
+    @pytest.mark.parametrize("last", [False, True])
+    def test_a_duplicate_token_in_the_journal_keeps_the_first_row_and_every_other(
+        self, tmp_path, last
+    ):
+        first_a = self._journal_with_a_second_row_for_token_a(tmp_path, last=last)
+        with Store() as restored:
+            loaded = journal.restore(restored, tmp_path)
+            assert loaded["snapshots"] == 3
+            assert restored.snapshot_count() == 3
+            ids = {row["snapshot_id"] for row in restored.recent_snapshots(10)}
+        assert first_a["snapshot_id"] in ids and "a-second-id" not in ids
+
+    def test_a_failed_bulk_load_still_restores_row_by_row(self, tmp_path, monkeypatch):
+        import duckdb
+
+        from collectors.schema import Snapshot
+
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(chain="solana", contract="A", trigger="mcap_250k", source="t")
+            )
+            journal.sync(store, tmp_path)
+
+        def refuse(*args, **kwargs):
+            raise duckdb.IOException("simulated: the temporary file could not be read")
+
+        monkeypatch.setattr(Store, "_bulk_load", refuse)
+        with Store() as restored:
+            assert journal.restore(restored, tmp_path)["snapshots"] == 1
+            assert restored.snapshot_count() == 1
+
+    def test_restoring_onto_a_partial_database_adds_only_the_missing_rows(self, tmp_path):
+        from collectors.schema import Snapshot
+
+        with Store() as store:
+            for contract in ("A", "B"):
+                store.append_snapshot(
+                    Snapshot(chain="solana", contract=contract, trigger="mcap_250k", source="t")
+                )
+            journal.sync(store, tmp_path)
+        with Store() as partial:
+            partial.append_snapshot(
+                Snapshot(chain="solana", contract="A", trigger="mcap_250k", source="t")
+            )
+            loaded = journal.restore(partial, tmp_path)
+            assert loaded["snapshots"] == 1  # B; the journal's A clashes on (chain, contract)
+            assert partial.snapshot_count() == 2
+
+    def test_every_file_in_the_committed_state_is_under_githubs_limit(self):
+        """The check that would have caught the outage before it happened.
+
+        Legacy single-file journals are frozen by sharding, so this can only fail
+        if something starts writing an unsharded file again.
+        """
+        state = Path(__file__).resolve().parent.parent / "state"
+        if not state.is_dir():
+            pytest.skip("no state/ directory in this checkout")
+        oversized = [
+            (str(path.relative_to(state)), path.stat().st_size)
+            for path in state.rglob("*")
+            if path.is_file() and path.stat().st_size >= journal.GITHUB_FILE_LIMIT_BYTES
+        ]
+        assert oversized == []
 
 
 # ---------------------------------------------------------------------------
@@ -603,3 +809,166 @@ class TestSocialCollection:
         )
         assert "social_tg" not in summary
         assert client.asked == []
+
+
+# ---------------------------------------------------------------------------
+# X, the one metered source
+# ---------------------------------------------------------------------------
+
+
+class StubXClient:
+    """Stands in for X API v2 recent search, and counts what it was asked."""
+
+    def __init__(self, mentions: int = 12):
+        self.mentions = mentions
+        self.calls = 0
+
+    def search_recent(self, query, minutes, max_results=100):
+        self.calls += 1
+        return {
+            "data": [
+                {"id": str(i), "author_id": f"a{i % 3}", "text": query, "public_metrics": {}}
+                for i in range(self.mentions)
+            ],
+            "includes": {
+                "users": [
+                    {"id": f"a{i}", "public_metrics": {"followers_count": 500}}
+                    for i in range(3)
+                ]
+            },
+            "meta": {"result_count": self.mentions},
+        }
+
+
+class TestXCollection:
+    """X runs on the same schedule as everything else, and only with a credential.
+
+    Every other source in this repo is keyless and free. X search is metered per
+    post read, so the two properties that matter are that it is off by default and
+    that a cycle cannot spend an unbounded amount of somebody's quota.
+    """
+
+    def test_it_is_off_when_no_credential_is_configured(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram())
+        assert summary["social_x"] == {"skipped": "X_BEARER_TOKEN is not set"}
+
+    def test_the_absence_is_stated_rather_than_silent(self, tmp_path, monkeypatch):
+        # A social series nobody is collecting and a social series of zeroes look
+        # identical in a row count afterwards. The summary has to tell them apart.
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram())
+        assert "skipped" in summary["social_x"]
+
+    def test_an_injected_client_collects_without_any_credential(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram(), x_client=client)
+        assert client.calls >= 1
+        assert summary["social_x"]["observations"] >= 1
+        assert summary["social_x"]["with_counts"] >= 1
+
+    def test_the_budget_caps_the_calls_and_reports_what_it_skipped(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(
+            tmp_path,
+            [tradeable("solana", f"C{i}" * 11, f"$T{i}", 400_000.0) for i in range(6)],
+            with_social=True,
+            telegram_client=StubTelegram(),
+            x_client=client,
+            x_max_searches=2,
+        )
+        assert client.calls == 2
+        assert summary["social_x"]["skipped_for_budget"] >= 1
+        assert summary["social_x"]["budget"] == 2
+
+    def test_a_skipped_poll_is_not_written_as_an_error_row(self, tmp_path, monkeypatch):
+        """A budget is a fact about the collector, not about the token.
+
+        An error row means "we asked and it failed". Writing one for a poll that
+        was never attempted would put this repo's own rate limit into the dataset
+        as though it were an observation about the token.
+        """
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(
+            tmp_path,
+            [tradeable("solana", f"C{i}" * 11, f"$T{i}", 400_000.0) for i in range(6)],
+            with_social=True,
+            telegram_client=StubTelegram(),
+            x_client=client,
+            x_max_searches=2,
+        )
+        assert summary["social_x"]["with_errors"] == 0
+        assert summary["social_x"]["observations"] == 2
+
+    def test_a_failing_client_does_not_end_the_cycle(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+
+        class Broken:
+            def search_recent(self, *a, **k):
+                raise RuntimeError("boom")
+
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram(), x_client=Broken())
+        # The cycle still scored and journalled; the failure is a row, not a crash.
+        assert "scored" in summary
+        assert summary["social_x"]["with_errors"] >= 1
+
+    def test_a_zero_budget_makes_no_calls(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        client = StubXClient()
+        summary = cycle(tmp_path, [tradeable("solana", "A" * 32, "$A", 400_000.0)],
+                        with_social=True, telegram_client=StubTelegram(), x_client=client,
+                        x_max_searches=0)
+        assert client.calls == 0
+        assert summary["social_x"]["skipped_for_budget"] >= 1
+
+
+class TestTheBudgetReachesTheCycle:
+    """collect.main resolves X_MAX_SEARCHES_PER_CYCLE; these pin how."""
+
+    @staticmethod
+    def _main(monkeypatch, *, dotenv: dict[str, str] | None = None) -> tuple[int, dict]:
+        import collect
+
+        seen: dict = {}
+
+        def fake_load_config():
+            # What load_dotenv does: fill in what the real environment left unset.
+            for key, value in (dotenv or {}).items():
+                if key not in os.environ:
+                    monkeypatch.setenv(key, value)
+
+        monkeypatch.setattr(collect, "load_config", fake_load_config)
+        monkeypatch.setattr(collect, "run_cycle", lambda **kw: seen.update(kw) or {})
+        return collect.main([]), seen
+
+    def test_a_blank_variable_does_not_take_the_collector_down(self, monkeypatch):
+        """collect.yml passes an undefined repository variable as an empty string.
+        int("") at argparse time crashed every scheduled run before it restored."""
+        monkeypatch.setenv("X_MAX_SEARCHES_PER_CYCLE", "")
+        code, seen = self._main(monkeypatch)
+        assert code == 0
+        assert seen["x_max_searches"] is None
+
+    def test_a_budget_in_dotenv_is_honoured_like_the_token_beside_it(self, monkeypatch):
+        """The token in .env switched X on; the budget in .env was read before .env
+        was loaded, so the metered source ran uncapped."""
+        monkeypatch.delenv("X_MAX_SEARCHES_PER_CYCLE", raising=False)
+        monkeypatch.delenv("X_BEARER_TOKEN", raising=False)
+        _, seen = self._main(
+            monkeypatch, dotenv={"X_BEARER_TOKEN": "t", "X_MAX_SEARCHES_PER_CYCLE": "40"}
+        )
+        assert seen["x_max_searches"] == 40
+
+    def test_a_malformed_budget_stops_the_run_by_name(self, monkeypatch, capsys):
+        monkeypatch.setenv("X_MAX_SEARCHES_PER_CYCLE", "forty")
+        code, seen = self._main(monkeypatch)
+        assert code == 2
+        assert seen == {}
+        assert "X_MAX_SEARCHES_PER_CYCLE" in capsys.readouterr().err

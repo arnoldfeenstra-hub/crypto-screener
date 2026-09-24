@@ -5,8 +5,11 @@ gain potential, and logs every score so the model can later be calibrated agains
 
 ## Current phase: PHASE 0 — COLLECTION ONLY
 
-The scoring weights are **uncalibrated priors**. They are guesses. Until Phase 2 completes,
-this repo is a data collector that happens to emit scores, not a signal generator.
+The scoring weights are a **first fit on a small sample** (`fitted-v1`, prompt_version 7):
+190 tokens, judged on one neutral-regime window of 82, adopted before Phase 0's gate was met
+because the gate is not reachable as the collector stands (`docs/calibration-2026-09-24.md`).
+They have not established an edge. Until Phase 2 completes, this repo is a data collector
+that happens to emit scores, not a signal generator.
 
 Never describe Phase 0 output as predictive. Never wire it to anything that can place an order.
 

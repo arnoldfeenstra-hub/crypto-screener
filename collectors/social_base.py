@@ -126,7 +126,9 @@ def newest_first(snapshots: Iterable[dict[str, Any]], limit: int) -> list[dict[s
     tokens -- long finished with their 24h series -- while every token triggered
     since is never polled at all. Social history cannot be backfilled
     (BUILD_BRIEF.md section 1), so every one of those missed polls is a permanent
-    hole.
+    hole. The cap itself costs nothing while fewer than ``limit`` tokens trigger
+    inside 24 hours, the last offset: the newest ``limit`` then hold every token
+    with a poll still to come.
 
     Sorted here rather than trusting the order it is given:
     ``Store.snapshots_for_labelling`` is oldest-first because the outcome tracker

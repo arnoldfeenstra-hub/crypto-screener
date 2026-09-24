@@ -118,6 +118,33 @@
     border: 1px solid var(--line); background: var(--panel); color: var(--ink);
   }
   .msbar { display: block; height: 4px; border-radius: 99px; background: var(--accent); margin-top: 3px; opacity: .55; }
+  button {
+    font: inherit; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button:disabled { cursor: progress; opacity: .6; }
+  button.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  /* The DexScreener link. A button rather than a bare link because it leaves the
+     page for a third-party site, and that should look like a deliberate act. */
+  a.chart {
+    display: inline-block; text-decoration: none; white-space: nowrap;
+    font-size: 11.5px; padding: 2px 8px; border-radius: 7px; margin-top: 4px;
+    border: 1px solid var(--line); color: var(--accent); background: var(--panel);
+  }
+  a.chart:hover { border-color: var(--accent); background: var(--bg); }
+  .refresh-note { font-size: 12.5px; color: var(--muted); }
+  /* Column glossary. Two columns on a wide screen, one on a phone. */
+  .glossary { display: grid; gap: 0; grid-template-columns: 1fr; }
+  .glossary > div { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .glossary > div:last-child { border-bottom: 0; }
+  .glossary dt { font-weight: 600; margin: 0 0 3px; }
+  .glossary dd { margin: 0; color: var(--muted); font-size: 13.5px; }
+  .glossary .formula { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+  @media (min-width: 860px) { .glossary { grid-template-columns: 1fr 1fr; column-gap: 28px; } }
+  .pressure { font-variant-numeric: tabular-nums; }
+  .up { color: var(--ok); }
+  .down { color: var(--bad); }
   /* Six single-letter verdicts read as one glyph row, not as a wrapped paragraph. */
   td.safety { min-width: 132px; }
   td.safety .pill { padding: 0 4px; font-size: 10.5px; letter-spacing: .02em; }
@@ -159,6 +186,10 @@
       <div class="value" id="verdict-code" style="font-size:19px"></div>
       <div class="note" id="verdict-text" style="margin-top:6px"></div>
     </div>
+    <div class="card" style="margin-top:14px">
+      <div class="label">Weights in force</div>
+      <div id="weights" style="margin-top:8px;font-size:13.5px"></div>
+    </div>
   </section>
 
   <section>
@@ -188,14 +219,17 @@
       <select id="sort-by">
         <option value="rank">Sort: rank, then mcap</option>
         <option value="mindshare">Sort: mindshare</option>
+        <option value="momentum">Sort: 1h buy pressure</option>
         <option value="mcap">Sort: market cap</option>
         <option value="liquidity">Sort: liquidity</option>
         <option value="volume">Sort: 24h volume</option>
         <option value="pillars">Sort: pillar composite</option>
         <option value="age">Sort: youngest</option>
       </select>
+      <button id="refresh" class="primary" title="Re-fetch the live endpoint and the exported dataset">Refresh</button>
       <span class="note" id="count"></span>
     </div>
+    <p class="refresh-note" id="refresh-note"></p>
     <div class="scroll">
       <table>
         <thead>
@@ -207,6 +241,7 @@
             <th class="num">Liquidity</th>
             <th class="num">Vol 24h</th>
             <th class="num" title="Share of attention across the tokens observed in the same poll">Mindshare</th>
+            <th class="num" title="Buys as a share of trades in the last hour, and the last hour's price move. Not yet weighted in the score.">Momentum</th>
             <th class="num">Holders</th>
             <th class="num">Age</th>
             <th>Socials</th>
@@ -220,6 +255,22 @@
         <tbody id="rows"></tbody>
       </table>
     </div>
+  </section>
+
+  <section>
+    <h2>What has actually been measured</h2>
+    <p class="lede">Not a calibration. Every collected feature, scored against what the
+      tokens went on to do, with a forward-in-time split and the interval that says how
+      little a sample this size can settle. No weight in the model is set from any of it.</p>
+    <div class="card" id="backtest"></div>
+  </section>
+
+  <section>
+    <h2>What each column means</h2>
+    <p class="lede">Three of these are asked about often enough to say plainly:
+      <b>Score</b> is the number with every penalty applied, <b>Pillars</b> is the number
+      before them, and <b>Complete</b> is how much of the row was actually measured.</p>
+    <div class="card"><div class="glossary" id="glossary"></div></div>
   </section>
 
   <section>
@@ -250,6 +301,11 @@ const fmtAge = m => m == null ? null : m < 60 ? m + 'm' : m < 1440 ? (m/60).toFi
 const cell = v => v == null ? '<span class="null">null</span>' : v;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Prose generated in Python, where the source convention is ASCII "--" for an em
+// dash. Converted here rather than there: the modules are read as source far more
+// often than this page is read as a page, and " -- " on a rendered page looks like
+// a typo. Escaping first, so this only ever rewrites text that is already inert.
+const prose = s => esc(s).replace(/ -- /g, ' — ');
 
 // COLLECTED is the append-only dataset export; LIVE is the /api/screener view.
 // They are kept apart deliberately — one is what was recorded, the other is what
@@ -286,12 +342,78 @@ function renderProgress(d) {
 function renderVerdict(d) {
   const c = d.calibration;
   const label = {
-    not_ready: 'Not ready — nothing measured yet',
+    not_ready: 'Not ready — no edge established',
     no_measured_edge: 'No measured edge',
     measured_edge: 'Measured edge',
   }[c.verdict] || c.verdict;
   document.getElementById('verdict-code').textContent = label;
   document.getElementById('verdict-text').textContent = c.explanation;
+}
+
+const PILLAR_NAMES = {
+  attention_velocity: 'Attention velocity',
+  community_depth: 'Community depth',
+  lineage_meta_fit: 'Lineage & meta fit',
+  onchain_structure: 'On-chain structure',
+  asymmetry_timing: 'Asymmetry & timing',
+  mindshare: 'Mindshare',
+  momentum_flow: 'Momentum & flow',
+};
+
+const outcomeText = (label, threshold) => {
+  const horizon = String(label || '').split('_').pop();
+  return String(label || '').startsWith('survived_')
+    ? `survival to ${horizon}` : `a ${threshold}x within ${horizon}`;
+};
+
+// The vector the score is built from, the one it replaced, and the evidence for the
+// swap -- all read from the calibration record the payload carries, so the page
+// cannot quote a figure the record does not hold. The survival line is here on
+// purpose: the same ranking that finds surges also finds tokens that die, and a
+// reader deciding anything off this table needs both halves.
+function renderWeights(d) {
+  const node = document.getElementById('weights');
+  if (!node || !d) return;
+  const w = d.weights || {};
+  const fit = d.weights_fit;
+  const was = (fit && fit.replaces && fit.replaces.weights) || {};
+  const pct = v => v == null ? '—' : `${Math.round(v * 100)}%`;
+  const ci = p => p ? `${p[0].toFixed(2)}–${p[1].toFixed(2)}` : '—';
+  const table = `<div style="overflow-x:auto;margin-bottom:10px"><table style="max-width:460px">
+    <tr><th>Pillar</th><th class="num">${esc(d.weights_version || '')}<br>in force</th>
+      ${fit ? `<th class="num">${esc(fit.replaces.weights_version)}<br>replaced</th>` : ''}</tr>
+    ${Object.keys(w).map(k => `<tr><td>${esc(PILLAR_NAMES[k] || k)}</td>
+      <td class="num"><b>${pct(w[k])}</b></td>${fit ? `<td class="num">${pct(was[k])}</td>` : ''}</tr>`).join('')}
+  </table></div>`;
+  if (!fit) {
+    node.innerHTML = `${table}<p style="margin:0;color:var(--muted)">Uncalibrated priors: guesses from
+      the brief, with no fit behind them.</p>`;
+    return;
+  }
+  const o = fit.out_of_sample || {};
+  const t = fit.test || {};
+  const regimes = Object.keys(t.regimes || {}).join(', ') || 'unknown';
+  const survival = (fit.held_out_by_label || []).find(e => e.label === 'survived_24h' && e.fitted);
+  const gate = fit.phase_0_exit_criteria && fit.phase_0_exit_criteria.met
+    ? '' : ` <b>Adopted before Phase 0's gate was met</b> (${esc(fit.phase_0_exit_criteria ? fit.phase_0_exit_criteria.explanation : '')}).`;
+  node.innerHTML = `${table}
+    <p style="margin:0 0 8px">Fitted on <b>${fmtInt(fit.train.tokens)}</b> tokens against
+      ${esc(outcomeText(fit.label, fit.threshold))} of the trigger market cap, then scored on the
+      <b>${fmtInt(t.tokens)}</b> that triggered next (${fmtInt(t.positives)} did it; base rate
+      ${(t.base_rate * 100).toFixed(0)}%, all in a <b>${esc(regimes)}</b> market). There the new
+      weights rank with AUC <b>${o.fitted.auc.toFixed(2)}</b> (95% CI ${ci(o.fitted.auc_ci95)}),
+      the replaced ones ${o.replaced.auc.toFixed(2)} (${ci(o.replaced.auc_ci95)}); 0.50 is a coin
+      flip and 0.858 is the published benchmark. Top-decile lift ${o.fitted.top_decile_lift.toFixed(2)}x
+      (${ci(o.fitted.top_decile_lift_ci95)}) against ${o.replaced.top_decile_lift.toFixed(2)}x
+      (${ci(o.replaced.top_decile_lift_ci95)}).${gate}</p>
+    ${survival ? `<p style="margin:0 0 8px"><b>Read this with it:</b> on the same tokens a high score
+      also marks a token as <i>less</i> likely to still hold a fifth of its trigger market cap
+      a day later — AUC ${survival.fitted.auc.toFixed(2)} (${ci(survival.fitted.auc_ci95)}) for
+      24h survival, below the 0.50 of a coin flip. What this ranks is a short move, not a
+      coin that lasts.</p>` : ''}
+    <p style="margin:0;color:var(--muted)">A zero weight means one of two things: the fit found
+      the pillar pointing the wrong way (lineage, community), or never saw it at a trigger and
+      could not weigh it (attention, momentum). Neither is a finding that it does not matter.</p>`;
 }
 
 // Link targets come from DexScreener, which is to say from whoever deployed the
@@ -373,6 +495,48 @@ function mindshareCell(t) {
     `<i class="msbar" style="width:${width}%"></i>`;
 }
 
+// Buy pressure over the last hour, and the last hour's price move. Derived here
+// from the raw counts the row carries, the same way scoring/pillars.js would --
+// the row stores buys and sells, never a ratio, so a change to this formula
+// re-reads every row already collected instead of stranding them.
+//
+// A missing sell count is NOT zero sells. `null` in, nothing rendered: a pool that
+// did not report its sells is not a pool that had none, and showing 100% buys for
+// it would be the most flattering possible way to be wrong about a token.
+function buyPressure(m) {
+  if (!m) return null;
+  const b = m.buys_1h, s = m.sells_1h;
+  if (b == null || s == null) return null;
+  const total = b + s;
+  return total > 0 ? b / total : null;
+}
+
+function momentumCell(t) {
+  const m = t.momentum || {};
+  const pressure = buyPressure(m);
+  const move = m.price_change_1h_pct;
+  if (pressure == null && move == null) return '<span class="null">null</span>';
+  const parts = [];
+  if (pressure != null) {
+    parts.push(`<span class="pressure">${(pressure * 100).toFixed(0)}% buys</span>`);
+  }
+  if (move != null) {
+    const cls = move > 0 ? 'up' : move < 0 ? 'down' : '';
+    parts.push(`<div class="note ${cls}" style="font-size:11px">${move > 0 ? '+' : ''}${move.toFixed(1)}% 1h</div>`);
+  }
+  return parts.join('');
+}
+
+// Built server-side from collectors/chains.py, because the URL takes
+// DexScreener's chainId (/bsc/, not /bnb/) and the page has no business knowing
+// that mapping. Null for a chain with no bound id, and then no button: a link
+// built from a guess goes somewhere wrong rather than nowhere.
+function chartCell(t) {
+  const href = safeHref(t.dexscreener_url);
+  if (!href) return '<span class="pill unk" title="no DexScreener id bound for this chain">—</span>';
+  return `<a class="chart" href="${esc(href)}" target="_blank" rel="noopener noreferrer">DexScreener ↗</a>`;
+}
+
 function populateChainFilter(d) {
   const select = document.getElementById('chain-filter');
   const chosen = select.value;
@@ -405,6 +569,7 @@ const SORTS = {
   liquidity: (a, b) => (b.liquidity_usd || 0) - (a.liquidity_usd || 0),
   volume: (a, b) => (b.volume_24h_usd || 0) - (a.volume_24h_usd || 0),
   pillars: (a, b) => (b.pillar_composite ?? -1) - (a.pillar_composite ?? -1),
+  momentum: (a, b) => (buyPressure(b.momentum) ?? -1) - (buyPressure(a.momentum) ?? -1),
   age: (a, b) => (a.age_at_trigger_minutes ?? Infinity) - (b.age_at_trigger_minutes ?? Infinity),
 };
 
@@ -433,13 +598,14 @@ function renderRows() {
 
   document.getElementById('rows').innerHTML = rows.map(t => `
     <tr>
-      <td><b>${t.ticker ? esc(t.ticker) : '<span class="null">null</span>'}</b><br><span class="mono">${esc((t.contract || '').slice(0, 12))}…</span></td>
+      <td><b>${t.ticker ? esc(t.ticker) : '<span class="null">null</span>'}</b><br><span class="mono">${esc((t.contract || '').slice(0, 12))}…</span><br>${chartCell(t)}</td>
       <td><span class="pill chain">${esc(t.chain_label || t.chain || '?')}</span></td>
       <td><span class="pill">${esc(t.trigger)}</span>${t.trigger_mcap_crossed && t.trigger_holders_crossed ? ' <span class="pill">both</span>' : ''}</td>
       <td class="num">${cell(fmtUsd(t.mcap_usd))}</td>
       <td class="num">${cell(fmtUsd(t.liquidity_usd))}</td>
       <td class="num">${cell(fmtUsd(t.volume_24h_usd))}</td>
       <td class="num">${mindshareCell(t)}</td>
+      <td class="num">${momentumCell(t)}</td>
       <td class="num">${cell(fmtInt(t.holders))}</td>
       <td class="num">${cell(fmtAge(t.age_at_trigger_minutes))}</td>
       <td>${socialPills(t.socials_declared)}</td>
@@ -449,6 +615,101 @@ function renderRows() {
       <td class="num">${t.score == null ? '<span class="null">null</span>' : t.score.toFixed(1)}</td>
       <td>${statusCell(t)}</td>
     </tr>`).join('');
+}
+
+// Every column, in table order, with what it is and -- where it is a number
+// somebody could act on -- what it is not. Score, Complete and Pillars lead the
+// answers because they are the three that get asked about.
+const COLUMNS = [
+  ['Ticker', 'The token\u2019s symbol as DexScreener reports it, the first characters of its contract address, and a <b>DexScreener</b> button that opens the token\u2019s chart in a new tab. Symbols are not unique and are not identity; the contract is. The button is absent for a chain whose DexScreener id is not bound here, rather than guessed at.'],
+  ['Chain', 'Which chain the token trades on. Normalised to one name per chain, so BNB Chain rows are not split between <span class="formula">bnb</span> and <span class="formula">bsc</span>.'],
+  ['Trigger', 'Which condition put this token in the dataset: <span class="formula">mcap_250k</span> or <span class="formula">holders_500</span>, whichever fired first. Every token enters on the identical rule, which is what makes the rows comparable at all.'],
+  ['Mcap', 'Market capitalisation in dollars at the moment of the snapshot. Not refreshed on the row \u2014 a snapshot is written once and never edited.'],
+  ['Liquidity', 'Dollars pooled across every venue listing the token. Thin liquidity moves violently in both directions.'],
+  ['Vol 24h', 'Dollar volume over the trailing 24 hours, summed across pools.'],
+  ['Mindshare', 'This token\u2019s share of the attention observed across the tokens polled <i>with</i> it \u2014 trade count, dollar volume and paid boost spend. The rank and universe size sit beside it because a share is meaningless without its denominator. Its weight in the score is under <i>Weights in force</i> above.'],
+  ['Momentum', 'Buys as a share of trades in the last hour, and the last hour\u2019s price move. Derived from raw buy and sell counts stored on the row. Blank when the source reported no hourly split \u2014 which is not the same as no buying. <b>Not yet weighted in the score</b>: no snapshot the weights were fitted on carried it.'],
+  ['Holders', 'Holder count, where a safety source could answer it. DexScreener reports none, so this is null on most Solana rows.'],
+  ['Age', 'How old the pool was when the snapshot fired. The clearest pattern in the collected data so far runs through this column, and it is also the control every other feature is checked against \u2014 see <i>What has actually been measured</i> above.'],
+  ['Socials', 'Whether the token declares a Telegram, an X account and a website. <span class="formula">\u2713</span> declared, <span class="formula">\u2715</span> absent, <span class="formula">?</span> never established. Where the address was kept, the pill is a link.'],
+  ['Safety', 'Six checks a keyless source could answer: Honeypot, Mint revoked, Freeze inactive, LP burned, top-10 Concentration, Deployer history. <span class="formula">?</span> means not established, and that <i>excludes</i> the token exactly as a failure would.'],
+  ['Complete', '<b>The share of the row that was actually measured</b> \u2014 <span class="formula">fields_present / fields_expected</span> over 65 feature fields. It is a fact about the collection, not about the token: 40% means most of the schema came back empty. The score is multiplied by it, so a sparse row cannot score high by being quiet about everything.'],
+  ['Pillars', '<b>The weighted mean over the pillars that resolved</b>, renormalised so it reads as \u201cof what can be seen\u201d. It is shown for excluded rows too, because the arithmetic is a fact about the row whatever the filters said. It is <i>not</i> the score: no completeness penalty, no regime adjustment, and no hard filter has been applied to it.'],
+  ['Score', '<b>Pillars, after the modifiers</b>: multiplied by Complete, adjusted for the regime, and penalised where signals contradict. It is <span class="formula">null</span> whenever a hard filter excluded the token \u2014 including when the filter simply could not be answered, because unknown excludes. The weights behind it were <b>fitted on a small sample</b> (see <i>Weights in force</i>): better than the old guesses on the tokens that came next, but not by enough to establish an edge, so this is not a prediction.'],
+  ['Status', '<span class="formula">scored</span>, or the filter that excluded the row. <span class="formula">unmeasured</span> means the check was never answered rather than failed \u2014 a different thing, and the more common one.'],
+
+];
+
+// The backtest, as the export computed it. Deliberately renders the whole table
+// rather than the leads alone: a page that showed only what separated would be a
+// page that had gone looking for something, and the common -- honest -- result
+// here is that nothing did.
+function renderBacktest(d) {
+  const node = document.getElementById('backtest');
+  const b = d && d.backtest;
+  if (!node) return;
+  // Two different nothings, and saying the wrong one would be the exact mistake
+  // this section exists to catch. An export written before the backtest existed
+  // carries no block at all -- the collector regenerates it on its next run. An
+  // export that carries the block with no rows means the outcomes genuinely have
+  // not resolved. Only the second is a statement about the tokens.
+  if (!b) {
+    node.innerHTML = '<p style="margin:0;color:var(--muted)">This dataset was exported '
+      + 'before the backtest existed, so it carries no measurement. The next collector '
+      + 'run writes one.</p>';
+    return;
+  }
+  if (!b.rows) {
+    node.innerHTML = '<p style="margin:0;color:var(--muted)">No outcomes have resolved yet, so nothing has been measured.</p>';
+    return;
+  }
+  const lead = f => `<li><b>${esc(f.feature)}</b> — AUC ${f.auc.toFixed(3)}
+      (95% CI ${f.auc_ci ? f.auc_ci[0].toFixed(2) + '–' + f.auc_ci[1].toFixed(2) : '—'}),
+      ${f.auc_out_of_sample == null ? 'no out-of-sample split' : 'out of sample ' + f.auc_out_of_sample.toFixed(3)},
+      ${(f.tie_share * 100).toFixed(0)}% of rows tied. ${prose(f.verdict)}</li>`;
+
+  const rows = (b.features || []).map(f => `
+    <tr>
+      <td class="mono">${esc(f.feature)}</td>
+      <td class="num">${f.n}</td>
+      <td class="num">${f.auc == null ? '<span class="null">—</span>' : f.auc.toFixed(3)}</td>
+      <td class="num">${f.auc_ci ? f.auc_ci[0].toFixed(2) + '–' + f.auc_ci[1].toFixed(2) : '<span class="null">—</span>'}</td>
+      <td class="num">${f.auc_out_of_sample == null ? '<span class="null">—</span>' : f.auc_out_of_sample.toFixed(3)}</td>
+      <td class="num">${(f.tie_share * 100).toFixed(0)}%</td>
+      <td>${prose(f.verdict)}</td>
+    </tr>`).join('');
+
+  node.innerHTML = `
+    <p style="margin:0 0 10px">${prose(b.verdict)}</p>
+    ${b.leads && b.leads.length
+      ? `<p style="margin:0 0 6px"><b>Survived every check:</b></p><ul style="margin:0 0 12px;padding-left:20px;color:var(--muted);font-size:13.5px">${b.leads.map(lead).join('')}</ul>`
+      : '<p style="margin:0 0 12px;color:var(--muted);font-size:13.5px">No feature separated out of sample <i>and</i> survived age stratification. That is the result, not a gap in the report.</p>'}
+    <details>
+      <summary style="cursor:pointer;color:var(--accent);font-size:13.5px">Every feature, including the ones that measured nothing</summary>
+      <div class="scroll" style="margin-top:10px">
+        <table>
+          <thead><tr>
+            <th>Feature</th><th class="num">n</th><th class="num">AUC</th>
+            <th class="num">95% CI</th><th class="num" title="Direction learned on the earlier rows, scored on the later ones">Out of sample</th>
+            <th class="num" title="Share of rows sharing the modal value. A feature that assigns one value to a third of the sample is not ranking it.">Tied</th>
+            <th>Verdict</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p class="note" style="margin-top:10px">Two columns do the work that a bare AUC
+        hides. <b>Tied</b> catches a feature pinned by arithmetic rather than by the
+        market — a ratio between two nested windows is identical for any token younger
+        than the longer one. <b>Verdict</b> reports whether the separation survived
+        being measured inside a single age band; one that does not was measuring age.
+        An AUC below 0.5 means the feature predicts the outcome <i>backwards</i>, which
+        is information, not a bug.</p>
+    </details>`;
+}
+
+function renderGlossary() {
+  document.getElementById('glossary').innerHTML = COLUMNS.map(([name, body]) =>
+    `<div><dt>${esc(name)}</dt><dd>${body}</dd></div>`).join('');
 }
 
 function renderSafetyExplainer(d) {
@@ -473,6 +734,13 @@ function renderSafetyExplainer(d) {
     </p>`;
 }
 
+// weight_in_composite, or prior_weight_in_composite from an export written before
+// the weights were fitted: the page is deployed separately from the data it reads.
+const weightIn = m => {
+  const w = m.weight_in_composite ?? m.prior_weight_in_composite;
+  return w == null ? '—' : w.toFixed(2);
+};
+
 function renderMindshareExplainer(d) {
   const m = (d && d.mindshare) || {};
   const weights = m.component_weights || {};
@@ -482,7 +750,7 @@ function renderMindshareExplainer(d) {
     <p style="margin:0;color:var(--muted);font-size:13px">
       Method <code>${esc(m.method_version || 'n/a')}</code>,
       components ${Object.keys(weights).map(k => `<code>${esc(k)}</code>`).join(' · ') || '—'} weighted equally,
-      contribution to the composite score <b>${m.prior_weight_in_composite == null ? '—' : m.prior_weight_in_composite.toFixed(2)}</b>.
+      contribution to the composite score <b>${weightIn(m)}</b>.
       The raw counts and the universe totals are stored on every row, so the share can be
       recomputed if the formula changes.
     </p>`;
@@ -492,8 +760,14 @@ function renderLivePanel() {
   const parts = [];
   if (LIVE && LIVE.live) {
     const l = LIVE.live;
+    // LIVE_ERROR alongside LIVE means the latest re-fetch failed and these rows
+    // are from an earlier one. Said here, so stale is labelled rather than passed
+    // off as current.
+    const stale = LIVE_ERROR
+      ? `<br><br><b>The last refresh failed</b> (${esc(LIVE_ERROR)}); these rows are from the earlier fetch${LIVE.generated_at ? ' at ' + esc(LIVE.generated_at) : ''}.`
+      : '';
     parts.push(`<div class="live-note"><strong>Live data — real tokens from DexScreener.</strong>
-      ${esc(LIVE.live_notice || '')}
+      ${esc(LIVE.live_notice || '')}${stale}
       <br><br>Polled <b>${fmtInt(l.polled)}</b> ${l.polled === 1 ? 'token' : 'tokens'} across
       ${esc((l.chains_requested || []).join(', '))};
       <b>${fmtInt(l.triggered)}</b> ${l.triggered === 1 ? 'is' : 'are'} at or above the trigger and listed below,
@@ -536,7 +810,10 @@ function renderTableLede() {
       + 'edited. This is what a calibration would be fitted on.';
 }
 
-function refresh() {
+// Re-render from whatever is already in memory. Distinct from doRefresh(), which
+// goes back to the network first; keeping them apart means switching the source
+// dropdown does not re-poll DexScreener.
+function render() {
   const d = current();
   if (!d) return;
   populateChainFilter(d);
@@ -561,45 +838,106 @@ function renderFacts(d) {
     <p>Even the strongest known social signal moves you from ~0.1% to ~1.9%. The job is to beat a ~2% base rate, not to find winners.</p>`;
 }
 
-const loadCollected = fetch('screener-data.json', { cache: 'no-store' })
-  .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
-  .then(d => { COLLECTED = d; })
-  .catch(e => { LIVE_ERROR = LIVE_ERROR || null; console.warn('collected dataset unavailable', e); });
+// A cache-busting query, because 'no-store' is respected by the browser and not
+// always by the CDN in front of the static file. Refresh has to actually fetch,
+// or the button is a lie.
+const bust = url => url + (url.includes('?') ? '&' : '?') + '_=' + Date.now();
+
+function loadCollected() {
+  return fetch(bust('screener-data.json'), { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
+    .then(d => { COLLECTED = d; return true; })
+    .catch(e => { console.warn('collected dataset unavailable', e); return false; });
+}
 
 // The live endpoint is additive: if it is missing (a plain static deploy, or
 // DexScreener not answering) the page falls back to the collected export and says
-// so, rather than showing nothing.
-const loadLive = fetch('/api/screener', { cache: 'no-store' })
-  .then(r => r.json().then(body => ({ ok: r.ok, body })))
-  .then(({ ok, body }) => {
-    if (ok && body && Array.isArray(body.tokens)) LIVE = body;
-    else LIVE_ERROR = (body && body.error) || 'The live endpoint returned an error.';
-  })
-  .catch(() => { LIVE_ERROR = 'No live endpoint on this deployment.'; });
+// so, rather than showing nothing. A refresh that fails leaves the data already on
+// screen in place -- stale and labelled is better than blank.
+function loadLive() {
+  return fetch(bust('/api/screener'), { cache: 'no-store' })
+    .then(r => r.json().then(body => ({ ok: r.ok, body })))
+    .then(({ ok, body }) => {
+      if (ok && body && Array.isArray(body.tokens)) { LIVE = body; LIVE_ERROR = null; return true; }
+      LIVE_ERROR = (body && body.error) || 'The live endpoint returned an error.';
+      return false;
+    })
+    .catch(() => { LIVE_ERROR = 'No live endpoint on this deployment.'; return false; });
+}
 
-Promise.allSettled([loadCollected, loadLive]).then(() => {
+function syncSourceOption() {
   const select = document.getElementById('source-filter');
-  if (!LIVE) {
-    select.value = 'collected';
-    select.querySelector('option[value=live]').disabled = true;
-    select.querySelector('option[value=live]').textContent = 'Live — unavailable';
+  const live = select.querySelector('option[value=live]');
+  live.disabled = !LIVE;
+  live.textContent = LIVE ? 'Live — DexScreener' : 'Live — unavailable';
+  if (!LIVE && select.value === 'live') select.value = 'collected';
+}
+
+function refreshNote(text) {
+  document.getElementById('refresh-note').textContent = text;
+}
+
+// The live endpoint re-polls DexScreener when asked, so the live view genuinely
+// changes on a refresh. The collected dataset changes only when the collector
+// commits, which is hourly -- so refreshing it will usually show the same rows,
+// and the note says so rather than letting a reader infer the collector is stuck.
+function doRefresh() {
+  const button = document.getElementById('refresh');
+  button.disabled = true;
+  button.textContent = 'Refreshing…';
+  refreshNote('Re-fetching…');
+  return Promise.allSettled([loadCollected(), loadLive()]).then(([, live]) => {
+    // Whether *this* fetch answered. LIVE alone cannot say: a failed re-fetch
+    // leaves the earlier body in place, and reading that as fresh would announce
+    // a re-poll that did not happen.
+    const liveFresh = live.status === 'fulfilled' && live.value === true;
+    syncSourceOption();
+    if (COLLECTED) {
+      renderProgress(COLLECTED); renderVerdict(COLLECTED);
+      renderFacts(COLLECTED); renderBacktest(COLLECTED);
+    }
+    renderWeights(COLLECTED || LIVE);
+    render();
+    button.disabled = false;
+    button.textContent = 'Refresh';
+    const at = new Date().toLocaleTimeString();
+    refreshNote(
+      liveFresh
+        ? `Refreshed ${at}. The live view re-polled DexScreener just now; the collected dataset changes only when the collector commits, which is hourly.`
+        : LIVE
+          ? `Refreshed ${at}. ${LIVE_ERROR || 'The live endpoint did not answer.'} The live view still shows the earlier fetch; the collected dataset changes only when the collector commits.`
+          : `Refreshed ${at}. ${LIVE_ERROR || 'No live endpoint on this deployment.'} Showing the collected dataset, which changes only when the collector commits.`
+    );
+  });
+}
+
+Promise.allSettled([loadCollected(), loadLive()]).then(() => {
+  syncSourceOption();
+  // Wired, and the parts that need no data drawn, before the early return below:
+  // when neither source answered on load, Refresh is the one useful control left,
+  // and a retry that succeeds needs the filters working. render() and renderRows()
+  // both return early while there is nothing to show.
+  document.getElementById('refresh').addEventListener('click', doRefresh);
+  document.getElementById('source-filter').addEventListener('change', render);
+  for (const id of ['q', 'chain-filter', 'trigger-filter', 'status-filter', 'sort-by']) {
+    document.getElementById(id).addEventListener('input', renderRows);
   }
+  renderGlossary();
+  document.getElementById('footer').innerHTML =
+    `Every token is snapshotted once, at the same trigger, and no row is ever edited or deleted —
+     the dead tokens are the dataset. Scores are computed from weights fitted on a small sample and are logged,
+     never acted on; this repo holds no exchange keys and can place no orders.`;
   if (!COLLECTED && !LIVE) {
     document.getElementById('warning').innerHTML =
       '<strong>Could not load any data.</strong>screener-data.json is missing and /api/screener did not answer.';
     return;
   }
-  if (COLLECTED) { renderProgress(COLLECTED); renderVerdict(COLLECTED); renderFacts(COLLECTED); }
-  refresh();
-  document.getElementById('footer').innerHTML =
-    `Every token is snapshotted once, at the same trigger, and no row is ever edited or deleted —
-     the dead tokens are the dataset. Scores are computed from uncalibrated priors and are logged,
-     never acted on; this repo holds no exchange keys and can place no orders.`;
-
-  document.getElementById('source-filter').addEventListener('change', refresh);
-  for (const id of ['q', 'chain-filter', 'trigger-filter', 'status-filter', 'sort-by']) {
-    document.getElementById(id).addEventListener('input', renderRows);
+  if (COLLECTED) {
+    renderProgress(COLLECTED); renderVerdict(COLLECTED);
+    renderFacts(COLLECTED); renderBacktest(COLLECTED);
   }
+  renderWeights(COLLECTED || LIVE);
+  render();
 });
 </script>
 </body>

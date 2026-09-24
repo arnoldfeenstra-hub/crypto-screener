@@ -23,6 +23,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from calibration.backtest import DEFAULT_LABEL, DEFAULT_THRESHOLD
+from calibration.backtest import rows_from_store as backtest_rows
+from calibration.backtest import run as run_backtest
 from calibration.fit import (
     MIN_DEAD_PER_SURVIVOR,
     MIN_TRIGGERED_TOKENS,
@@ -34,7 +37,8 @@ from collectors.config import load_config
 from collectors.mindshare import COMPONENT_WEIGHTS as MINDSHARE_COMPONENT_WEIGHTS
 from collectors.mindshare import METHOD_VERSION as MINDSHARE_METHOD_VERSION
 from collectors.store import Store
-from scoring.pillars import MINDSHARE_PRIOR_WEIGHT, WEIGHTS, composite
+from scoring.pillars import WEIGHTS, composite
+from scoring.prompt_meta import weights_caveat, weights_record
 from scoring.runner import WEIGHTS_VERSION, prompt_version
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -103,7 +107,18 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                 "age_at_trigger_minutes": snap["age_at_trigger_minutes"],
                 "regime": snap["regime"],
                 "source": snap["source"],
+                # How the token entered the sample (schema 8): a boost list, a
+                # profile, or an operator seeding its address. Null on every row
+                # written before it was recorded.
+                "entry_path": snap["entry_path"],
                 "chain_label": chain_registry.label(snap["chain"]),
+                # The token's page on DexScreener. Built from the registry rather
+                # than from the stored chain name, because the URL takes
+                # DexScreener's chainId -- /bsc/, not /bnb/ -- and null for a chain
+                # with no bound id rather than a guess that 404s.
+                "dexscreener_url": chain_registry.dexscreener_token_url(
+                    snap["chain"], snap["contract"]
+                ),
                 "mcap_usd": snap["market_mcap_usd"],
                 "fdv_usd": snap["market_fdv_usd"],
                 "liquidity_usd": snap["market_liquidity_usd"],
@@ -141,6 +156,24 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                     "universe_txns_24h": snap["mindshare_universe_txns_24h"],
                     "universe_volume_24h_usd": snap["mindshare_universe_volume_24h_usd"],
                     "universe_boost_total": snap["mindshare_universe_boost_total"],
+                },
+                # The momentum group (schema 7). Raw, as stored; the page derives
+                # the buy-pressure and acceleration ratios it displays, from the
+                # same numbers scoring/pillars.py derives them from. Null on every
+                # row written before schema 7, which is the truth about those rows
+                # rather than a zero standing in for one.
+                "momentum": {
+                    "volume_1h_usd": snap["momentum_volume_1h_usd"],
+                    "volume_6h_usd": snap["momentum_volume_6h_usd"],
+                    "txns_1h": snap["momentum_txns_1h"],
+                    "buys_1h": snap["momentum_buys_1h"],
+                    "sells_1h": snap["momentum_sells_1h"],
+                    "buys_24h": snap["momentum_buys_24h"],
+                    "sells_24h": snap["momentum_sells_24h"],
+                    "price_change_5m_pct": snap["momentum_price_change_5m_pct"],
+                    "price_change_1h_pct": snap["momentum_price_change_1h_pct"],
+                    "price_change_6h_pct": snap["momentum_price_change_6h_pct"],
+                    "price_change_24h_pct": snap["momentum_price_change_24h_pct"],
                 },
                 # The safety lookup behind the filter verdicts, if one was made.
                 # Null here means the checks were never run, which is why the row
@@ -198,6 +231,19 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
 
     calibration = render_calibration(store)
 
+    # The exploratory backtest, exported so the page can show what was actually
+    # measured rather than only what the weights guess. It is not a calibration --
+    # the payload says so in its own field -- and the leads list is empty far more
+    # often than not, which is the honest common case and is rendered as such.
+    # The gate inputs are the ones the progress block below reports, so the two
+    # cannot disagree about whether Phase 0 is done.
+    backtest = run_backtest(
+        backtest_rows(store),
+        triggered_tokens=triggered,
+        dead_per_survivor=(dead / survivors) if survivors else None,
+        complete_social=complete_social,
+    )
+
     excluded_evidence = sum(
         1 for t in tokens if t["excluded"] and t["rejected_by"]
     )
@@ -222,7 +268,10 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
         "prompt_version": prompt_version(),
         "weights_version": WEIGHTS_VERSION,
         "weights": WEIGHTS,
+        # False until Phase 2's gate is met. A fitted vector adopted before it --
+        # which is what is in force -- is described by weights_fit, not by this.
         "weights_are_calibrated": False,
+        "weights_fit": weights_record(WEIGHTS_VERSION),
         "data_sources": sorted(sources),
         "chains": [
             {
@@ -232,10 +281,30 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             }
             for name, count in chain_counts.items()
         ],
+        "momentum": {
+            "weight_in_composite": WEIGHTS["momentum_flow"],
+            "definition": (
+                "The shape of the last hour rather than the level of the last day: "
+                "the buy/sell split over 1h and 24h, 1h volume against the 6h rate, "
+                "and the per-window price change. Stored raw and derived at read "
+                "time."
+            ),
+            "caveat": (
+                f"Weight {WEIGHTS['momentum_flow']:.2f} in the composite "
+                f"({WEIGHTS_VERSION}): no snapshot the weights were fitted on carried "
+                "these fields, so no fit has weighed them yet. A ratio between two "
+                "nested windows reads a token's age until the longer window has "
+                "filled -- and pins "
+                "at the window ratio when every trade falls in the shorter one -- so "
+                "those components are dropped for a token younger than the longer "
+                "window rather than scored. The buy/sell split is a ratio inside one "
+                "window and does not saturate."
+            ),
+        },
         "mindshare": {
             "method_version": MINDSHARE_METHOD_VERSION,
             "component_weights": MINDSHARE_COMPONENT_WEIGHTS,
-            "prior_weight_in_composite": MINDSHARE_PRIOR_WEIGHT,
+            "weight_in_composite": WEIGHTS["mindshare"],
             "definition": (
                 "Share of the attention observed across one measurement universe: "
                 "24h transactions, 24h volume and DexScreener boost spend, each as a "
@@ -245,9 +314,10 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             "caveat": (
                 "The universe is whatever the collector polled -- tokens reach it by "
                 "being boosted or profiled on DexScreener -- so it is a biased sample "
-                "and shares from different universes are not comparable. Weighted 0.00 "
-                "in the composite: it is collected and scored, but no prior was "
-                "invented for it, and Phase 2 has not fitted one."
+                "and shares from different universes are not comparable. Weighted "
+                f"{WEIGHTS['mindshare']:.2f} in the composite ({WEIGHTS_VERSION}); it "
+                "reads 24h volume, as the on-chain pillar does, so read the two "
+                "weights together."
             ),
         },
         "all_rows_synthetic": all_synthetic,
@@ -259,9 +329,9 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             else None
         ),
         "headline_warning": (
-            "Phase 0 -- collection only. The scoring weights are uncalibrated priors: "
-            "guesses. No edge has been measured, so nothing on this page is a "
-            "prediction or a recommendation."
+            f"Phase 0 -- collection only. {weights_caveat(WEIGHTS_VERSION)} No edge "
+            "has been established, so nothing on this page is a prediction or a "
+            "recommendation."
         ),
         "progress": {
             "triggered_tokens": triggered,
@@ -284,8 +354,24 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
         "calibration": {
             "verdict": calibration["verdict"],
             "explanation": calibration["explanation"],
+            "label": calibration["label"],
+            "threshold": calibration["threshold"],
             "base_rate_by_mcap_band": calibration["base_rate_by_mcap_band"],
             "fit": calibration.get("fit"),
+        },
+        "backtest": {
+            "is_calibration": False,
+            "label": DEFAULT_LABEL,
+            "threshold": DEFAULT_THRESHOLD,
+            "rows": backtest.rows,
+            "positives": backtest.positives,
+            "base_rate": backtest.base,
+            "verdict": backtest.verdict(),
+            "leads": [r.to_dict() for r in backtest.leads()],
+            # The whole table, so the negative results are as visible as the
+            # positive ones. A page that showed only what separated would be a
+            # page that had quietly gone looking for something.
+            "features": [r.to_dict() for r in backtest.results],
         },
         "published_base_rates": PUBLISHED_BASE_RATES,
         "trigger": {
