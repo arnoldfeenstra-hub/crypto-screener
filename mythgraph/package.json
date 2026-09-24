@@ -1,0 +1,23 @@
+{
+  "name": "mythgraph",
+  "private": true,
+  "type": "module",
+  "description": "Explorable Greek mythology knowledge graph built from Wikipedia and Wikimedia Commons.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node scripts/vendor.js",
+    "db:schema": "node db/apply-schema.js",
+    "ingest": "node ingest/run.js",
+    "dev": "node scripts/serve.js",
+    "test": "node --test test/*.test.js",
+    "qa:fixture": "node qa/make-fixture.js",
+    "qa": "node qa/run.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.0",
+    "d3": "^7.9.0",
+    "@fontsource/cormorant-garamond": "^5.1.0",
+    "@fontsource/inter": "^5.1.0",
+    "pg": "^8.13.0"
+  }
+}
