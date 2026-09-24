@@ -420,6 +420,19 @@ class LogisticModel:
             return dict.fromkeys(self.features, 1 / len(self.features))
         return {name: value / total for name, value in raw.items()}
 
+    def deployable_weights(self, places: int = 2) -> dict[str, float]:
+        """:meth:`normalised_pillar_weights` as it would be written into
+        ``scoring/pillars.py::WEIGHTS``: rounded the way prompts/score.md prints a
+        weight, with the rounding residue put on the largest weight so the vector
+        still sums to one. This, not the unrounded vector, is what gets validated,
+        because this is what the screener would compute.
+        """
+        exact = self.normalised_pillar_weights()
+        rounded = {name: round(value, places) for name, value in exact.items()}
+        largest = max(rounded, key=lambda name: rounded[name])
+        rounded[largest] = round(rounded[largest] + 1.0 - sum(rounded.values()), places)
+        return rounded
+
 
 @dataclass
 class FitResult:
@@ -439,22 +452,30 @@ class FitResult:
     moved_for_deployer_leakage: int = 0
     threshold: float | None = None
     auc_ci: tuple[float, float] | None = None
-    # The current prior weight vector, scored on the same held-out rows. The
-    # question a calibration answers is not "is the fit better than a coin" but
-    # "is it better than what the screener already does".
+    # The vector in force (scoring/pillars.py::WEIGHTS) when the fit ran, scored on
+    # the same held-out rows. Called "prior" because it is what the fit would
+    # replace. The question a calibration answers is not "is the fit better than a
+    # coin" but "is it better than what the screener already does".
     prior_auc: float | None = None
     prior_auc_ci: tuple[float, float] | None = None
     prior_top_decile_lift: float | None = None
-    # The vector that would actually replace the priors, scored the way the
-    # screener scores: normalised_pillar_weights() inside composite(). It is not
-    # the logistic model above -- a negative coefficient is clamped to zero and the
-    # missingness terms are dropped, because prompts/score.md holds non-negative
-    # weights that sum to one -- so it is validated separately, on the same rows.
+    # The vector that would actually replace it, scored the way the screener
+    # scores: deployable_weights() inside composite(). It is not the logistic
+    # model above -- a negative coefficient is clamped to zero, the missingness
+    # terms are dropped and the rest is rounded, because prompts/score.md holds
+    # non-negative weights that sum to one -- so it is validated separately, on
+    # the same rows.
     deployed_auc: float | None = None
     deployed_auc_ci: tuple[float, float] | None = None
     deployed_top_decile_lift: float | None = None
     deployed_top_decile_lift_ci: tuple[float, float] | None = None
     prior_top_decile_lift_ci: tuple[float, float] | None = None
+    deployed_weights: dict[str, float] = field(default_factory=dict)
+    # (first, last) trigger time on each side of the split, epoch millis. The
+    # test window is where every out-of-sample figure above was measured; a
+    # later check that wants rows the fit never saw starts after train_window.
+    train_window: tuple[int, int] | None = None
+    test_window: tuple[int, int] | None = None
 
     def checks(self, criteria: ExitCriteria | None) -> dict[str, bool]:
         """Every condition .claude/rules/stats.md sets before a fitted vector may
@@ -524,6 +545,9 @@ class FitResult:
             "has_measured_edge": self.has_measured_edge,
             "base_rate_test_ci95": list(self.interval_test),
             "fitted_weights": self.model.normalised_pillar_weights(),
+            "deployed_weights": self.deployed_weights,
+            "train_window_ms": list(self.train_window) if self.train_window else None,
+            "test_window_ms": list(self.test_window) if self.test_window else None,
             "by_regime": self.by_regime,
             "forced_past_exit_criteria": self.forced,
             "moved_for_deployer_leakage": self.moved_for_deployer_leakage,
@@ -569,8 +593,11 @@ def fit(
     test_scores = [model.predict(r) for r in split.test]
     positives = sum(test_labels)
     prior_scores = [prior_score(r) for r in split.test]
-    deployed = model.normalised_pillar_weights()
+    deployed = model.deployable_weights()
     deployed_scores = [prior_score(r, deployed) for r in split.test]
+
+    def window(rows: Sequence[Row]) -> tuple[int, int] | None:
+        return (min(r.ts for r in rows), max(r.ts for r in rows)) if rows else None
 
     by_regime: dict[str, Any] = {}
     for regime in ("hot", "neutral", "cold"):
@@ -611,16 +638,20 @@ def fit(
         prior_top_decile_lift_ci=(
             top_decile_lift_interval(test_labels, prior_scores) if split.test else None
         ),
+        deployed_weights=deployed,
+        train_window=window(split.train),
+        test_window=window(split.test),
     )
 
 
 def prior_score(row: Row, weights: dict[str, float] | None = None) -> float:
     """The composite the screener would rank this row by under ``weights``.
 
-    The current priors by default. Pillar weights only -- the completeness and
-    regime multipliers apply alike whichever vector is in force, so they do not
-    decide which vector ranks better. A row with no composite ranks last, as it
-    does on the board.
+    The vector in force by default. Pillar weights only: the completeness
+    multiplier and the regime and contradiction modifiers are applied to whichever
+    vector is in force. They can reorder rows, so the record of an adopted fit
+    also reports the final score -- see docs/calibration-2026-09-24.md. A row
+    with no composite ranks last, as it does on the board.
     """
     vector = weights or WEIGHTS
     score, _ = composite({name: row.features.get(name) for name in vector}, vector)

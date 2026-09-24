@@ -40,8 +40,8 @@ module keeps them different. A token with no resolvable component has
 **Raw counts are stored, the share is derived** (BUILD_BRIEF.md section 3 item 3).
 The per-token components *and the universe totals they were divided by* both go on
 the row. That is what makes the share recomputable: when this formula is revised --
-and it will be, it is an uncalibrated prior like every other weight in the repo --
-every past row can be recomputed under the new one instead of being stranded.
+and it will be, its component weights are uncalibrated priors -- every past row can
+be recomputed under the new one instead of being stranded.
 
 **The universe is a sample, and a biased one.** Tokens reach it by being boosted or
 profiled on DexScreener, so the denominator is not "all trading". It is named on
@@ -60,9 +60,10 @@ from typing import Any
 # produced it -- the same discipline prompts/score.md applies to prompt_version.
 METHOD_VERSION = "mindshare-v1"
 
-# Uncalibrated priors, like every other weight in this repo. Equal thirds is the
-# honest starting point: there is no evidence yet that dollar attention predicts
-# better than trade attention, and inventing a split would be pretending there is.
+# Uncalibrated priors: the fit behind scoring/pillars.py::WEIGHTS weighs the
+# pillar as a whole and never reached inside it. Equal thirds is the honest
+# starting point: there is no evidence yet that dollar attention predicts better
+# than trade attention, and inventing a split would be pretending there is.
 COMPONENT_WEIGHTS: dict[str, float] = {
     "txns_24h": 1.0,
     "volume_24h_usd": 1.0,

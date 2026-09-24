@@ -104,11 +104,11 @@ FEATURE_SCALARS = ("age_at_trigger_minutes", "listings", "regime")
 # token otherwise identical to one collected before schema 7 -- and would make
 # data_completeness mean one thing before the change and another after, in a
 # column calibration reads. No stored row has momentum yet, so leaving it out
-# keeps the measure continuous with every row in the journal. (mindshare, also
-# at weight 0.00, is counted: it has been since schema 2, and taking it out now
-# would be the same discontinuity in the other direction.) When Phase 2 gives
-# momentum_flow a fitted weight, momentum joins the count in the same commit,
-# with prompt_version bumped.
+# keeps the measure continuous with every row in the journal. (mindshare is
+# counted, and was while its weight was still 0.00: it has been since schema 2,
+# and taking it out now would be the same discontinuity in the other direction.)
+# When a fit gives momentum_flow a weight, momentum joins the count in the same
+# commit, with prompt_version bumped.
 COMPLETENESS_EXCLUDED_GROUPS = frozenset({"momentum"})
 
 

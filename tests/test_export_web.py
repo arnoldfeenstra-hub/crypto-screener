@@ -84,9 +84,11 @@ class TestPayloadShape:
     def test_the_headline_warning_survives_regardless_of_data(self):
         with store_with("bitquery") as store:
             payload = build_payload(store)
-        assert "uncalibrated priors" in payload["headline_warning"]
+        assert "too small to establish an edge" in payload["headline_warning"]
+        assert "nothing on this page is a prediction" in payload["headline_warning"]
         assert payload["paper_mode"] is True
         assert payload["weights_are_calibrated"] is False
+        assert payload["weights_fit"]["weights"] == payload["weights"]
 
     def test_progress_separates_evidence_from_ignorance(self):
         with store_with("bitquery") as store:
@@ -240,7 +242,7 @@ class TestTheMomentumBlock:
     def test_the_payload_states_the_weight_is_zero(self):
         with store_with("dexscreener") as store:
             payload = build_payload(store)
-        assert payload["momentum"]["prior_weight_in_composite"] == 0.0
+        assert payload["momentum"]["weight_in_composite"] == 0.0
 
     def test_the_page_does_not_read_a_missing_sell_count_as_zero_sells(self):
         page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
@@ -264,7 +266,7 @@ class TestTheColumnGlossary:
         page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
         assert "fields_present / fields_expected" in page
         assert "It is <i>not</i> the score" in page
-        assert "uncalibrated priors" in page
+        assert "fitted on a small sample" in page
 
     def test_the_glossary_is_rendered_on_load(self):
         page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")

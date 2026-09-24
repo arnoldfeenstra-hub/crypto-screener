@@ -1,18 +1,71 @@
 # Memecoin Screener — Ranking Prompt
 
-`prompt_version: 6` — bump this on every edit and write it into every scored row.
+`prompt_version: 7` — bump this on every edit and write it into every scored row.
 
 Drop the SYSTEM block into your model call. Feed one `candidate` object per token.
 
-**Status: uncalibrated priors.** The weights below are informed guesses plus two effects that
-have been measured against a real graveyard (see "Evidence-backed priors"). Everything else is
-placeholder until Phase 2 of `BUILD_BRIEF.md` replaces it with fitted coefficients.
+**Status: first fitted weights, on a small sample.** The weight vector below was fitted on 190
+tokens before Phase 0's gate was met and has not established an edge — see the version 7 note.
+Everything else here (the pillars, the filters, the modifiers) is still the brief's design, and
+the fit is to be repeated as Step 5 describes.
+
+**Version 7 changes — the priors are replaced by the first fitted vector, before the gate.**
+
+| Pillar | Prior (v6) | Fitted (v7) |
+|---|---|---|
+| A. Attention velocity | 0.28 | 0.00 — never observed at a trigger, so not yet fitted |
+| B. Community depth | 0.20 | 0.00 — fitted negative, clamped |
+| C. Lineage & meta fit | 0.15 | 0.00 — fitted negative, clamped |
+| D. On-chain structure | 0.22 | **0.55** |
+| E. Asymmetry & timing | 0.15 | **0.37** |
+| F. Mindshare | 0.00 | **0.08** |
+| G. Momentum & flow | 0.00 | 0.00 — never observed at a trigger, so not yet fitted |
+
+`calibration/fit.py` fitted a logistic regression on one row per token as it was scored at its
+trigger — 190 tokens triggered 12–17 Sep 2026 — against the backtest's pre-set outcome, a 1.5x
+within 6h, and clamped, renormalised and rounded the coefficients. On the **82 tokens that
+triggered next** (17 did it: base rate 21% [13%, 31%], every one of them in a neutral tape):
+
+- the fitted vector ranks with **AUC 0.67 [0.52, 0.83]**; the priors ranked 0.64 [0.48, 0.79].
+  The published benchmark is 0.858, and this is far below it.
+- top-decile lift **1.81x [0.66, 3.35]** against the priors' 2.41x [1.04, 3.79]. A decile is
+  eight tokens, so one token is the difference.
+- on the final score the board ranks by — after the completeness multiplier — AUC 0.66
+  [0.51, 0.81] against 0.63 [0.47, 0.79], and lift 1.81x against 1.21x.
+- on the other surge horizons the two cannot be told apart (2x within 1h: 0.72 against 0.65;
+  within 6h: 0.64 against 0.60; within 24h: 0.60 against 0.62; every interval spans both).
+
+**This overrides Phase 0's gate, deliberately.** `.claude/rules/stats.md` allows only fitted
+coefficients into this vector and gates the fit on ≥300 tokens with a complete social series
+and ≥20 dead per survivor. Neither can be met as the collector stands: no social series
+completes without an X API key (0 of 300), and a $250k trigger samples tokens that have
+already survived their launch, so dead-per-survivor sits near 1.2 and will not approach 20.
+The vector was adopted on the owner's instruction to calibrate, having cleared every other
+check. `scoring/weights/fitted-v1.json` is the full record, and `PRIOR_WEIGHTS` in
+`scoring/pillars.py` keeps the priors, so reverting is one assignment.
+
+**What it is not.** Not an established edge: its interval overlaps the priors' and its lower
+bound is barely above a coin flip. Not tested in a hot or a cold tape. And not a survival
+model — on the same held-out tokens a high score marks a token as *less* likely to hold a
+fifth of its trigger market cap for 24 hours (AUC 0.27 [0.14, 0.40]; the priors 0.29). What it
+ranks is a short move, not a coin that lasts.
+
+The zeros differ. Lineage and community were fitted negative; lineage at a trigger is the
+declared-socials score alone, so that is the version 5 reversal measured again — and the
+backtest finds the reversal does not survive stratifying by age, so read the zero as "no
+support at this lifecycle point", not "socials hurt". Attention and momentum were never observed
+at a trigger and could not be weighed at all. Re-fit when a new window of tokens has resolved:
+`python -m calibration.report --force --record scoring/weights/fitted-v2.json`.
+
+The version 5 figure for top-10 concentration, out-of-sample AUC 0.90, did not hold: on 163
+rows it is **0.66 [0.44, 0.88]**, an interval that spans chance. Corrected in place below; it
+remains a lead and still carries no weight — it is not a pillar.
 
 **Version 6 changes — the version 5 findings re-run on nearly three times the data.**
 No weight moved; these are the same measurements on 239 resolved tokens instead of 76,
 and all three held. The artefact got worse (65% of rows pinned on one value, up from
-51%), the lead got stronger (out-of-sample AUC 0.90, and the split intervals no longer
-overlap), and the declared-socials reversal is now measured on cells of 49, 120 and 56
+51%), the lead got stronger (out-of-sample AUC 0.90 at the time — it did not hold, see
+version 7 — and the split intervals no longer overlap), and the declared-socials reversal is now measured on cells of 49, 120 and 56
 rather than 18, 35 and 20. Figures below are updated in place.
 
 **Version 5 changes — the first pillar added because something was *measured*, and
@@ -42,10 +95,11 @@ moved — but two of its results changed this file.
   not overturn 832,941 launches — but do not carry the lift into this lifecycle point
   as though it had been verified here. See `docs/x-investigation.md` §2.
 - **One feature survives every check** against a 1.5x-in-6h outcome: top-10
-  concentration excluding LP, *lower being better*, out-of-sample AUC **0.90** with 1%
+  concentration excluding LP, *lower being better*, out-of-sample AUC **0.66**
+  [0.44, 0.88] (quoted as 0.90 on fewer rows; the interval now spans chance) with 1%
   tie mass and the same direction in all four age bands. It is already a hard filter at
   35%; as a graded signal it is a lead, not an edge, and carries no weight. Measured on
-  the 114 rows where a safety source answered concentration at all — its own selection.
+  the 163 rows where a safety source answered concentration at all — its own selection.
 
 **Version 4 changes — a deliberate weakening of one hard filter, stated plainly.**
 The first live collection run scored **zero of thirteen** real tokens. Every one was
@@ -84,7 +138,8 @@ From a published survival analysis of 832,941 pump.fun launches (Kaplan-Meier + 
 - That model reached concordance **0.858**. Treat it as the bar.
 
 Two things follow. First, `socials_declared` is the single best-evidenced feature available and
-it is free — weight it accordingly inside Lineage/Community. Second, the ceiling here is low:
+it is free — weight it accordingly inside Lineage/Community. (At this screener's lifecycle
+point the version 7 fit found no support for it: see that note.) Second, the ceiling here is low:
 the strongest known signal takes you from ~0.1% to ~1.9%. Score honestly against that.
 
 **A third thing follows that the version 5 note spells out: these figures are about
@@ -132,9 +187,9 @@ Output for rejects: `{ "ticker": ..., "score": null, "rejected_by": [...] }`
 
 ## STEP 2 — Scoring model
 
-Score each pillar 0–100, then apply the weight vector. **Weights below are a starting prior — replace them with the output of the calibration protocol in Step 5.**
+Score each pillar 0–100, then apply the weight vector. **Weights below are the version 7 fit (`scoring/weights/fitted-v1.json`), with the prior each replaced in brackets. Re-fit them with the calibration protocol in Step 5; a fit on 190 tokens is a start, not an answer.**
 
-### A. Attention velocity — weight 0.28
+### A. Attention velocity — weight 0.00 (prior 0.28; never observed at a trigger, not yet fitted)
 
 The core FOMO signal. Measure acceleration, not volume.
 
@@ -144,21 +199,21 @@ The core FOMO signal. Measure acceleration, not volume.
 - **Tier-1 crossover**: first unpaid engagement from a >100k-follower account is a step-change signal. Paid promo is not — check for disclosure patterns and simultaneous multi-ticker posting.
 - **Reply-to-post ratio**: real communities argue. Threads that are all one-way posting with no replies indicate manufactured presence.
 
-### B. Community depth — weight 0.20
+### B. Community depth — weight 0.00 (prior 0.20; fitted negative, clamped)
 
 - **Telegram/Discord member growth curve** and, more importantly, **speaker ratio**: unique daily speakers ÷ members. Below 2% is a dead room with a big number on it.
 - **Messages per hour**, and whether the content is organic conversation or repeated call-channel copypasta.
 - **Retention**: are members from 48h ago still active, or is the room churning through fresh arrivals?
 - **Moderator behaviour**: aggressive deletion of price/sell discussion is a negative signal, not a positive one.
 
-### C. Lineage & meta fit — weight 0.15
+### C. Lineage & meta fit — weight 0.00 (prior 0.15; fitted negative, clamped)
 
 - Does the token belong to a **currently running meta** (an active mascot family, chain-native narrative, or news-driven theme)? Membership in a live meta is one of the more durable drivers.
 - **Position within the lineage**: first mover, credible second, or late derivative. Late derivatives of an already-extended meta score low regardless of social heat.
 - **Meme legibility**: can the joke be grasped from ticker + image in under two seconds, with no explanation? Low-legibility memes rarely cross out of the original community.
 - **Cross-platform crossover**: TikTok, Reddit, or Google Trends movement indicates the audience is expanding beyond crypto-native buyers. This is the single most valuable expansion signal — weight it heavily within this pillar.
 
-### D. On-chain structure — weight 0.22
+### D. On-chain structure — weight 0.55 (prior 0.22)
 
 - **Holder growth curve**: steep, steady adds are constructive. Vertical spikes followed by plateaus usually mark a completed rotation.
 - **Cohort flow**: net buy/sell pressure split by wallet size. New small wallets accumulating while early large wallets distribute is a topping structure — score down hard even if social is peaking.
@@ -167,14 +222,14 @@ The core FOMO signal. Measure acceleration, not volume.
 - **Turnover**: 24h volume ÷ market cap. Very high turnover with flat price means churn without absorption.
 - **Liquidity depth vs mcap**: thin books move violently in both directions. Note this in the bear case explicitly.
 
-### E. Asymmetry & timing — weight 0.15
+### E. Asymmetry & timing — weight 0.37 (prior 0.15)
 
 - **Market cap band**: asymmetry concentrates in low bands, and so does total loss. Score the band, then let the risk pillars adjudicate.
 - **Age**: the survival curve is brutally front-loaded. Score age against the calibrated survival curve from Step 5, not against intuition.
 - **Distance from ATH** and time spent consolidating.
 - **Listing trajectory**: DEX → aggregator inclusion → CEX perp → CEX spot. Each rung is a distinct liquidity unlock. Position on this ladder matters more than any single listing rumour.
 
-### F. Mindshare — weight 0.00 (collected, not yet weighted)
+### F. Mindshare — weight 0.08 (prior 0.00)
 
 Share of the attention observed across the measurement universe at the moment of the snapshot.
 Computed by `collectors/mindshare.py` from three raw components, each a share of the universe
@@ -199,7 +254,7 @@ Three cautions for whoever fits this in Phase 2:
    DexScreener. `universe_size` is stored on every row, and shares from different universes are
    not comparable.
 
-### G. Momentum & flow — weight 0.00 (collected, not yet weighted)
+### G. Momentum & flow — weight 0.00 (collected; never observed at a trigger, not yet fitted)
 
 The shape of the last hour rather than the level of the last day. Computed by
 `scoring/pillars.py::momentum_flow` from the schema 7 `momentum` group, which stores
@@ -227,7 +282,8 @@ Three cautions for whoever fits this in Phase 2:
    measuring the stratum.
 3. **Nothing here has been fitted.** Weight 0.00 is not a claim that momentum is
    worthless; it is a refusal to invent a prior in the same commit that invents the
-   feature.
+   feature. The version 7 fit could not see it either: none of its snapshots carried
+   these fields.
 
 ### Modifiers (applied after weighting)
 

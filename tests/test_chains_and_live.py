@@ -531,7 +531,9 @@ class TestLivePayload:
         payload = self.payload()
         assert payload["paper_mode"] is True
         assert payload["weights_are_calibrated"] is False
-        assert "uncalibrated priors" in payload["headline_warning"]
+        assert payload["weights_fit"]["weights_version"] == payload["weights_version"]
+        assert "too small to establish an edge" in payload["headline_warning"]
+        assert "nothing on this page is a prediction" in payload["headline_warning"]
 
     def test_every_row_carries_its_chain_and_a_display_label(self):
         payload = self.payload()

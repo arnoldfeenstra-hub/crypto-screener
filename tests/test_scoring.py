@@ -287,9 +287,10 @@ class TestRunner:
         assert "no edge in this batch" in batch.verdict()
 
     def test_even_a_high_score_is_reported_as_unmeasured(self):
-        """There is no wording in which uncalibrated priors become a signal."""
+        """There is no wording in which a small-sample fit becomes a signal."""
         batch = ScoringRunner().score_batch([candidate()], safety=SAFE)
-        assert "uncalibrated priors" in batch.verdict()
+        assert "not a recommendation" in batch.verdict()
+        assert P.WEIGHTS_VERSION in batch.verdict()
 
     def test_exclusion_summary_separates_evidence_from_ignorance(self):
         runner = ScoringRunner()
@@ -354,9 +355,10 @@ class TestPromptWiring:
         # version is stamped on every scored row and is the only way back from a
         # score to the weights that produced it. 5 added Pillar G at weight 0.00;
         # 6 re-ran its findings on 239 resolved tokens instead of 76 and moved no
-        # weight. Narrative-only edits bump it too -- the rule is every edit, so
-        # that a stored version always names one exact file.
-        assert prompt_version() == 6
+        # weight; 7 replaced the priors with the first fitted vector (fitted-v1).
+        # Narrative-only edits bump it too -- the rule is every edit, so that a
+        # stored version always names one exact file.
+        assert prompt_version() == 7
 
     def test_the_no_edge_threshold_matches_the_prompt(self):
         assert NO_EDGE_THRESHOLD == 55.0

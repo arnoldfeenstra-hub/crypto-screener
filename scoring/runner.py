@@ -15,10 +15,11 @@ a model, and it is the only part that calls the API.
 
 Three rules this module exists to keep
 --------------------------------------
-**Paper mode is the default and the only mode.** CLAUDE.md: the weights are
-uncalibrated priors, so output here is a data collector that happens to emit
-numbers, not a signal generator. ``paper_mode=False`` is not implemented and
-raises; there is nothing for it to switch on.
+**Paper mode is the default and the only mode.** CLAUDE.md: the weights are a
+fit on a sample too small to establish an edge, so output here is a data
+collector that happens to emit numbers, not a signal generator.
+``paper_mode=False`` is not implemented and raises; there is nothing for it to
+switch on.
 
 **No execution path, ever** (hard rule 4). No exchange keys, no signing, no order
 placement. The output is a ranked list a human reads.
@@ -59,7 +60,7 @@ from collectors.store import Store
 from filters.hard_filters import Verdict, apply
 from scoring.candidate import candidate_from_row, filter_input_from_candidate
 from scoring.pillars import WEIGHTS, WEIGHTS_VERSION, PillarResult, score_candidate
-from scoring.prompt_meta import PROMPT_PATH, prompt_version, system_prompt
+from scoring.prompt_meta import PROMPT_PATH, prompt_version, system_prompt, weights_caveat
 
 log = logging.getLogger("scoring")
 
@@ -226,12 +227,13 @@ class ScoredBatch:
         if best < NO_EDGE_THRESHOLD:
             return (
                 f"no edge in this batch (best score {best:.1f} < {NO_EDGE_THRESHOLD:.0f}); "
-                "weights are uncalibrated priors, so this is a logged observation, "
-                "not a recommendation"
+                f"weights {WEIGHTS_VERSION} establish no edge, so this is a logged "
+                "observation, not a recommendation"
             )
         return (
-            f"best score {best:.1f}, but weights are uncalibrated priors -- "
-            "Phase 2 has not run, so no edge has been measured"
+            f"best score {best:.1f}, but weights {WEIGHTS_VERSION} were fitted on too "
+            "small a sample to establish an edge -- a logged observation, not a "
+            "recommendation"
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -292,9 +294,10 @@ class ScoringRunner:
     ) -> None:
         if not paper_mode:
             raise NotImplementedError(
-                "paper mode is the only mode. The weights are uncalibrated priors "
-                "(CLAUDE.md), so there is no live mode to switch on until Phase 2 "
-                "shows the top decile beating the base rate out of sample."
+                "paper mode is the only mode. The weights were fitted on a sample "
+                "too small to establish an edge (CLAUDE.md), so there is no live "
+                "mode to switch on until Phase 2 shows the top decile beating the "
+                "base rate out of sample."
             )
         self.store = store
         self.paper_mode = True
@@ -569,8 +572,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "safety_measured": len(runner.last_safety_reports),
             **batch.exclusion_summary(),
             "warning": (
-                "Weights are uncalibrated priors. Phase 2 has not run, so no edge "
-                "has been measured. Do not read these as predictions."
+                f"{weights_caveat(WEIGHTS_VERSION)} No edge has been established. "
+                "Do not read these as predictions."
             ),
         }
     print(json.dumps(payload, indent=2, default=str))

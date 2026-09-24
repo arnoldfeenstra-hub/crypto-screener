@@ -34,9 +34,10 @@ trigger, so the live table shows real filter verdicts rather than a column of
 excludes -- the view degrades toward showing fewer scores, never toward showing
 unearned ones.
 
-The scores here carry the same warning as everywhere else: uncalibrated priors,
-Phase 0, no measured edge, nothing predictive. This endpoint reads. It holds no
-credential, and there is no code path from here to an order (hard rule 4).
+The scores here carry the same warning as everywhere else: weights fitted on a
+sample too small to establish an edge, Phase 0, nothing predictive. This endpoint
+reads. It holds no credential, and there is no code path from here to an order
+(hard rule 4).
 """
 
 from __future__ import annotations
@@ -74,7 +75,11 @@ from collectors.trigger_rule import (  # noqa: E402
 from filters.hard_filters import apply as apply_filters  # noqa: E402
 from scoring.candidate import candidate_from_row, filter_input_from_candidate  # noqa: E402
 from scoring.pillars import WEIGHTS, WEIGHTS_VERSION, score_candidate  # noqa: E402
-from scoring.prompt_meta import prompt_version  # noqa: E402
+from scoring.prompt_meta import (  # noqa: E402
+    prompt_version,
+    weights_caveat,
+    weights_record,
+)
 
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 250
@@ -92,9 +97,8 @@ SAFETY_DEPLOYER_LIMIT = 10
 CACHE_SECONDS = 45
 
 HEADLINE_WARNING = (
-    "Phase 0 -- collection only. The scoring weights are uncalibrated priors: "
-    "guesses. No edge has been measured, so nothing on this page is a prediction "
-    "or a recommendation."
+    f"Phase 0 -- collection only. {weights_caveat(WEIGHTS_VERSION)} No edge has been "
+    "established, so nothing on this page is a prediction or a recommendation."
 )
 
 LIVE_NOTICE = (
@@ -265,7 +269,10 @@ def build_live_payload(
         "prompt_version": prompt_version(),
         "weights_version": WEIGHTS_VERSION,
         "weights": WEIGHTS,
+        # False until Phase 2's gate is met. A fitted vector adopted before it --
+        # which is what is in force -- is described by weights_fit, not by this.
         "weights_are_calibrated": False,
+        "weights_fit": weights_record(WEIGHTS_VERSION),
         "data_sources": [SOURCE_NAME],
         "all_rows_synthetic": False,
         "synthetic_notice": None,
@@ -298,23 +305,24 @@ def build_live_payload(
             for name in resolved
         ],
         "momentum": {
-            "prior_weight_in_composite": WEIGHTS.get("momentum_flow", 0.0),
+            "weight_in_composite": WEIGHTS.get("momentum_flow", 0.0),
             "definition": (
                 "The shape of the last hour rather than the level of the last day: "
                 "the buy/sell split over 1h and 24h, 1h volume against the 6h rate, "
                 "and the per-window price change."
             ),
             "caveat": (
-                "Weight 0.00 in the composite -- collected and shown, fitted by "
-                "nobody yet. Window ratios are dropped when the token is younger "
-                "than the longer window, because they pin at the window ratio and "
-                "measure age instead."
+                f"Weight {WEIGHTS.get('momentum_flow', 0.0):.2f} in the composite "
+                f"({WEIGHTS_VERSION}): no snapshot the weights were fitted on carried "
+                "these fields, so no fit has weighed them yet. Window ratios are "
+                "dropped when the token is younger than the longer window, because "
+                "they pin at the window ratio and measure age instead."
             ),
         },
         "mindshare": {
             "method_version": mindshare_mod.METHOD_VERSION,
             "component_weights": mindshare_mod.COMPONENT_WEIGHTS,
-            "prior_weight_in_composite": WEIGHTS.get("mindshare", 0.0),
+            "weight_in_composite": WEIGHTS.get("mindshare", 0.0),
             "definition": (
                 "Share of the attention observed across one measurement universe: "
                 "24h transactions, 24h volume and DexScreener boost spend, each as a "
@@ -323,8 +331,9 @@ def build_live_payload(
             ),
             "caveat": (
                 "The universe is the tokens this poll saw, so shares from two polls "
-                "are not comparable. Weighted 0.00 in the composite: collected and "
-                "scored, but no prior was invented for it."
+                f"are not comparable. Weighted {WEIGHTS.get('mindshare', 0.0):.2f} in "
+                f"the composite ({WEIGHTS_VERSION}); it reads 24h volume, as the "
+                "on-chain pillar does, so read the two weights together."
             ),
         },
         "trigger": {

@@ -37,12 +37,8 @@ from collectors.config import load_config
 from collectors.mindshare import COMPONENT_WEIGHTS as MINDSHARE_COMPONENT_WEIGHTS
 from collectors.mindshare import METHOD_VERSION as MINDSHARE_METHOD_VERSION
 from collectors.store import Store
-from scoring.pillars import (
-    MINDSHARE_PRIOR_WEIGHT,
-    MOMENTUM_PRIOR_WEIGHT,
-    WEIGHTS,
-    composite,
-)
+from scoring.pillars import WEIGHTS, composite
+from scoring.prompt_meta import weights_caveat, weights_record
 from scoring.runner import WEIGHTS_VERSION, prompt_version
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -272,7 +268,10 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
         "prompt_version": prompt_version(),
         "weights_version": WEIGHTS_VERSION,
         "weights": WEIGHTS,
+        # False until Phase 2's gate is met. A fitted vector adopted before it --
+        # which is what is in force -- is described by weights_fit, not by this.
         "weights_are_calibrated": False,
+        "weights_fit": weights_record(WEIGHTS_VERSION),
         "data_sources": sorted(sources),
         "chains": [
             {
@@ -283,7 +282,7 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             for name, count in chain_counts.items()
         ],
         "momentum": {
-            "prior_weight_in_composite": MOMENTUM_PRIOR_WEIGHT,
+            "weight_in_composite": WEIGHTS["momentum_flow"],
             "definition": (
                 "The shape of the last hour rather than the level of the last day: "
                 "the buy/sell split over 1h and 24h, 1h volume against the 6h rate, "
@@ -291,8 +290,11 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
                 "time."
             ),
             "caveat": (
-                "Weight 0.00 in the composite. A ratio between two nested windows "
-                "reads a token's age until the longer window has filled -- and pins "
+                f"Weight {WEIGHTS['momentum_flow']:.2f} in the composite "
+                f"({WEIGHTS_VERSION}): no snapshot the weights were fitted on carried "
+                "these fields, so no fit has weighed them yet. A ratio between two "
+                "nested windows reads a token's age until the longer window has "
+                "filled -- and pins "
                 "at the window ratio when every trade falls in the shorter one -- so "
                 "those components are dropped for a token younger than the longer "
                 "window rather than scored. The buy/sell split is a ratio inside one "
@@ -302,7 +304,7 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
         "mindshare": {
             "method_version": MINDSHARE_METHOD_VERSION,
             "component_weights": MINDSHARE_COMPONENT_WEIGHTS,
-            "prior_weight_in_composite": MINDSHARE_PRIOR_WEIGHT,
+            "weight_in_composite": WEIGHTS["mindshare"],
             "definition": (
                 "Share of the attention observed across one measurement universe: "
                 "24h transactions, 24h volume and DexScreener boost spend, each as a "
@@ -312,9 +314,10 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             "caveat": (
                 "The universe is whatever the collector polled -- tokens reach it by "
                 "being boosted or profiled on DexScreener -- so it is a biased sample "
-                "and shares from different universes are not comparable. Weighted 0.00 "
-                "in the composite: it is collected and scored, but no prior was "
-                "invented for it, and Phase 2 has not fitted one."
+                "and shares from different universes are not comparable. Weighted "
+                f"{WEIGHTS['mindshare']:.2f} in the composite ({WEIGHTS_VERSION}); it "
+                "reads 24h volume, as the on-chain pillar does, so read the two "
+                "weights together."
             ),
         },
         "all_rows_synthetic": all_synthetic,
@@ -326,9 +329,9 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
             else None
         ),
         "headline_warning": (
-            "Phase 0 -- collection only. The scoring weights are uncalibrated priors: "
-            "guesses. No edge has been measured, so nothing on this page is a "
-            "prediction or a recommendation."
+            f"Phase 0 -- collection only. {weights_caveat(WEIGHTS_VERSION)} No edge "
+            "has been established, so nothing on this page is a prediction or a "
+            "recommendation."
         ),
         "progress": {
             "triggered_tokens": triggered,
@@ -351,6 +354,8 @@ def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
         "calibration": {
             "verdict": calibration["verdict"],
             "explanation": calibration["explanation"],
+            "label": calibration["label"],
+            "threshold": calibration["threshold"],
             "base_rate_by_mcap_band": calibration["base_rate_by_mcap_band"],
             "fit": calibration.get("fit"),
         },

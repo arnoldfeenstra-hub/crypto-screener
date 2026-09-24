@@ -236,12 +236,14 @@ class TestPillar:
         assert pillar.components["organic_tilt"] is None
 
 
-class TestZeroWeight:
-    """The composite must be numerically identical to the version without mindshare.
+class TestTheWeightComesFromAFit:
+    """Mindshare's prior weight was 0.0, and its weight now is whatever a fit gave it.
 
     .claude/rules/stats.md allows only fitted coefficients into the weight vector.
-    Mindshare has no outcome data behind it, so its prior weight is 0.0 -- and that
-    has to be a fact the tests check, not a comment somebody can quietly edit.
+    Mindshare had no outcome data behind it when it was added, so its prior was 0.0
+    and it moved no score; the first fit (scoring/weights/fitted-v1.json) gave it
+    0.08. Both halves have to be facts the tests check, not comments somebody can
+    quietly edit.
     """
 
     def full_candidate(self):
@@ -270,33 +272,41 @@ class TestZeroWeight:
             },
         }
 
-    def test_the_prior_weight_is_zero(self):
-        assert P.WEIGHTS["mindshare"] == 0.0
+    def test_the_prior_was_zero_and_the_fit_gave_it_a_weight(self):
         assert P.MINDSHARE_PRIOR_WEIGHT == 0.0
+        assert P.PRIOR_WEIGHTS["mindshare"] == 0.0
+        assert P.WEIGHTS["mindshare"] == 0.08
 
-    def test_the_five_original_weights_are_unchanged(self):
-        assert P.WEIGHTS["attention_velocity"] == 0.28
-        assert P.WEIGHTS["community_depth"] == 0.20
-        assert P.WEIGHTS["lineage_meta_fit"] == 0.15
-        assert P.WEIGHTS["onchain_structure"] == 0.22
-        assert P.WEIGHTS["asymmetry_timing"] == 0.15
-        assert sum(v for k, v in P.WEIGHTS.items() if k != "mindshare") == pytest.approx(1.0)
+    def test_the_priors_it_replaced_are_kept_unchanged(self):
+        assert P.PRIOR_WEIGHTS["attention_velocity"] == 0.28
+        assert P.PRIOR_WEIGHTS["community_depth"] == 0.20
+        assert P.PRIOR_WEIGHTS["lineage_meta_fit"] == 0.15
+        assert P.PRIOR_WEIGHTS["onchain_structure"] == 0.22
+        assert P.PRIOR_WEIGHTS["asymmetry_timing"] == 0.15
+        assert sum(P.PRIOR_WEIGHTS.values()) == pytest.approx(1.0)
 
-    def test_a_maximal_mindshare_does_not_move_the_composite(self):
+    def test_under_the_priors_a_maximal_mindshare_does_not_move_the_composite(self):
         candidate = self.full_candidate()
-        with_it = P.score_candidate(candidate)
-        without = P.score_candidate({**candidate, "mindshare": {}})
+        with_it = P.score_candidate(candidate, weights=P.PRIOR_WEIGHTS)
+        without = P.score_candidate({**candidate, "mindshare": {}}, weights=P.PRIOR_WEIGHTS)
         assert with_it.score == pytest.approx(without.score)
         assert with_it.raw_score == pytest.approx(without.raw_score)
 
+    def test_under_the_fitted_weights_it_does(self):
+        candidate = self.full_candidate()
+        with_it = P.score_candidate(candidate)
+        without = P.score_candidate({**candidate, "mindshare": {}})
+        assert with_it.raw_score != pytest.approx(without.raw_score)
+
     def test_the_pillar_is_still_computed_and_reported(self):
-        """Zero weight means it does not move the score, not that it is not measured."""
+        """A weight decides what the pillar moves, not whether it is measured."""
         result = P.score_candidate(self.full_candidate())
         assert result.pillar_scores()["mindshare"] is not None
 
-    def test_a_row_where_only_mindshare_resolved_has_no_composite(self):
-        """No score, rather than a score built entirely on a zero-weighted pillar."""
-        result = P.score_candidate({"mindshare": {"percentile": 90.0}})
+    def test_a_row_where_only_zero_weighted_pillars_resolved_has_no_composite(self):
+        """No score, rather than a score built entirely on zero-weighted pillars."""
+        result = P.score_candidate({"mindshare": {"percentile": 90.0}}, weights=P.PRIOR_WEIGHTS)
         assert result.raw_score is None
         assert result.score is None
         assert result.pillar_scores()["mindshare"] is not None
+        assert P.composite({"lineage_meta_fit": 80.0, "momentum_flow": 70.0}) == (None, 0.0)

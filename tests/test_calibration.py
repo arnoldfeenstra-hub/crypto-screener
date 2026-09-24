@@ -40,12 +40,16 @@ from calibration.report import (
     VERDICT_EDGE,
     VERDICT_NO_EDGE,
     VERDICT_NOT_READY,
+    base_rate_by_mcap_band,
+    held_out_by_label,
     render,
     verdict,
 )
 from collectors.outcomes import OutcomeTracker, PriceObservation
 from collectors.schema import Market, Snapshot
 from collectors.store import Store
+from scoring import pillars as P
+from scoring.prompt_meta import WEIGHTS_DIR, weights_caveat, weights_record
 from scoring.runner import ScoringRunner
 
 T0 = 1788912000000
@@ -330,7 +334,7 @@ class TestVerdict:
     def test_an_unfinished_phase_zero_is_not_ready(self):
         code, text = verdict(None, check_exit_criteria(5, 0, 5, 5))
         assert code == VERDICT_NOT_READY
-        assert "uncalibrated prior" in text
+        assert "must not be read as a prediction" in text
 
     def test_a_real_edge_is_reported_as_one(self):
         # Classes interleaved in time, so the chronological split leaves positives
@@ -361,7 +365,7 @@ class TestReportAgainstTheStore:
             report = render(store)
         assert report["verdict"] == VERDICT_NOT_READY
         assert report["phase_0_exit_criteria"]["met"] is False
-        assert "uncalibrated prior" in report["explanation"]
+        assert "must not be read as a prediction" in report["explanation"]
 
     def test_the_report_carries_the_base_rate_by_band(self):
         with Store() as store:
@@ -377,12 +381,37 @@ class TestReportAgainstTheStore:
             ])
             tracker.refresh_labels(as_of_ms=T0 + 8 * DAY)
             ScoringRunner(store).run(limit=10)
-            report = render(store)
+            report = render(store, label="survived_7d", threshold=None)
 
         assert report["base_rate_by_mcap_band"]["<500k"]["n"] == 1
         assert report["labelled_rows_available"] == 1
         # One row is nowhere near the gate, so the verdict stays honest about that.
         assert report["verdict"] == VERDICT_NOT_READY
+
+
+def two_token_store(store: Store, monkeypatch, *, cycles: int) -> list[Snapshot]:
+    """Two tokens scored ``cycles`` times an hour apart: Up doubles in its first
+    half hour, Flat barely moves, and neither dies."""
+    snapshots = []
+    for index, (contract, peak) in enumerate((("Up", 800_000.0), ("Flat", 420_000.0))):
+        snap = Snapshot(
+            chain="solana", contract=contract, trigger="mcap_250k", source="test",
+            ts=T0 + index * MIN, market=Market(mcap_usd=400_000.0),
+        )
+        store.append_snapshot(snap)
+        snapshots.append(snap)
+        OutcomeTracker(store).record([
+            PriceObservation(snapshot_id=snap.snapshot_id, ts=snap.ts + 30 * MIN,
+                             mcap_usd=peak, source="test"),
+        ])
+    OutcomeTracker(store).refresh_labels(as_of_ms=T0 + 8 * DAY)
+    for cycle in range(cycles):
+        # An hour apart, like the collector's schedule.
+        monkeypatch.setattr(
+            "scoring.runner.now_ms", lambda cycle=cycle: T0 + (cycle + 1) * 60 * MIN
+        )
+        ScoringRunner(store).run(limit=10)
+    return snapshots
 
 
 class TestTrainingRowsFromTheStore:
@@ -394,32 +423,9 @@ class TestTrainingRowsFromTheStore:
     ones in test, and fed the fit social counts collected after the trigger.
     """
 
-    def _store(self, store: Store, monkeypatch, *, cycles: int) -> list[Snapshot]:
-        snapshots = []
-        # Up doubles in its first half hour; Flat barely moves. Neither dies.
-        for index, (contract, peak) in enumerate((("Up", 800_000.0), ("Flat", 420_000.0))):
-            snap = Snapshot(
-                chain="solana", contract=contract, trigger="mcap_250k", source="test",
-                ts=T0 + index * MIN, market=Market(mcap_usd=400_000.0),
-            )
-            store.append_snapshot(snap)
-            snapshots.append(snap)
-            OutcomeTracker(store).record([
-                PriceObservation(snapshot_id=snap.snapshot_id, ts=snap.ts + 30 * MIN,
-                                 mcap_usd=peak, source="test"),
-            ])
-        OutcomeTracker(store).refresh_labels(as_of_ms=T0 + 8 * DAY)
-        for cycle in range(cycles):
-            # An hour apart, like the collector's schedule.
-            monkeypatch.setattr(
-                "scoring.runner.now_ms", lambda cycle=cycle: T0 + (cycle + 1) * 60 * MIN
-            )
-            ScoringRunner(store).run(limit=10)
-        return snapshots
-
     def test_a_rescored_token_is_one_row_not_one_per_cycle(self, monkeypatch):
         with Store() as store:
-            self._store(store, monkeypatch, cycles=3)
+            two_token_store(store, monkeypatch, cycles=3)
             assert len(store.all_scores()) == 6
             rows = rows_from_store(store, label="max_multiple_6h", threshold=1.5)
         assert len(rows) == 2
@@ -428,7 +434,7 @@ class TestTrainingRowsFromTheStore:
         """A forward split orders by when the token triggered, not when it was
         last re-scored."""
         with Store() as store:
-            snapshots = self._store(store, monkeypatch, cycles=3)
+            snapshots = two_token_store(store, monkeypatch, cycles=3)
             first = store.trigger_time_scores()
             rows = rows_from_store(store, label="max_multiple_6h", threshold=1.5)
         assert [r["scored_at_ms"] for r in first] == [T0 + 60 * MIN] * 2
@@ -438,20 +444,20 @@ class TestTrainingRowsFromTheStore:
 
     def test_a_multiple_is_read_against_its_threshold(self, monkeypatch):
         with Store() as store:
-            self._store(store, monkeypatch, cycles=1)
+            two_token_store(store, monkeypatch, cycles=1)
             rows = rows_from_store(store, label="max_multiple_6h", threshold=1.5)
         assert [r.label for r in rows] == [1, 0]
 
     def test_a_multiple_without_a_threshold_is_refused(self, monkeypatch):
         """A default threshold would be a modelling decision made silently."""
         with Store() as store:
-            self._store(store, monkeypatch, cycles=1)
+            two_token_store(store, monkeypatch, cycles=1)
             with pytest.raises(ValueError, match="threshold"):
                 rows_from_store(store, label="max_multiple_6h")
 
     def test_an_unresolved_token_is_left_out_not_counted_as_a_negative(self, monkeypatch):
         with Store() as store:
-            self._store(store, monkeypatch, cycles=1)
+            two_token_store(store, monkeypatch, cycles=1)
             late = Snapshot(
                 chain="solana", contract="Late", trigger="mcap_250k", source="test",
                 ts=T0 + 2 * MIN, market=Market(mcap_usd=400_000.0),
@@ -468,3 +474,92 @@ class TestTrainingRowsFromTheStore:
         assert outcome({"survived_24h": None}, "survived_24h", None) is None
         assert outcome(None, "survived_24h", None) is None
         assert outcome({"max_multiple_6h": 1.5}, "max_multiple_6h", 1.5) == 1
+
+
+class TestTheWeightsInForce:
+    """stats.md: the weight vector may be replaced only by fitted coefficients that
+    cleared the checks, with prompt_version bumped in the same commit. The record in
+    scoring/weights/ is what makes that checkable: WEIGHTS must be a copy of it."""
+
+    def record(self) -> dict:
+        record = weights_record(P.WEIGHTS_VERSION)
+        assert record is not None, f"no record for {P.WEIGHTS_VERSION} in {WEIGHTS_DIR}"
+        return record
+
+    def test_the_vector_in_force_is_the_recorded_one(self):
+        record = self.record()
+        assert record["weights_version"] == P.WEIGHTS_VERSION
+        assert record["weights"] == P.WEIGHTS
+        assert record["replaces"]["weights"] == P.PRIOR_WEIGHTS
+        assert sum(P.WEIGHTS.values()) == pytest.approx(1.0)
+        assert all(w >= 0 for w in P.WEIGHTS.values())
+
+    def test_every_check_but_the_gate_was_cleared(self):
+        """The gate is the one check this vector was adopted without, on purpose,
+        and the record says so rather than hiding it."""
+        record = self.record()
+        failed = {name for name, passed in record["checks"].items() if not passed}
+        assert failed <= {"phase_0_exit_criteria_met"}
+        assert record["forced_past_exit_criteria"] is (
+            not record["phase_0_exit_criteria"]["met"]
+        )
+
+    def test_the_record_carries_what_stats_md_requires(self):
+        record = self.record()
+        test = record["test"]
+        assert test["positives"] > 0 and test["base_rate_ci95"]
+        assert test["regimes"], "a result is broken out by regime"
+        for vector in ("fitted", "replaced"):
+            block = record["out_of_sample"][vector]
+            assert block["auc_ci95"] and block["top_decile_lift_ci95"]
+        assert record["out_of_sample"]["concordance_benchmark"] == 0.858
+        assert record["out_of_sample"]["final_score"]["fitted"]["auc_ci95"]
+        # Split forward in time: nothing in train triggered after the test began.
+        assert record["train"]["to"] <= record["test"]["from"]
+
+    def test_the_caveat_says_what_the_weights_are(self):
+        fitted = weights_caveat(P.WEIGHTS_VERSION)
+        assert "too small to establish an edge" in fitted
+        assert "AUC" in fitted and "coin flip" in fitted
+        assert weights_caveat("priors-v3") == (
+            "The scoring weights are uncalibrated priors: guesses."
+        )
+
+    def test_the_deployed_vector_is_rounded_and_still_sums_to_one(self):
+        model = LogisticModel()
+        model.weights = {"onchain_structure": 0.333, "asymmetry_timing": 0.333,
+                         "mindshare": 0.333}
+        weights = model.deployable_weights()
+        assert sum(weights.values()) == pytest.approx(1.0)
+        assert all(round(v, 2) == v for v in weights.values())
+
+    def test_score_candidate_takes_a_vector_for_calibration(self):
+        candidate = {"market_cap_usd": 400_000.0, "liquidity_usd": 60_000.0,
+                     "volume_24h_usd": 600_000.0, "age_hours": 5.0,
+                     "socials_declared": {"telegram": True, "x": True, "website": True}}
+        default = P.score_candidate(candidate)
+        assert default.raw_score == P.score_candidate(candidate, weights=P.WEIGHTS).raw_score
+        assert default.raw_score != P.score_candidate(candidate, weights=P.PRIOR_WEIGHTS).raw_score
+
+
+class TestReportFigures:
+    """The report's own arithmetic, on the two-token store above."""
+
+    def test_a_band_counts_a_multiple_against_the_threshold(self, monkeypatch):
+        """A 1.05x is a number, and every number but zero is truthy: counted by
+        truthiness, every token that traded at all read as a surge."""
+        with Store() as store:
+            two_token_store(store, monkeypatch, cycles=1)
+            bands = base_rate_by_mcap_band(store, "max_multiple_6h", 1.5)
+        assert bands["<500k"] == {"n": 2, "positives": 1, "base_rate": 0.5}
+
+    def test_the_by_label_check_uses_only_rows_after_the_training_window(
+        self, monkeypatch
+    ):
+        with Store() as store:
+            snapshots = two_token_store(store, monkeypatch, cycles=1)
+            rows = rows_from_store(store, label="max_multiple_6h", threshold=1.5)
+            result = fit(rows, exit_criteria=None, test_fraction=0.5)
+            assert result.train_window == (snapshots[0].ts, snapshots[0].ts)
+            entries = held_out_by_label(store, result)
+        assert {e["n"] for e in entries if e["label"] == "max_multiple_6h"} == {1}

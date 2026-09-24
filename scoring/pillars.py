@@ -5,18 +5,20 @@ against *these* numbers, so they cannot come from a model whose output varies
 between calls; the LLM's job (scoring/runner.py) is the qualitative half -- thesis,
 bear case, falsifier -- not the arithmetic.
 
-Everything here is a pure function of one candidate dict. The weights are the
-uncalibrated priors from prompts/score.md and are wrong in a way nobody can yet
-quantify; ``WEIGHTS`` exists to be replaced by ``calibration/fit.py`` output, and
-``PROMPT_VERSION`` is recorded on every scored row so a score can always be traced
-to the weights that produced it.
+Everything here is a pure function of one candidate dict. ``WEIGHTS`` is the first
+fitted vector (prompts/score.md version 7): ``calibration/fit.py`` output on a
+sample too small to establish an edge, adopted before Phase 0's gate was met, with
+its calibration record in ``scoring/weights/``. ``PRIOR_WEIGHTS`` keeps the guesses
+it replaced. ``WEIGHTS_VERSION`` and ``prompt_version`` are recorded on every
+scored row so a score can always be traced to the weights that produced it.
 
 What a Phase 0 row actually scores
 ----------------------------------
-Pillars A (attention), B (community) and C (lineage) read social, trend and meta
-fields that no collector fills yet, so they come back ``None`` -- not zero. D
-(on-chain structure), E (asymmetry), F (mindshare) and G (momentum) resolve from
-what DexScreener answers. The composite is renormalised over
+Pillar A (attention) reads X fields that nothing fills at a trigger unless the X
+collector runs, so it comes back ``None`` -- not zero. B (community) resolves only
+where a Telegram count was collected. C (lineage) resolves from the socials a
+token declares; D (on-chain structure), E (asymmetry), F (mindshare) and G
+(momentum) from what DexScreener answers. The composite is renormalised over
 the pillars that resolved, so it reads as "of what can be seen", and is then
 multiplied by data completeness, which drags it down to reflect how little that is.
 Both numbers are reported separately so the distinction stays visible.
@@ -27,22 +29,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-# Mindshare's prior weight, and why it is zero.
+# Mindshare's prior weight, and why it was zero.
 #
 # .claude/rules/stats.md forbids putting anything but fitted coefficients into the
-# weight vector. Mindshare is a new feature with no outcome data behind it, so any
-# nonzero number here would be a guess dressed as a prior -- and unlike the five
-# original weights, which at least came from the brief, this one would have been
-# invented in the same commit that invented the feature.
+# weight vector. Mindshare was a new feature with no outcome data behind it, so any
+# nonzero prior would have been a guess -- and unlike the five original weights,
+# which at least came from the brief, one invented in the same commit that
+# invented the feature.
 #
-# So it is collected, scored, stored, displayed and handed to calibration as a
-# feature, and it contributes nothing to the composite until Phase 2 fits it. A
-# zero weight is a no-op in the renormalised sum below, which
-# tests/test_mindshare.py asserts directly: the composite is identical with the
-# pillar present and absent.
-#
-# Raising this is a deliberate decision for whoever has the fitted number, not a
-# side effect of adding a column.
+# So it was collected, scored and handed to calibration as a feature, contributing
+# nothing until a fit gave it a number. The fit behind WEIGHTS did: 0.08 (below).
+# This constant stays the prior, in PRIOR_WEIGHTS.
 MINDSHARE_PRIOR_WEIGHT = 0.0
 
 # Momentum's prior weight, and why it is also zero.
@@ -58,12 +55,48 @@ MINDSHARE_PRIOR_WEIGHT = 0.0
 # cannot saturate on age at all. Whether they carry signal is unmeasured, and a
 # prior invented in the commit that invents the feature is not a prior. So the
 # pillar is computed, stored, displayed, sorted on and handed to calibration, and
-# it moves no score until Phase 2 fits it. tests/test_momentum_pillar.py asserts
-# the composite is numerically identical with the pillar present and absent.
+# it moves no score until a fit can see it. The fit behind WEIGHTS could not:
+# none of the snapshots it was fitted on carried these fields, so it stays at
+# zero there too. tests/test_momentum_pillar.py asserts the composite is
+# numerically identical with the pillar present and absent.
 MOMENTUM_PRIOR_WEIGHT = 0.0
 
-# prompts/score.md step 2. Uncalibrated priors -- replace with fitted coefficients.
+# prompts/score.md step 2: the weight vector in force, and the first one fitted.
+#
+# From scoring/weights/fitted-v1.json, written by
+# `python -m calibration.report --force --record scoring/weights/fitted-v1.json`:
+# a logistic fit on one row per token as scored at its trigger -- 190 tokens
+# triggered 2026-09-12 to 09-17 -- against the backtest's pre-set outcome, a 1.5x
+# inside six hours. Negative coefficients clamped to zero, renormalised, rounded.
+#
+# On the 82 tokens that triggered afterwards (17 surged, all in a neutral tape) it
+# ranks with AUC 0.67 [0.52, 0.83] where PRIOR_WEIGHTS ranked 0.64 [0.48, 0.79].
+# That is a small, overlapping difference on one regime, adopted before Phase 0's
+# gate was met; docs/calibration-2026-09-24.md sets out what was checked, what
+# could not be, and why the gate was overridden.
+#
+# The zeros do not all mean the same thing, and the difference matters:
+#   * lineage_meta_fit and community_depth were fitted and came out *negative* --
+#     on this sample a higher score on either went with fewer surges. Clamped,
+#     because prompts/score.md presents weights as importances.
+#   * attention_velocity and momentum_flow were never observed at a trigger (no X
+#     collector ran; the momentum fields postdate these snapshots), so the fit
+#     could not see them. Zero is "not yet fitted", the rule mindshare and
+#     momentum were held to when they were added.
 WEIGHTS: dict[str, float] = {
+    "attention_velocity": 0.0,
+    "community_depth": 0.0,
+    "lineage_meta_fit": 0.0,
+    "onchain_structure": 0.55,
+    "asymmetry_timing": 0.37,
+    "mindshare": 0.08,
+    "momentum_flow": 0.0,
+}
+
+# The uncalibrated priors WEIGHTS replaced (priors-v3), from the brief. Kept so a
+# fit can always be judged against them, and so reverting is one assignment and a
+# version bump.
+PRIOR_WEIGHTS: dict[str, float] = {
     "attention_velocity": 0.28,
     "community_depth": 0.20,
     "lineage_meta_fit": 0.15,
@@ -75,10 +108,11 @@ WEIGHTS: dict[str, float] = {
 
 # Bumped whenever WEIGHTS changes -- in value or in shape. Stored on every scored
 # row so a score can be traced to the numbers that produced it. It lives here,
-# beside the vector it names, so the two cannot be edited apart. v2 added the
-# `mindshare` key at weight 0.0 and v3 the `momentum_flow` key, also at 0.0; the
-# five original weights are untouched and the composite is unchanged by both.
-WEIGHTS_VERSION = "priors-v3"
+# beside the vector it names, so the two cannot be edited apart, and it names the
+# calibration record in scoring/weights/ that the vector was copied from. The
+# priors-v1..v3 versions had no record: they were guesses. v2 added the
+# `mindshare` key at 0.0 and v3 `momentum_flow` at 0.0 without moving a score.
+WEIGHTS_VERSION = "fitted-v1"
 
 REGIME_MULTIPLIERS = {"hot": 1.0, "neutral": 1.0, "cold": 1.0}
 # In a cold tape, compress toward the midpoint rather than scaling: score.md says
@@ -375,9 +409,11 @@ def asymmetry_timing(candidate: dict[str, Any]) -> PillarScore:
 def mindshare(candidate: dict[str, Any]) -> PillarScore:
     """Share of the attention observed around the token (collectors/mindshare.py).
 
-    Weighted at zero into the composite -- see :data:`MINDSHARE_PRIOR_WEIGHT`. It is
-    computed and stored anyway, because Phase 2 cannot fit a feature nobody
-    collected, and social history is the one thing that cannot be backfilled later.
+    Its prior weight was zero -- see :data:`MINDSHARE_PRIOR_WEIGHT` -- and it was
+    computed and stored anyway, because a fit cannot weigh a feature nobody
+    collected. The first fit gave it 0.08 in :data:`WEIGHTS`. It reads 24h volume,
+    as Pillar D's turnover does, so the two weights are collinear and should be
+    read together rather than apart.
 
     The interesting component is the last one. Mindshare that is bought and
     mindshare that is traded look identical in a share number and are opposite
@@ -483,7 +519,9 @@ def momentum_flow(candidate: dict[str, Any]) -> PillarScore:
     * **Price slope**: the hour's move against the six-hour average hourly move,
       or the hour's move alone while the six-hour window is still filling.
 
-    Weighted 0.00 into the composite -- see :data:`MOMENTUM_PRIOR_WEIGHT`.
+    Weighted 0.00 into the composite -- see :data:`MOMENTUM_PRIOR_WEIGHT`. The fit
+    behind :data:`WEIGHTS` had no momentum data at any trigger, so it could not
+    weigh it either way.
     """
     m = candidate.get("momentum") or {}
     notes: list[str] = []
@@ -584,8 +622,8 @@ def composite(
     Renormalising over the pillars that resolved makes the number read as "of what
     can be seen"; how little that is comes back through the completeness multiplier
     rather than being buried here. A resolved set whose weights sum to zero -- which
-    happens when mindshare is the only pillar that resolved, since its prior weight
-    is 0.0 -- has no composite at all. That is not a score of zero.
+    happens when only zero-weight pillars resolved, say lineage and momentum and
+    nothing else -- has no composite at all. That is not a score of zero.
 
     Exposed separately from :func:`score_candidate` so a caller holding only stored
     pillar scores can re-derive the same number instead of writing a second version
@@ -640,11 +678,17 @@ def score_candidate(
     *,
     regime: str | None = None,
     data_completeness: float | None = None,
+    weights: dict[str, float] | None = None,
 ) -> PillarResult:
-    """Weighted composite for one candidate, with the step-2 modifiers applied."""
+    """Weighted composite for one candidate, with the step-2 modifiers applied.
+
+    ``weights`` defaults to :data:`WEIGHTS`. Passing another vector is for
+    calibration, which has to score a candidate vector exactly the way the board
+    would before it may replace the one in force.
+    """
     pillars = tuple(fn(candidate) for fn in PILLARS)
     by_name = {p.name: p.score for p in pillars}
-    raw, resolved_weight = composite(by_name)
+    raw, resolved_weight = composite(by_name, weights)
 
     modifiers: list[str] = []
     score = raw

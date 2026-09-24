@@ -4,10 +4,11 @@ Memecoin screener built to [CLAUDE.md](CLAUDE.md) and [BUILD_BRIEF.md](BUILD_BRI
 
 **What this is: a data collector with a scorer attached.** It watches new pools across
 Solana, BNB Chain, Base and Ethereum, snapshots each token once at a fixed trigger, tracks
-forward outcomes, filters for safety, and scores what survives. Per CLAUDE.md the scoring
-weights are **uncalibrated priors — guesses** — until Phase 2 replaces them with fitted
-coefficients, and Phase 2 needs weeks of forward collection that has not happened. Nothing
-it emits is a prediction, and there is no code path that can place an order.
+forward outcomes, filters for safety, and scores what survives. The scoring weights are the
+**first fitted vector** (`fitted-v1`): a fit on 190 tokens that ranks the tokens after them
+only a little better than the guesses it replaced, adopted before Phase 0's gate was met —
+see [Calibration](#calibration-the-weights-in-force). It has not established an edge.
+Nothing it emits is a prediction, and there is no code path that can place an order.
 
 Data comes from **DexScreener**, which needs no API key. The deployed page also carries a
 live endpoint (`api/screener.py`) that fetches DexScreener at request time, so it shows real
@@ -23,13 +24,13 @@ tokens whether or not a collector has ever run.
 | 0.3 social collectors (X + Telegram) | Telegram runs on the schedule, keyless. X now runs on the same schedule **when `X_BEARER_TOKEN` is set**, under a per-cycle search budget — see [docs/x-investigation.md](docs/x-investigation.md) |
 | 0.4 outcome tracker | Built |
 | 0.5 on-chain backfill | Built |
-| 0.6 mindshare (share-of-attention variable) | Built, weight 0.00 in the composite |
-| 0.6b momentum & flow (buy/sell split, short-window volume and price change) | Built, weight 0.00 in the composite |
+| 0.6 mindshare (share-of-attention variable) | Built, weight 0.08 in the composite (fitted) |
+| 0.6b momentum & flow (buy/sell split, short-window volume and price change) | Built, weight 0.00 in the composite — no fit has seen it yet |
 | 0.7 safety source (GoPlus + RugCheck, keyless) | Built, answers 6 of the 8 hard filters |
 | 0.8 scheduled collector + append-only journal | Built, `collect.py` + GitHub Actions |
 | 1 hard filters | Built, 8/8 filters, and they now answer |
 | 1 scoring runner | Built, paper mode only |
-| 2 calibration (fit + report) | Built, gated on Phase 0 exit criteria |
+| 2 calibration (fit + report) | Built. First fit adopted as `fitted-v1`, **forced past the Phase 0 gate** — [why](#calibration-the-weights-in-force) |
 | 2- exploratory backtest (`calibration/backtest.py`) | Built, runs now, fits nothing |
 | 3 live ranking | **Not built, and should not be** — gated on Phase 2 measuring an edge |
 | Web viewer | Built, `web/` + `api/screener.py`; refresh button, per-coin DexScreener link, column glossary, chain/mindshare/momentum sorts |
@@ -229,8 +230,9 @@ is the default source because it needs neither.
 
 `calibration/backtest.py` scores every collected feature against the forward
 labels. It is **not** a calibration: it fits nothing, changes no weight, and says
-so in its own header, because `.claude/rules/stats.md` admits only fitted
-coefficients that cleared the Phase 0 gate — which 85 tokens does not.
+so in its own header. The weights were changed by a separate fit —
+[Calibration](#calibration-the-weights-in-force) below — and that fit had to be forced
+past the Phase 0 gate that `.claude/rules/stats.md` sets, which this dataset has not met.
 
 ```bash
 python -m calibration.backtest --db data/screener.duckdb
@@ -244,7 +246,7 @@ The only rate-of-change feature the pre-schema-7 rows could express —
 across three horizons. It is worth nothing. A token younger than six hours has
 `txns_6h == txns_24h`, so the ratio pins at exactly 4.0: **39 of the 76 rows then
 resolved sat on that single value**, and inside one age band the AUC was **0.500**. It was age
-wearing a disguise, and it would have shipped. On the current 239-token sample it
+wearing a disguise, and it would have shipped. On the current 272-token sample it
 pins **65%** of rows on that same 4.0 and still fails stratification — the
 artefact did not wash out with more data, which is the point of checking for it
 rather than waiting.
@@ -255,23 +257,74 @@ rather than waiting.
 - **AUC by age band** — the same figure computed inside each stratum. A pooled
   separation that vanishes in every stratum is measuring the stratum.
 
-Against a 1.5x-in-6h outcome on **239 resolved tokens** (base rate **21.8%**
-[17.0%, 27.4%] — note this is *not* the ~2% graduation rate in CLAUDE.md, because
+Against a 1.5x-in-6h outcome on **272 resolved tokens** (base rate **22.8%**
+[18.2%, 28.1%] — note this is *not* the ~2% graduation rate in CLAUDE.md, because
 these tokens are sampled above $250k and have already cleared that bar), exactly
 one feature survives both checks: **top-10 concentration excluding LP, lower being
-better** — out-of-sample AUC **0.90**, 1% tie mass, same direction in all four age
-bands. Splitting the sample on it gives **37% [26%, 50%]** against **11% [5%, 21%]**,
-and those intervals do not overlap.
+better** — 1% tie mass, same direction in all four age bands. Split at its median
+(43.8%), **36% [26%, 47%]** of the less concentrated half reached 1.5x against
+**10% [5%, 18%]** of the rest, and those intervals do not overlap.
 
-It is measured on the 114 rows where a safety source answered concentration at all,
+Out of sample it is weaker: **AUC 0.66 [0.44, 0.88]**, an interval that spans chance.
+This README quoted 0.90 on 239 tokens; as the held-out window moved forward onto
+newer tokens the figure fell, which is what a small-sample lead looks like when part
+of its strength was luck.
+
+It is measured on the 163 rows where a safety source answered concentration at all,
 which is its own selection: tokens GoPlus and RugCheck could read may differ from
 the ones they could not.
 
-That is a lead to collect against. It is not an edge — it was found on the sample it
-is quoted from, and no weight in `prompts/score.md` moved because of it. What the
-merge from `main` did change is confidence: the finding was first seen on 76 rows
-and survived the sample nearly tripling, which is the one thing a small-sample lead
-can do to earn more attention.
+That is a lead to collect against, not an edge, and it is not a pillar: no weight
+reads it. It is already a hard filter at 35%.
+
+## Calibration: the weights in force
+
+The priors from the brief have been replaced by a fitted vector, `fitted-v1`
+(`prompts/score.md` version 7). The full record — coefficients, windows, every figure
+below with its interval, and every check by name — is
+[`scoring/weights/fitted-v1.json`](scoring/weights/fitted-v1.json); the reasoning is in
+[docs/calibration-2026-09-24.md](docs/calibration-2026-09-24.md).
+
+| Pillar | Prior | Fitted |
+|---|---|---|
+| Attention velocity | 0.28 | 0.00 — never observed at a trigger |
+| Community depth | 0.20 | 0.00 — fitted negative |
+| Lineage & meta fit | 0.15 | 0.00 — fitted negative |
+| On-chain structure | 0.22 | **0.55** |
+| Asymmetry & timing | 0.15 | **0.37** |
+| Mindshare | 0.00 | **0.08** |
+| Momentum & flow | 0.00 | 0.00 — never observed at a trigger |
+
+Fitted on 190 tokens (12–17 Sep) against a 1.5x within 6h, one row per token as it was
+scored at its trigger, and judged on the **82 that triggered next**:
+
+| On the held-out 82 | Fitted | Priors |
+|---|---|---|
+| AUC (0.50 is a coin flip; the published benchmark is 0.858) | **0.67** [0.52, 0.83] | 0.64 [0.48, 0.79] |
+| Top-decile lift over the 21% base rate | 1.81x [0.66, 3.35] | 2.41x [1.04, 3.79] |
+| AUC on the final board score | 0.66 [0.51, 0.81] | 0.63 [0.47, 0.79] |
+| AUC for surviving 24h | 0.27 [0.14, 0.40] | 0.29 [0.15, 0.43] |
+
+What that does and does not say:
+
+- **It is a small improvement on one regime, not an edge.** The intervals overlap, the
+  top decile is eight tokens, and all 82 held-out tokens came from a neutral tape.
+- **The same ranking marks tokens that die.** Below 0.50 on survival means a high score
+  goes with *less* chance of holding a fifth of the trigger market cap for 24 hours —
+  under the priors too. What it ranks is a short move, not a coin that lasts.
+- **It overrides the gate, on purpose.** `.claude/rules/stats.md` gates any fit on ≥300
+  tokens with a complete social series and ≥20 dead per survivor. Neither is reachable as
+  the collector stands: no social series completes without an X API key, and tokens that
+  reach a $250k trigger have already survived their launch, so dead-per-survivor sits near
+  1.2. The fit was adopted on the owner's instruction to calibrate, having cleared every
+  other check, and `PRIOR_WEIGHTS` keeps the priors so reverting is one assignment.
+
+Re-fit when a new window of tokens has resolved, and adopt the result only if its record
+clears the same checks against the vector then in force:
+
+```bash
+python -m calibration.report --force --record scoring/weights/fitted-v2.json
+```
 
 ## Momentum & flow
 
@@ -289,7 +342,8 @@ revised formula re-reads every row already collected instead of stranding it.
   unlike a between-window ratio it cannot be pinned by the token being young.
 - **Window ratios drop themselves when pinned.** 1h volume against the 6h rate is
   not scored when the two are identical, and the pillar says why in its notes.
-- **Weight 0.00 in the composite**, on the mindshare precedent.
+- **Weight 0.00 in the composite**: none of the snapshots the weights were fitted
+  on carried these fields, so no fit has weighed them.
   `tests/test_momentum_pillar.py` asserts the composite is numerically identical
   with the pillar present and absent.
 
@@ -301,11 +355,11 @@ as a share of the universe total and averaged over the ones that resolved.
 
 - It is on-chain and paid attention, **not** social mentions. It is not a substitute for the
   X collector and must not be read as one.
-- **It carries weight 0.00 in the composite score.** `.claude/rules/stats.md` allows only
-  fitted coefficients into the weight vector, and mindshare has no outcome data behind it
-  yet. So it is collected, scored, displayed, filtered on and handed to calibration — and it
-  changes no score until Phase 2 fits it. `tests/test_mindshare.py` asserts that the
-  composite is numerically identical with the pillar present and absent.
+- **Its prior weight was 0.00; the first fit gave it 0.08.** `.claude/rules/stats.md`
+  allows only fitted coefficients into the weight vector, so mindshare was collected,
+  scored and handed to calibration while moving no score, until a fit weighed it. It reads
+  24h volume, as the on-chain pillar does, so read their two weights together.
+  `tests/test_mindshare.py` checks both halves.
 - The **raw components and the universe totals they were divided by** are both stored, so the
   share can be recomputed when the formula changes rather than being stranded
   (`collectors.mindshare.recompute_share`).
@@ -455,11 +509,12 @@ collectors/
 filters/hard_filters.py    Phase 1 — the eight checks, three-way outcomes
 scoring/pillars.py         Phase 1 — deterministic pillar maths (what Phase 2 fits)
 scoring/candidate.py       Phase 1 — snapshot row → candidate packet, no store needed
-scoring/prompt_meta.py     Phase 1 — prompt_version and the SYSTEM block
+scoring/prompt_meta.py     Phase 1 — prompt_version, the SYSTEM block, the weights record
+scoring/weights/           one calibration record per fitted weights version (fitted-v1.json)
 scoring/runner.py          Phase 1 — filters → pillars → narrative → stored row
 calibration/backtest.py    exploratory — per-feature AUC, tie mass, AUC by age band
 calibration/fit.py         Phase 2 — time split, logistic fit, AUC/lift/intervals
-calibration/report.py      Phase 2 — the verdict, with two ways to say "no"
+calibration/report.py      Phase 2 — the verdict, with two ways to say "no"; --record writes a weights record
 export_web.py              DuckDB → web/screener-data.json
 api/screener.py            Vercel function: live DexScreener → scored ranking (stdlib only)
 web/                       static viewer (Vercel), chain + mindshare + safety
@@ -517,8 +572,12 @@ rate and asserts the report says there is no edge.
 
 Phase 0 exits at ≥300 tokens with complete social series and ≥20 dead per survivor. The web
 page shows progress against exactly that, and `calibration/report.py` refuses to fit below it
-unless forced (and says so in the report if forced).
+unless forced (and says so in the report if forced). The weights in force were fitted with
+that force — see [Calibration](#calibration-the-weights-in-force) for why — and neither
+condition is reachable as the collector stands: the first needs an X API key, and the second
+will not happen at a $250k trigger, where tokens have already survived their launch.
 
-Until then the answer to "does the top decile beat the base rate out of sample" is *unknown*,
-and per BUILD_BRIEF.md §3 that is the only question that decides whether this is a screener or
-an expensive way to launder a coin flip as a decision.
+So the answer to "does the top decile beat the base rate out of sample" is still *unknown*:
+the fitted vector's top-decile lift is 1.81x with an interval from 0.66 to 3.35, which
+includes no lift at all. Per BUILD_BRIEF.md §3 that is the only question that decides
+whether this is a screener or an expensive way to launder a coin flip as a decision.
