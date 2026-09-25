@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-25T14:05:19+00:00",
+  "generated_at": "2026-09-25T14:17:42+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -320,13 +320,13 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 200,
-    "outcome_observations": 7777,
+    "outcome_observations": 7784,
     "social_observations": 1188,
     "labelled_snapshots": 304,
     "excluded_on_evidence": 141,
     "excluded_as_unmeasured": 41,
     "safety_checked": 305,
-    "safety_observations": 4138
+    "safety_observations": 4139
   },
   "calibration": {
     "verdict": "not_ready",
@@ -370,10 +370,10 @@
         "feature": "top10_ex_lp_pct",
         "n": 280,
         "positives": 67,
-        "auc": 0.38063205101254294,
+        "auc": 0.38056197883820336,
         "auc_ci": [
-          0.3073203573566766,
-          0.45394374466840925
+          0.3072554970401935,
+          0.4538684606362132
         ],
         "auc_out_of_sample": 0.5850340136054422,
         "auc_out_of_sample_ci": [
@@ -546,10 +546,10 @@
         "feature": "top10_ex_lp_pct",
         "n": 280,
         "positives": 67,
-        "auc": 0.38063205101254294,
+        "auc": 0.38056197883820336,
         "auc_ci": [
-          0.3073203573566766,
-          0.45394374466840925
+          0.3072554970401935,
+          0.4538684606362132
         ],
         "auc_out_of_sample": 0.5850340136054422,
         "auc_out_of_sample_ci": [
@@ -9063,7 +9063,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1790302527701,
+        "collected_at_ms": 1790345854544,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
@@ -9071,8 +9071,8 @@
         "freeze_active": false,
         "lp_burned": true,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 34.13844765417373,
-        "holder_count": 3934,
+        "top10_ex_lp_pct": 34.73020012228341,
+        "holder_count": 3911,
         "deployer_address": "0x7d32a53cfad6683ab73853b222aa77fa9ac11663",
         "deployer_prior_rugs": 0,
         "rugged": null,
