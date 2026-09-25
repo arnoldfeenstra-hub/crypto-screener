@@ -94,7 +94,15 @@ jobs:
       NEON_ON: ${{ secrets.DATABASE_URL != '' }}
 
     steps:
+      # The branch as it is when this run starts, not as it was when the run was
+      # queued. Without `ref`, checkout takes the commit the event carried. A run
+      # queued behind another in the concurrency group then rebuilds from a journal
+      # missing every row the run ahead of it pushed. That is how run 323 collided
+      # with run 322 on 2026-09-25, and how the first run with Neon on would
+      # bootstrap the database without them.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
 
       # The run's working copy of the Neon dataset, kept between runs so each one
       # downloads only the rows added since, not the whole dataset. A cache and
@@ -200,7 +208,27 @@ jobs:
 
       # With Neon on, state/ only changes in manifest.json -- the heartbeat
       # health.yml reads -- so this commits the heartbeat and the web export.
+      #
+      # This step has two outcomes: the rows reach the branch, or the run fails.
+      # Run 323 found a third. Its rebase stopped on a conflict with run 322's
+      # commit. The retries would not pull over the unmerged files, and the final
+      # push sent HEAD, which mid-rebase is run 322's commit, already on the branch.
+      # "Everything up-to-date", a green run, and an hour of rows gone with the
+      # runner. Now, when the branch has moved since the checkout:
+      #
+      #   * journal shards merge as a union (.gitattributes). They are append-only,
+      #     so both runs' rows are wanted, and neither may overwrite the other;
+      #   * the manifest heartbeat and the web export are rewritten whole by every
+      #     run, so this run's copy wins;
+      #   * any other conflict, or a push still refused after five tries, fails
+      #     the run. Before failing, it pushes this run's commit to
+      #     collect-unpushed/<run id>-<attempt> and saves it as an artifact, so
+      #     the rows outlive the runner. Merge that branch; re-running cannot
+      #     recover them.
       - name: Commit the journal
+        env:
+          SUMMARY: ${{ steps.collect.outputs.summary }}
+          RETRY_SECONDS: "5"
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -209,15 +237,57 @@ jobs:
             echo "nothing new this cycle"
             exit 0
           fi
-          git commit -m "collect: ${{ steps.collect.outputs.summary }}"
-          # Another run may have landed while this one was collecting. Rebase
-          # rather than force: the journal is append-only, so both sets of rows
-          # are wanted and neither may overwrite the other.
-          for attempt in 1 2 3; do
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && break
-            sleep $((attempt * 5))
+          git commit -q -m "collect: ${SUMMARY}"
+          ours=$(git rev-parse HEAD)
+          keep_rows() {
+            echo "::error::$1"
+            git format-patch -1 --stdout "$ours" > unpushed.patch || true
+            if git push -q origin "$ours:refs/heads/collect-unpushed/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"; then
+              echo "::error::This run's rows are on branch collect-unpushed/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT} and in its unpushed-rows artifact. Merge them into ${GITHUB_REF_NAME}; re-running the job cannot recover them."
+            else
+              echo "::error::This run's rows are only in its unpushed-rows artifact (unpushed.patch)."
+            fi
+            exit 1
+          }
+          attempt=1
+          until git push -q origin "HEAD:${GITHUB_REF_NAME}"; do
+            if [ "$attempt" -eq 5 ]; then
+              keep_rows "${GITHUB_REF_NAME} refused the push five times."
+            fi
+            sleep $((attempt * RETRY_SECONDS))
+            attempt=$((attempt + 1))
+            git fetch -q origin "${GITHUB_REF_NAME}" || continue
+            if git rebase -q --autostash FETCH_HEAD; then
+              continue
+            fi
+            for path in $(git diff --name-only --diff-filter=U); do
+              case "$path" in
+                state/manifest.json | web/screener-data.json)
+                  git checkout "$ours" -- "$path" || keep_rows "Could not take this run's $path."
+                  ;;
+                *)
+                  git rebase --abort || true
+                  keep_rows "$path conflicts with ${GITHUB_REF_NAME}. Only journal shards, the manifest and the web export are merged automatically."
+                  ;;
+              esac
+            done
+            if ! GIT_EDITOR=true git rebase --continue; then
+              git rebase --abort || true
+              keep_rows "The rebase onto ${GITHUB_REF_NAME} did not complete."
+            fi
           done
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      # The rows of a run whose commit never reached the branch, for as long as the
+      # repository keeps artifacts. The collect-unpushed branch holds them longer
+      # when the push to it worked.
+      - name: Keep the unpushed rows
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unpushed-rows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: unpushed.patch
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Upload the run summary
         if: always()

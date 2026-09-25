@@ -1,0 +1,10 @@
+# The journal is append-only (collectors/journal.py): a shard only ever grows at
+# its end. When two collector runs append to the same shard, both runs' rows are
+# wanted, so git keeps both sets instead of stopping on a conflict -- the rows
+# already on the branch first, then the ones being rebased onto them. Restore
+# passes over a row whose key is already loaded, first recorded wins, so a row
+# that lands twice is never counted twice.
+#
+# The commit step in .github/workflows/collect.yml relies on this. Without it, two
+# overlapping runs conflicted, and on 2026-09-25 run 323 lost an hour of rows that way.
+state/**/*.jsonl merge=union
