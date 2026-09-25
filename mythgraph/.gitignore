@@ -1,7 +1,0 @@
-node_modules/
-public/vendor/
-qa/screenshots/
-qa/fixture-graph.json
-qa/last-run.json
-ingest/last-report.json
-.vercel
