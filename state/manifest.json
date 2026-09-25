@@ -1,23 +1,19 @@
 {
   "schema_version": 8,
-  "updated_at": "2026-09-25T14:04:06+00:00",
+  "updated_at": "2026-09-25T14:05:22+00:00",
   "rows": {
     "snapshots": 305,
     "trigger_events": 305,
     "labels": 29550,
-    "outcome_observations": 7776,
-    "scores": 30863,
+    "outcome_observations": 7777,
+    "scores": 31063,
     "social_observations": 1188,
-    "safety_observations": 4134
+    "safety_observations": 4138
   },
   "appended_last_run": {
-    "snapshots": 1,
-    "trigger_events": 1,
-    "labels": 6,
-    "outcome_observations": 24,
+    "outcome_observations": 1,
     "scores": 200,
-    "social_observations": 4,
-    "safety_observations": 29
+    "safety_observations": 4
   },
   "largest_file_mb": 99.79,
   "github_file_limit_mb": 100,
