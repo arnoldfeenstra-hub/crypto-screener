@@ -28,6 +28,7 @@ from scoring.runner import (
     ScoringRunner,
     candidate_from_row,
     prompt_version,
+    score_content,
     system_prompt,
 )
 
@@ -381,18 +382,94 @@ class TestAgainstTheStore:
             assert stored["prompt_version"] == prompt_version()
             assert json.loads(stored["input_snapshot"])["contract"] == "Tok1"
 
-    def test_rescoring_appends_rather_than_overwriting(self):
+    def test_an_unchanged_rescore_is_not_stored_twice(self, monkeypatch):
+        """The newest row already records this score with the inputs that produced
+        it. Storing an identical one every hour was 85% of the re-score rows."""
         with Store() as store:
             store.append_snapshot(
                 Snapshot(chain="solana", contract="Tok1", trigger="mcap_250k",
                          source="test", market=Market(mcap_usd=400_000.0))
             )
             runner = ScoringRunner(store)
+            monkeypatch.setattr("scoring.runner.now_ms", lambda: 1_000)
+            first = runner.run(limit=10)
+            monkeypatch.setattr("scoring.runner.now_ms", lambda: 2_000)
+            again = runner.run(limit=10)
+
+            assert len(first.written) == 1
+            assert len(again.rows) == 1 and again.written == []
+            assert store.score_count() == 1
+            # Still the current score, an hour on.
+            (current,) = store.latest_scores()
+            assert current["score_id"] == first.rows[0]["score_id"]
+
+    def test_a_changed_rescore_appends_rather_than_overwriting(self, monkeypatch):
+        with Store() as store:
+            store.append_snapshot(
+                Snapshot(chain="solana", contract="Tok1", trigger="mcap_250k",
+                         source="test", market=Market(mcap_usd=400_000.0))
+            )
+            runner = ScoringRunner(store)
+            monkeypatch.setattr("scoring.runner.now_ms", lambda: 1_000)
+            first = runner.run(limit=10, regime="neutral")
+            monkeypatch.setattr("scoring.runner.now_ms", lambda: 2_000)
+            changed = runner.run(limit=10, regime="hot")
+
+            assert len(changed.written) == 1
+            # The first row is still there, as it was written.
+            assert [(r["score_id"], r["batch_regime"]) for r in store.all_scores()] == [
+                (first.rows[0]["score_id"], "neutral"),
+                (changed.rows[0]["score_id"], "hot"),
+            ]
+            # The ranking reads each token's newest row, not both mixed together.
+            (current,) = store.latest_scores()
+            assert current["score_id"] == changed.rows[0]["score_id"]
+
+    def test_a_new_prompt_version_rescores_and_the_ranking_does_not_mix_versions(
+        self, monkeypatch
+    ):
+        with Store() as store:
+            for index, contract in enumerate(("Old", "New")):
+                store.append_snapshot(
+                    Snapshot(chain="solana", contract=contract, trigger="mcap_250k",
+                             source="test", ts=1_000 + index,
+                             market=Market(mcap_usd=400_000.0))
+                )
+            runner = ScoringRunner(store)
+            monkeypatch.setattr("scoring.runner.now_ms", lambda: 5_000)
             runner.run(limit=10)
-            runner.run(limit=10)
-            assert store.score_count() == 2
-            # The ranking reads only the newest run, not both mixed together.
-            assert len(store.latest_scores()) == 1
+            # The prompt is edited, and this cycle reaches only the newest token.
+            runner.prompt_version = prompt_version() + 1
+            monkeypatch.setattr("scoring.runner.now_ms", lambda: 6_000)
+            bumped = runner.run(limit=1)
+
+            assert [r["prompt_version"] for r in bumped.written] == [prompt_version() + 1]
+            # "Old" still has a row, under the previous version; it is not ranked
+            # against a row the new prompt scored.
+            ranked = store.latest_scores(limit=10)
+            assert [r["snapshot_id"] for r in ranked] == [bumped.rows[0]["snapshot_id"]]
+
+    def test_the_comparison_ignores_what_every_rescore_changes(self):
+        row = ScoringRunner().score_one(candidate(), safety=SAFE)
+        twin = {
+            **row,
+            "score_id": "another",
+            "run_id": "another",
+            "scored_at_ms": row["scored_at_ms"] + 3_600_000,
+            "rank": 7,
+            "ticker": None,  # not a stored column
+            # The same inputs, re-serialised on the way through the journal.
+            "input_snapshot": json.dumps(json.loads(row["input_snapshot"]), indent=2),
+        }
+        assert score_content(twin) == score_content(row)
+        assert score_content({**row, "score": (row["score"] or 0.0) + 0.1}) != (
+            score_content(row)
+        )
+        moved_input = json.loads(row["input_snapshot"])
+        moved_input["liquidity_usd"] = 41_000.0
+        assert score_content({**row, "input_snapshot": json.dumps(moved_input)}) != (
+            score_content(row)
+        )
 
     def test_the_collected_telegram_series_reaches_the_score(self):
         """Collecting the series and never reading it would be the same as not

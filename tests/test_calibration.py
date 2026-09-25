@@ -391,7 +391,13 @@ class TestReportAgainstTheStore:
 
 def two_token_store(store: Store, monkeypatch, *, cycles: int) -> list[Snapshot]:
     """Two tokens scored ``cycles`` times an hour apart: Up doubles in its first
-    half hour, Flat barely moves, and neither dies."""
+    half hour, Flat barely moves, and neither dies.
+
+    Each later cycle reads a newer Telegram count. That is what makes a re-score
+    a new row: an identical one is not stored twice (scoring/runner.py).
+    """
+    from collectors.social_base import SocialObservation
+
     snapshots = []
     for index, (contract, peak) in enumerate((("Up", 800_000.0), ("Flat", 420_000.0))):
         snap = Snapshot(
@@ -406,6 +412,17 @@ def two_token_store(store: Store, monkeypatch, *, cycles: int) -> list[Snapshot]
         ])
     OutcomeTracker(store).refresh_labels(as_of_ms=T0 + 8 * DAY)
     for cycle in range(cycles):
+        if cycle:
+            store.append_social_observations(
+                [
+                    SocialObservation(
+                        snapshot_id=snap.snapshot_id, platform="telegram",
+                        offset_minutes=60 * cycle, members=1_000 * cycle,
+                        exists=True, source="test",
+                    )
+                    for snap in snapshots
+                ]
+            )
         # An hour apart, like the collector's schedule.
         monkeypatch.setattr(
             "scoring.runner.now_ms", lambda cycle=cycle: T0 + (cycle + 1) * 60 * MIN
@@ -417,8 +434,9 @@ def two_token_store(store: Store, monkeypatch, *, cycles: int) -> list[Snapshot]
 class TestTrainingRowsFromTheStore:
     """One training row per token, as it stood at its trigger.
 
-    The collector re-scores its recent snapshots every cycle, so a token carries a
-    score row per cycle. Fitting on all of them weighted each token by how long it
+    The collector re-scores its recent snapshots every cycle and stores the rows
+    whose inputs moved, so a token carries many score rows. Fitting on all of them
+    weighted each token by how long it
     sat in the re-score window, put a token's early copies in train and its later
     ones in test, and fed the fit social counts collected after the trigger.
     """

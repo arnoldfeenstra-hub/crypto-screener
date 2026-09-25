@@ -39,7 +39,7 @@ from collectors.mindshare import METHOD_VERSION as MINDSHARE_METHOD_VERSION
 from collectors.store import Store
 from scoring.pillars import WEIGHTS, composite
 from scoring.prompt_meta import weights_caveat, weights_record
-from scoring.runner import WEIGHTS_VERSION, prompt_version
+from scoring.runner import SCORE_WINDOW, WEIGHTS_VERSION, prompt_version
 
 REPO_ROOT = Path(__file__).resolve().parent
 DEFAULT_OUT = REPO_ROOT / "web" / "screener-data.json"
@@ -79,9 +79,14 @@ def _json_field(value: Any, fallback: Any) -> Any:
     return value
 
 
-def build_payload(store: Store, *, limit: int = 500) -> dict[str, Any]:
+def build_payload(
+    store: Store, *, limit: int = 500, score_window: int = SCORE_WINDOW
+) -> dict[str, Any]:
     snapshots = store.recent_snapshots(limit)
-    scores = {row["snapshot_id"]: row for row in store.latest_scores(limit)}
+    # Scored and ranked: the tokens the collector re-scores each cycle. An older
+    # token keeps its last score in the table but is shown unscored, not ranked on
+    # a score nobody recomputed.
+    scores = {row["snapshot_id"]: row for row in store.latest_scores(score_window)}
 
     survivors, dead = store.survivor_counts("7d")
     complete_social = store.snapshots_with_complete_social()

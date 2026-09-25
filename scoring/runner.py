@@ -44,17 +44,18 @@ are computed locally, and the narrative fields stay null with
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from collectors.config import load_config
 from collectors.safety import SafetyReport, SafetySource
 from collectors.safety import from_row as safety_from_row
-from collectors.schema import now_ms
+from collectors.schema import SCORE_COLUMNS, now_ms
 from collectors.social_base import derive_tg_metrics, derive_x_metrics
 from collectors.store import Store
 from filters.hard_filters import Verdict, apply
@@ -82,6 +83,38 @@ NO_EDGE_THRESHOLD = 55.0
 # turns a per-cycle sweep into a per-token one. Every refresh still appends a new
 # row, so the history of what changed and when is kept in full.
 SAFETY_MAX_AGE_MS = 6 * 60 * 60 * 1000
+
+# How many of the most recently triggered tokens each collector cycle re-scores,
+# which is also how many the web page ranks. collect.py's --score-limit defaults
+# to it.
+SCORE_WINDOW = 200
+
+# What a re-score may differ in and still be the same score: the ids and the time
+# are new on every row by construction, and the rank moves whenever any other
+# token's score does. See ScoringRunner.run.
+RESCORE_IDENTITY = frozenset({"score_id", "run_id", "scored_at_ms", "rank"})
+
+_JSON_COLUMNS = frozenset(name for name, sql_type in SCORE_COLUMNS if sql_type == "JSON")
+
+
+def score_content(row: dict[str, Any]) -> dict[str, Any]:
+    """What a score row records, less the fields every re-score changes anyway.
+
+    Only stored columns count: a fresh row also carries ``ticker`` and ``chain``
+    for the caller, and a stored one does not. JSON columns compare parsed, so a
+    stored row whose text was re-serialised on its way through the journal or Neon
+    still matches a fresh one that says the same thing.
+    """
+    content: dict[str, Any] = {}
+    for name, _ in SCORE_COLUMNS:
+        if name in RESCORE_IDENTITY:
+            continue
+        value = row.get(name)
+        if name in _JSON_COLUMNS and isinstance(value, str):
+            with contextlib.suppress(json.JSONDecodeError):
+                value = json.loads(value)
+        content[name] = value
+    return content
 
 # WEIGHTS_VERSION, PROMPT_PATH, prompt_version and system_prompt are imported above
 # and re-exported here. They moved to scoring/pillars.py and scoring/prompt_meta.py
@@ -206,6 +239,9 @@ class NarrativeClient:
 class ScoredBatch:
     regime: str | None
     rows: list[dict[str, Any]]
+    # The rows ScoringRunner.run stored. The others matched their token's newest
+    # stored row, which already records them.
+    written: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def ranked(self) -> list[dict[str, Any]]:
@@ -498,7 +534,21 @@ class ScoringRunner:
             for key, row in self.store.latest_safety_by_token().items()
         }
         batch = self.score_batch(candidates, regime=regime, known_safety=known_safety)
-        self.store.append_scores(batch.rows)
+        # A re-score identical to its token's newest stored row is not stored again.
+        # That row already records this score with the inputs that produced it
+        # (hard rule 6), and it stays the token's current score until one differs.
+        # On 2026-09-25, 85% of the hourly re-scores were such repeats, and they
+        # were most of the dataset's growth. Any change is written as a new row as
+        # before: a new safety reading, a Telegram count, the regime, the prompt or
+        # the weights version.
+        newest = self.store.newest_scores(row["snapshot_id"] for row in batch.rows)
+        batch.written = [
+            row
+            for row in batch.rows
+            if row["snapshot_id"] not in newest
+            or score_content(newest[row["snapshot_id"]]) != score_content(row)
+        ]
+        self.store.append_scores(batch.written)
         if self.last_safety_fetched:
             # Stored as its own append-only observation, never written back onto the
             # snapshot: the lookup happened after the snapshot was taken, and the

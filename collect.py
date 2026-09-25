@@ -48,7 +48,7 @@ from collectors.social_tg import TelegramCollector, TelegramPreviewClient
 from collectors.social_x import XClient, XCollector, max_searches_from_env
 from collectors.store import Store
 from collectors.trigger_watcher import TriggerWatcher
-from scoring.runner import ScoringRunner
+from scoring.runner import SCORE_WINDOW, ScoringRunner
 
 log = logging.getLogger("collect")
 
@@ -65,7 +65,7 @@ def run_cycle(
     with_safety: bool = True,
     with_social: bool = True,
     max_tokens_per_poll: int = 120,
-    score_limit: int = 200,
+    score_limit: int = SCORE_WINDOW,
     export_to: str | Path | None = None,
     feed: Any = None,
     price_source: Any = None,
@@ -243,6 +243,8 @@ def run_cycle(
         scored = runner.run(limit=score_limit, regime=regime)
         summary["scored"] = {
             "rows": len(scored.rows),
+            # Stored: the re-scores that differ from their token's newest row.
+            "written": len(scored.written),
             "safety_known": len(runner.last_safety_reports),
             # Only the tokens actually looked up this cycle. The rest reused a
             # verdict an earlier run established, which is why a steady-state cycle
@@ -254,7 +256,7 @@ def run_cycle(
         if export_to:
             from export_web import build_payload
 
-            payload = build_payload(store)
+            payload = build_payload(store, score_window=score_limit)
             out = Path(export_to)
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(
@@ -340,7 +342,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "keyless and free; this one is metered per post read."
         ),
     )
-    parser.add_argument("--score-limit", type=int, default=200)
+    parser.add_argument("--score-limit", type=int, default=SCORE_WINDOW)
     parser.add_argument(
         "--export",
         nargs="?",
