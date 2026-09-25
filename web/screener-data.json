@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-25T14:23:20+00:00",
+  "generated_at": "2026-09-25T15:12:07+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -320,13 +320,13 @@
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 200,
-    "outcome_observations": 7784,
-    "social_observations": 1188,
-    "labelled_snapshots": 304,
+    "outcome_observations": 7808,
+    "social_observations": 1189,
+    "labelled_snapshots": 305,
     "excluded_on_evidence": 141,
     "excluded_as_unmeasured": 41,
     "safety_checked": 305,
-    "safety_observations": 4167
+    "safety_observations": 4168
   },
   "calibration": {
     "verdict": "not_ready",
@@ -370,22 +370,22 @@
         "feature": "top10_ex_lp_pct",
         "n": 280,
         "positives": 67,
-        "auc": 0.3794408240487702,
+        "auc": 0.3790904631770724,
         "auc_ci": [
-          0.3062179952206446,
-          0.45266365287689586
+          0.3058938775388913,
+          0.4522870488152535
         ],
-        "auc_out_of_sample": 0.5842781557067271,
+        "auc_out_of_sample": 0.5865457294028723,
         "auc_out_of_sample_ci": [
-          0.439452295456909,
-          0.7291040159565453
+          0.4417544707624948,
+          0.7313369880432499
         ],
         "holds_out_of_sample": true,
         "top_decile_lift": 1.7910447761194028,
         "tie_share": 0.0035714285714285713,
         "tie_value": 31.78840251331118,
         "auc_by_age_band": {
-          "<1h": 0.38220551378446116,
+          "<1h": 0.38095238095238093,
           "1-6h": 0.30244755244755245,
           "6-48h": 0.22023809523809523,
           ">48h": 0.3986175115207373
@@ -399,15 +399,15 @@
         "feature": "holder_count",
         "n": 300,
         "positives": 70,
-        "auc": 0.5951242236024845,
+        "auc": 0.5953105590062112,
         "auc_ci": [
-          0.5169396359258179,
-          0.6733088112791511
+          0.5171279591546128,
+          0.6734931588578096
         ],
-        "auc_out_of_sample": 0.6667780748663101,
+        "auc_out_of_sample": 0.6681149732620321,
         "auc_out_of_sample_ci": [
-          0.5294553371009437,
-          0.8041008126316765
+          0.5308966207008379,
+          0.8053333258232263
         ],
         "holds_out_of_sample": true,
         "top_decile_lift": 1.4285714285714284,
@@ -546,22 +546,22 @@
         "feature": "top10_ex_lp_pct",
         "n": 280,
         "positives": 67,
-        "auc": 0.3794408240487702,
+        "auc": 0.3790904631770724,
         "auc_ci": [
-          0.3062179952206446,
-          0.45266365287689586
+          0.3058938775388913,
+          0.4522870488152535
         ],
-        "auc_out_of_sample": 0.5842781557067271,
+        "auc_out_of_sample": 0.5865457294028723,
         "auc_out_of_sample_ci": [
-          0.439452295456909,
-          0.7291040159565453
+          0.4417544707624948,
+          0.7313369880432499
         ],
         "holds_out_of_sample": true,
         "top_decile_lift": 1.7910447761194028,
         "tie_share": 0.0035714285714285713,
         "tie_value": 31.78840251331118,
         "auc_by_age_band": {
-          "<1h": 0.38220551378446116,
+          "<1h": 0.38095238095238093,
           "1-6h": 0.30244755244755245,
           "6-48h": 0.22023809523809523,
           ">48h": 0.3986175115207373
@@ -633,15 +633,15 @@
         "feature": "holder_count",
         "n": 300,
         "positives": 70,
-        "auc": 0.5951242236024845,
+        "auc": 0.5953105590062112,
         "auc_ci": [
-          0.5169396359258179,
-          0.6733088112791511
+          0.5171279591546128,
+          0.6734931588578096
         ],
-        "auc_out_of_sample": 0.6667780748663101,
+        "auc_out_of_sample": 0.6681149732620321,
         "auc_out_of_sample_ci": [
-          0.5294553371009437,
-          0.8041008126316765
+          0.5308966207008379,
+          0.8053333258232263
         ],
         "holds_out_of_sample": true,
         "top_decile_lift": 1.4285714285714284,
@@ -9168,7 +9168,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1789917491491,
+        "collected_at_ms": 1790349120193,
         "honeypot": false,
         "buy_tax_pct": 1.0,
         "sell_tax_pct": 0.9900000000000001,
@@ -9176,8 +9176,8 @@
         "freeze_active": false,
         "lp_burned": false,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 54.732109581729695,
-        "holder_count": 862,
+        "top10_ex_lp_pct": 72.57604418795651,
+        "holder_count": 731,
         "deployer_address": "0x06c5b71477e6a14f222f2e58b9233a401ede0703",
         "deployer_prior_rugs": 0,
         "rugged": null,
