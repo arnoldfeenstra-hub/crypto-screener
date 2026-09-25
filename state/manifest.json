@@ -1,21 +1,21 @@
 {
   "schema_version": 8,
-  "updated_at": "2026-09-25T14:17:45+00:00",
+  "updated_at": "2026-09-25T14:23:25+00:00",
+  "store": "neon",
+  "dataset_id": "112834e3-3293-4094-ab31-23efd70b68a0",
   "rows": {
     "snapshots": 305,
     "trigger_events": 305,
-    "labels": 29550,
+    "labels": 29553,
     "outcome_observations": 7784,
-    "scores": 31263,
+    "scores": 31463,
     "social_observations": 1188,
-    "safety_observations": 4139
+    "safety_observations": 4167
   },
   "appended_last_run": {
-    "outcome_observations": 7,
+    "labels": 3,
     "scores": 200,
-    "safety_observations": 1
+    "safety_observations": 28
   },
-  "largest_file_mb": 99.79,
-  "github_file_limit_mb": 100,
-  "note": "Append-only journal of the Phase 0 dataset. Rebuilt into DuckDB at the start of each collector run and appended to at the end. Never edit or reorder these files: the dead tokens are the dataset."
+  "note": "The dataset lives in Neon, in append-only journal_* tables. The .jsonl files beside this manifest are the git journal as it stood when the dataset moved there; they are kept exactly as they were and never written again. This file is the collector's heartbeat."
 }
