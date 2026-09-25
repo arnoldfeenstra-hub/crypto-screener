@@ -109,6 +109,12 @@ def _encode(value: Any) -> Any:
     return value
 
 
+def encode_row(row: dict[str, Any]) -> dict[str, Any]:
+    """A row as the journal records it: every cell JSON-safe. Shared with the Neon
+    journal (collectors/neon.py), so both hold byte-for-byte the same values."""
+    return {name: _encode(value) for name, value in row.items()}
+
+
 def _decode(value: Any, sql_type: str) -> Any:
     if value is None:
         return None
@@ -230,10 +236,7 @@ def append_rows(
     handle = path.open("a", encoding="utf-8")
     try:
         for row in rows:
-            line = (
-                json.dumps({k: _encode(v) for k, v in row.items()}, sort_keys=True)
-                + "\n"
-            )
+            line = json.dumps(encode_row(row), sort_keys=True) + "\n"
             length = len(line.encode("utf-8"))
             if size and size + length > SHARD_MAX_BYTES:
                 handle.close()

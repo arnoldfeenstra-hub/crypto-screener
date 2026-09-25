@@ -7,9 +7,10 @@ Actions schedule is enough to actually accumulate the dataset.
 
     journal -> database -> poll -> re-price -> label -> social -> score -> export -> journal
 
-The first and last steps are what make it schedulable. State lives in an
-append-only JSONL journal (``collectors/journal.py``) that git can hold, is
-rebuilt into DuckDB at the start of a run, and is appended to at the end. A run
+The first and last steps are what make it schedulable. State lives in Neon when
+``SCREENER_DATABASE_URL`` is set (``collectors/neon.py``), otherwise in an
+append-only JSONL journal (``collectors/journal.py``) that git can hold. Either way
+it is rebuilt into DuckDB at the start of a run and appended to at the end. A run
 that dies halfway loses that run's work and nothing else.
 
 Every step is optional at the flag level and none of them is skipped by default,
@@ -37,7 +38,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from collectors import chains, journal
+from collectors import chains, journal, neon
 from collectors.config import load_config
 from collectors.dexscreener import DexScreenerClient, DexScreenerFeed, DexScreenerPriceSource
 from collectors.outcomes import OutcomeTracker
@@ -72,8 +73,17 @@ def run_cycle(
     telegram_client: Any = None,
     x_client: Any = None,
     x_max_searches: int | None = None,
+    database_url: str | None = None,
+    mirror_dir: str | Path = neon.DEFAULT_MIRROR_DIR,
+    neon_journal: Any = None,
 ) -> dict[str, Any]:
-    """Run one full cycle and return a summary. Every source is injectable for tests."""
+    """Run one full cycle and return a summary. Every source is injectable for tests.
+
+    With ``database_url`` (or an injected ``neon_journal``) the dataset lives in
+    Neon: the run restores from a local mirror of it, and its new rows go to Neon.
+    state/ is then read once -- to seed an empty Neon -- and otherwise only its
+    manifest, the collector's heartbeat, is written. See collectors/neon.py.
+    """
     started = time.time()
     resolved = chains.resolve_requested(list(chain_names))
 
@@ -83,10 +93,33 @@ def run_cycle(
         # rebuilding from it is always correct, so the stale copy is not consulted.
         working.unlink()
 
+    if (database_url or neon_journal is not None) and (
+        Path(mirror_dir).resolve() == Path(state_dir).resolve()
+    ):
+        raise ValueError(
+            "the Neon mirror and the git journal must be different directories: "
+            "the mirror is a cache that may be emptied and rebuilt"
+        )
+    dataset = neon_journal or (neon.NeonJournal.connect(database_url) if database_url else None)
+
     store = Store(working)
     summary: dict[str, Any] = {"chains": resolved, "regime": regime}
     try:
-        summary["restored"] = journal.restore(store, state_dir)
+        source: str | Path = state_dir
+        dataset_id = ""
+        if dataset is not None:
+            dataset_id = dataset.ensure_schema()
+            summary["store"] = "neon"
+            summary["neon"] = {
+                # A no-op on every run but the first: it copies state/ into Neon
+                # only while Neon is empty.
+                "bootstrapped": dataset.bootstrap(state_dir),
+                "pulled": dataset.pull(mirror_dir, dataset_id),
+            }
+            source = mirror_dir
+        else:
+            summary["store"] = "journal"
+        summary["restored"] = journal.restore(store, source)
 
         # for_chains reads SCREENER_SEED_TOKENS itself, so a seeded address is
         # polled on the schedule without a second switch -- the same shape as
@@ -229,7 +262,12 @@ def run_cycle(
             )
             summary["exported"] = {"path": str(out), "tokens": len(payload["tokens"])}
 
-        summary["journalled"] = journal.sync(store, state_dir)
+        if dataset is not None:
+            written = dataset.record(store, mirror_dir, dataset_id)
+            neon.write_manifest(state_dir, dataset.counts(), written, dataset_id)
+            summary["journalled"] = written
+        else:
+            summary["journalled"] = journal.sync(store, state_dir)
         summary["totals"] = {
             "snapshots": store.snapshot_count(),
             "scores": store.score_count(),
@@ -240,6 +278,8 @@ def run_cycle(
         }
     finally:
         store.close()
+        if dataset is not None and neon_journal is None:
+            dataset.close()
 
     summary["seconds"] = round(time.time() - started, 1)
     return summary
@@ -259,6 +299,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=f"comma-separated (supported: {', '.join(chains.supported_names())})",
     )
     parser.add_argument("--state", default=DEFAULT_STATE_DIR, help="journal directory")
+    parser.add_argument(
+        "--database-url",
+        default=None,
+        help=(
+            f"keep the dataset in Neon/Postgres (default: {neon.ENV_VAR}); without "
+            "it, state/ is the journal"
+        ),
+    )
+    parser.add_argument(
+        "--mirror",
+        default=str(neon.DEFAULT_MIRROR_DIR),
+        help="local cache of the Neon dataset, kept between runs (Neon mode only)",
+    )
     parser.add_argument("--db", default=DEFAULT_WORKING_DB, help="working DuckDB path")
     parser.add_argument("--regime", choices=["hot", "neutral", "cold"])
     parser.add_argument(
@@ -329,6 +382,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             score_limit=args.score_limit,
             export_to=args.export,
             x_max_searches=x_max_searches,
+            # Resolved after load_config() for the same reason as the X budget: a
+            # URL kept in .env must be honoured. Blank means the git journal.
+            database_url=args.database_url or os.environ.get(neon.ENV_VAR) or None,
+            mirror_dir=args.mirror,
         )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)

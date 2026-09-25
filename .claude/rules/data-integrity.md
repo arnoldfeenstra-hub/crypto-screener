@@ -1,7 +1,9 @@
 # Data integrity — append-only, no imputation
 
 These rules are enforced in code (`collectors/store.py`) and in tests
-(`tests/test_store_append_only.py`). Do not weaken either.
+(`tests/test_store_append_only.py`). Do not weaken either. In Neon the database enforces
+them too: triggers refuse UPDATE, DELETE and TRUNCATE on every `journal_*` table
+(`collectors/neon.py`, `tests/test_neon.py`).
 
 ## Append-only
 

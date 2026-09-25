@@ -6,6 +6,10 @@ requires-python = ">=3.11"
 dependencies = [
     "duckdb>=1.0",
     "requests>=2.31",
+    # Neon/Postgres, for the dataset when SCREENER_DATABASE_URL is set
+    # (collectors/neon.py). Only the collector imports it; the Vercel function
+    # does not, and does not install this file.
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]

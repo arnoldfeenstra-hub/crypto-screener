@@ -82,9 +82,29 @@ python -m export_web --db data/screener.duckdb
 
 ## Where the dataset lives
 
-`state/` — an append-only JSONL journal, committed to the repo. It is rebuilt into
-DuckDB at the start of each run and appended to at the end, so the database is a working
-copy and the journal is the dataset.
+**In Neon, once the `DATABASE_URL` secret is set** (`collectors/neon.py`). Neon is the
+Postgres the Vercel project integrates with. Each journal table becomes an append-only
+`journal_<table>` table — one JSONB row per recorded row, keyed by its own id — and the
+database itself refuses to change, remove or truncate a recorded row (triggers, tested
+in `tests/test_neon.py`). The first run with the secret copies `state/` into the empty
+database in one transaction; from then on `state/` is a frozen archive and only its
+`manifest.json`, the collector's heartbeat, is written.
+
+The collector still works in DuckDB, restored at the start of each run — but from a local
+*mirror* of Neon kept in the Actions cache, topped up with only the rows added since the
+last run. Pulling the whole dataset hourly would spend a free plan's transfer allowance
+in two days; the mirror is a cache, and any mirror that is missing or disagrees with
+Neon's row counts is rebuilt from Neon.
+
+To switch it on: create the database from the Vercel project (**Storage → Create
+Database → Neon**), then copy its `DATABASE_URL` into the repository's Actions secrets
+under the same name. Measured on the 2026-09-25 dataset: 136 MB in Postgres, growing
+about 19 MB a day — mostly the hourly re-scores — so Neon's free 0.5 GB lasts about three
+weeks before a paid plan (or a leaner score log) is needed.
+
+**Without the secret**, `state/` is the dataset: an append-only JSONL journal, committed
+to the repo. It is rebuilt into DuckDB at the start of each run and appended to at the
+end, so the database is a working copy and the journal is the dataset.
 
 Each table is a directory of daily shards, `state/<table>/<YYYY-MM-DD>.jsonl`, and a shard
 rolls over (`.1`, `.2`, …) before it reaches 45 MiB. GitHub refuses any file over 100 MiB,

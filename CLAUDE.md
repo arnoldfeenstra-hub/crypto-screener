@@ -56,7 +56,9 @@ The screener's job is to beat a ~2% base rate, not to find winners.
 ## Conventions
 
 - Python 3.11+, `uv` for deps, `ruff` for lint.
-- Storage: DuckDB over Parquet. Append-only. Partition by `snapshot_date`.
+- Storage: Neon Postgres is the system of record when `DATABASE_URL` is set (append-only
+  `journal_*` tables, enforced by triggers — `collectors/neon.py`); without it, the JSONL
+  journal in `state/`. DuckDB is only ever the working copy. Append-only either way.
 - All timestamps UTC, ISO 8601, stored as epoch millis.
 - Scoring prompt lives in `prompts/score.md` and is versioned. Bump `prompt_version` on every
   edit and write it into every scored row.
