@@ -116,6 +116,27 @@ def due_offsets(minutes_since_snapshot: int, collected: Iterable[int]) -> list[i
     ]
 
 
+def newest_first(snapshots: Iterable[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """The ``limit`` most recently triggered snapshots, newest first.
+
+    Every social collector picks the snapshots for a cycle here, so the platforms
+    cannot disagree about which end of the table a cap cuts off. Cutting off the
+    newest end is the failure this exists to prevent: it looks fine until the
+    dataset outgrows ``limit``, and from then on every cycle re-reads the same
+    tokens -- long finished with their 24h series -- while every token triggered
+    since is never polled at all. Social history cannot be backfilled
+    (BUILD_BRIEF.md section 1), so every one of those missed polls is a permanent
+    hole. The cap itself costs nothing while fewer than ``limit`` tokens trigger
+    inside 24 hours, the last offset: the newest ``limit`` then hold every token
+    with a poll still to come.
+
+    Sorted here rather than trusting the order it is given:
+    ``Store.snapshots_for_labelling`` is oldest-first because the outcome tracker
+    and the calibration report read it that way, and polling must not depend on it.
+    """
+    return sorted(snapshots, key=lambda snapshot: snapshot["ts"], reverse=True)[:limit]
+
+
 def derive_x_metrics(observations: list[SocialObservation]) -> dict[str, Any]:
     """Turn raw X counts into the section 4 ``social_x`` fields, at read time.
 

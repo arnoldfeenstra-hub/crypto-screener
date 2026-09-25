@@ -43,6 +43,7 @@ from collectors.social_base import (
     OFFSETS_MINUTES,
     SocialObservation,
     due_offsets,
+    newest_first,
 )
 from collectors.store import Store
 
@@ -281,14 +282,9 @@ class XCollector:
         written: list[SocialObservation] = []
         self.skipped_for_budget = 0
         searches = 0
-        # Newest first, and the newest `limit` of them. snapshots_for_labelling() is
-        # oldest first, and slicing that kept the *oldest* `limit` snapshots: once
-        # the dataset passed `limit` no new token was ever polled, and a budget was
-        # spent on week-old tokens' overdue offsets. (The Telegram collector's
-        # identical slice is why its series stops at the 200th snapshot.) Newest
-        # first also puts the on-time t+0 polls ahead of the backlog when the budget
-        # binds.
-        for snapshot in list(reversed(self.store.snapshots_for_labelling()))[:limit]:
+        # Newest first puts the on-time t+0 polls ahead of the backlog of overdue
+        # offsets when the budget binds.
+        for snapshot in newest_first(self.store.snapshots_for_labelling(), limit):
             age = int((as_of - snapshot["ts"]) // 60_000)
             done = self.store.social_offsets_collected(snapshot["snapshot_id"], PLATFORM)
             for offset in due_offsets(age, done):
