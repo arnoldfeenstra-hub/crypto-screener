@@ -64,7 +64,9 @@ error anywhere to notice. Merge to `main`, or drive it by hand from the Actions 
 A steady-state cycle is cheap: safety verdicts are read back from the store and reused for
 six hours, so a run asks GoPlus about new tokens and stale ones only, not about all two
 hundred rows it re-scores. Every refresh still appends a new row — the change over time is
-itself the observation.
+itself the observation. A re-score is stored only when it differs from the token's newest
+score row. A new safety reading, a Telegram count, a regime or a prompt version makes it
+differ; an hour passing does not.
 
 The individual steps still exist if you want them:
 
@@ -98,9 +100,11 @@ Neon's row counts is rebuilt from Neon.
 
 To switch it on: create the database from the Vercel project (**Storage → Create
 Database → Neon**), then copy its `DATABASE_URL` into the repository's Actions secrets
-under the same name. Measured on the 2026-09-25 dataset: 136 MB in Postgres, growing
-about 19 MB a day — mostly the hourly re-scores — so Neon's free 0.5 GB lasts about three
-weeks before a paid plan (or a leaner score log) is needed.
+under the same name. Measured on the 2026-09-25 dataset: 138 MB in Postgres. It grew about
+19 MB a day while every hourly re-score was stored, enough to fill Neon's free 0.5 GB in
+three weeks. 85% of those rows repeated the token's previous row exactly, and they are no
+longer stored. The estimate is now about 5–6 MB a day, roughly two months of headroom,
+and most of it is the six-hourly safety re-checks.
 
 **Without the secret**, `state/` is the dataset: an append-only JSONL journal, committed
 to the repo. It is rebuilt into DuckDB at the start of each run and appended to at the

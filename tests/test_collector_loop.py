@@ -624,6 +624,48 @@ class TestCycle:
         )
         assert second["scored"]["safety_fetched"] == 1
         assert second["totals"]["safety_observations"] == 2
+        # A new reading is a new input, so the re-score is a new row.
+        assert second["scored"]["written"] == 1
+        assert second["totals"]["scores"] == 2
+
+    def test_a_cycle_that_changes_nothing_stores_no_score_and_still_ranks(
+        self, tmp_path
+    ):
+        """An unchanged re-score is not stored a second time; the row that
+        records it stays the token's current score, and the page ranks from it."""
+        report = SafetyReport(
+            chain="solana",
+            contract="A",
+            source="goplus",
+            collected_at_ms=now_ms(),  # fresh, so the second cycle reuses it
+            honeypot=False,
+            sells_failing=False,
+            buy_tax_pct=0.0,
+            sell_tax_pct=0.0,
+            mint_revoked=True,
+            freeze_active=False,
+            lp_burned=True,
+            top10_ex_lp_pct=11.0,
+            deployer_prior_rugs=0,
+        )
+        page = tmp_path / "screener-data.json"
+        runs = [
+            cycle(
+                tmp_path,
+                [tradeable("solana", "A", "$A", 300_000.0)],
+                with_safety=True,
+                safety_source=StubSafety({("solana", "A"): report}),
+                export_to=page,
+            )
+            for _ in range(2)
+        ]
+        assert [run["scored"]["rows"] for run in runs] == [1, 1]
+        assert [run["scored"]["written"] for run in runs] == [1, 0]
+        assert runs[1]["totals"]["scores"] == 1
+        (token,) = json.loads(page.read_text(encoding="utf-8"))["tokens"]
+        assert token["excluded"] is False
+        assert token["score"] is not None
+        assert token["rank"] == 1
 
     def test_the_web_export_is_written_when_asked(self, tmp_path):
         out = tmp_path / "screener-data.json"

@@ -554,33 +554,70 @@ class Store:
         ).fetchone()
         return dict(zip(columns, row, strict=True)) if row else None
 
-    def latest_scores(self, limit: int = 100) -> list[dict[str, Any]]:
-        """The most recent scoring run's rows, best first.
+    def newest_scores(self, snapshot_ids: Iterable[str]) -> dict[str, dict[str, Any]]:
+        """Each given snapshot's newest score row, keyed by ``snapshot_id``.
 
-        Only the newest ``scored_at_ms`` is returned: older rows stay in the table
-        as history, but a ranking built from several runs at once would be mixing
-        prompt versions.
+        The collector stores a re-score only when it differs from this row
+        (scoring/runner.py), so for a token it still re-scores, this row is the
+        current score however long ago it was written. Ties on the timestamp go
+        to the row stored last.
         """
+        wanted = [snapshot_id for snapshot_id in snapshot_ids if snapshot_id]
+        if not wanted:
+            return {}
         columns = [name for name, _ in SCORE_COLUMNS]
-        row = self._con.execute(
-            "SELECT run_id FROM scores ORDER BY scored_at_ms DESC, run_id LIMIT 1"
-        ).fetchone()
-        if not row or row[0] is None:
-            return []
         rows = self._con.execute(
-            f"SELECT {', '.join(columns)} FROM scores WHERE run_id = ? "
-            "ORDER BY score DESC NULLS LAST LIMIT ?",
-            [row[0], int(limit)],
+            f"SELECT {', '.join(columns)} FROM scores "
+            "WHERE snapshot_id IN (SELECT unnest(?::VARCHAR[])) "
+            "QUALIFY row_number() OVER ("
+            "  PARTITION BY snapshot_id ORDER BY scored_at_ms DESC, rowid DESC"
+            ") = 1",
+            [wanted],
         ).fetchall()
-        return [dict(zip(columns, r, strict=True)) for r in rows]
+        newest = (dict(zip(columns, row, strict=True)) for row in rows)
+        return {row["snapshot_id"]: row for row in newest}
+
+    def latest_scores(self, limit: int = 100) -> list[dict[str, Any]]:
+        """The current score of each of the ``limit`` most recently triggered
+        tokens, best first.
+
+        A token's current score is its newest row. The collector re-scores these
+        tokens every cycle but stores a re-score only when it differs from that
+        row, so the row may be hours old and still be exactly what the last cycle
+        computed. That is also why ``rank`` is worked out here, the way
+        ScoringRunner.score_batch ranks a batch: a stored rank is the one the row
+        had in the run that wrote it.
+
+        Rows scored under an older prompt or weights version than the newest row
+        are left out, because a ranking must not mix versions. A version change
+        makes every re-score differ, so the next cycle rewrites them all.
+        """
+        recent = [row["snapshot_id"] for row in self.recent_snapshots(limit)]
+        newest = self.newest_scores(recent)
+        rows = [newest[snapshot_id] for snapshot_id in recent if snapshot_id in newest]
+        if not rows:
+            return []
+        current = max(rows, key=lambda r: r["scored_at_ms"])
+        version = (current["prompt_version"], current["weights_version"])
+        rows = [r for r in rows if (r["prompt_version"], r["weights_version"]) == version]
+
+        def best_first(row: dict[str, Any]) -> tuple[bool, float]:
+            return (row["score"] is None, -(row["score"] or 0.0))
+
+        survivors = sorted((r for r in rows if not r["excluded"]), key=best_first)
+        ranks = {r["score_id"]: position for position, r in enumerate(survivors, start=1)}
+        return sorted(
+            ({**r, "rank": ranks.get(r["score_id"])} for r in rows), key=best_first
+        )
 
     def trigger_time_scores(self) -> list[dict[str, Any]]:
         """Each snapshot's first score row, with the snapshot's own timestamp.
 
-        The collector re-scores its recent snapshots every cycle, so a token has
-        about a hundred score rows. Only the first was computed from what was known
-        at the trigger -- later ones fold in social counts taken afterwards -- and
-        it lands a median of about a minute after the snapshot. That row is the
+        The collector re-scores its recent snapshots every cycle and stores a row
+        whenever the result or its inputs changed, so a token has many score rows.
+        Only the first was computed from what was known at the trigger -- later
+        ones fold in social counts taken afterwards -- and it lands a median of
+        about a minute after the snapshot. That row is the
         lifecycle-matched one (.claude/rules/stats.md, Fitting 1): one per token,
         oldest trigger first. ``snapshot_ts`` is the trigger time, which is what a
         forward-in-time split must order by.
