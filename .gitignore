@@ -24,3 +24,7 @@ venv/
 *.egg-info/
 
 .vercel
+
+# The Neon mirror: a local cache of the dataset, rebuilt from Neon whenever it is
+# missing or wrong (collectors/neon.py). Never the record, never committed.
+.neon-mirror/

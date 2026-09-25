@@ -5,9 +5,12 @@
 # per-token social history is not. A token that dies today is only in the dataset
 # if something was watching today. This workflow is that something.
 #
-# State lives in state/ -- an append-only journal (collectors/journal.py) committed
-# back to the repo after each run, one directory per table and one shard per UTC
-# day. It is rebuilt into DuckDB at the start of a run and appended to at the end,
+# State lives in Neon once the DATABASE_URL secret is set (collectors/neon.py):
+# append-only journal_* tables the database itself refuses to change, with a local
+# mirror cached between runs so each run downloads only what is new. Without the
+# secret, it lives in state/ -- an append-only journal (collectors/journal.py)
+# committed back to the repo after each run, one directory per table and one shard
+# per UTC day. It is rebuilt into DuckDB at the start of a run and appended to at the end,
 # so nothing is ever rewritten and the diff of each commit is exactly the rows that
 # were added.
 #
@@ -84,9 +87,26 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # "true" once the DATABASE_URL secret exists, which is what switches the
+      # dataset from state/ to Neon (collectors/neon.py). A secret cannot appear in
+      # a step's `if:` directly; this can.
+      NEON_ON: ${{ secrets.DATABASE_URL != '' }}
 
     steps:
       - uses: actions/checkout@v4
+
+      # The run's working copy of the Neon dataset, kept between runs so each one
+      # downloads only the rows added since, not the whole dataset. A cache and
+      # never the record: a miss, an eviction or a mismatch just means the first
+      # pull rebuilds it from Neon.
+      - name: Restore the Neon mirror
+        if: env.NEON_ON == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .neon-mirror
+          key: neon-mirror-${{ github.run_id }}
+          restore-keys: neon-mirror-
 
       - uses: actions/setup-python@v5
         with:
@@ -133,6 +153,9 @@ jobs:
           # Set the variable to raise it, or to 0 to stop searching; an unset
           # variable is "", which is falsy here, so it falls through to 5.
           X_MAX_SEARCHES_PER_CYCLE: ${{ vars.X_MAX_SEARCHES_PER_CYCLE || '5' }}
+          # Neon's connection string, as the Vercel integration names it. Blank --
+          # no secret -- keeps the dataset in state/ exactly as before.
+          SCREENER_DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           set -o pipefail
           SAFETY=""
@@ -145,6 +168,7 @@ jobs:
             "${CHAIN_ARG[@]}" \
             --regime "$REGIME" \
             --state state \
+            --mirror .neon-mirror \
             --export web/screener-data.json \
             $SAFETY | tee summary.json
           {
@@ -164,6 +188,18 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+      # Saved only after a successful collect: a mirror from a run that failed
+      # half-way could hold rows past its recorded watermark, and the next run would
+      # have to rebuild it. A run that fails leaves the previous good one in place.
+      - name: Save the Neon mirror
+        if: success() && env.NEON_ON == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .neon-mirror
+          key: neon-mirror-${{ github.run_id }}
+
+      # With Neon on, state/ only changes in manifest.json -- the heartbeat
+      # health.yml reads -- so this commits the heartbeat and the web export.
       - name: Commit the journal
         run: |
           git config user.name "github-actions[bot]"
