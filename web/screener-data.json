@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-26T10:17:17+00:00",
+  "generated_at": "2026-09-26T11:16:43+00:00",
   "phase": "0",
   "mode": "collected",
   "paper_mode": true,
@@ -313,20 +313,20 @@
   "progress": {
     "triggered_tokens": 343,
     "complete_social_series": 0,
-    "survivors_7d": 93,
+    "survivors_7d": 95,
     "dead_7d": 141,
-    "dead_per_survivor": 1.5161290322580645,
+    "dead_per_survivor": 1.4842105263157894,
     "min_triggered_tokens": 300,
     "min_dead_per_survivor": 20,
     "exit_criteria_met": false,
     "snapshots_scored": 200,
-    "outcome_observations": 8460,
-    "social_observations": 1315,
-    "labelled_snapshots": 338,
-    "excluded_on_evidence": 145,
+    "outcome_observations": 8505,
+    "social_observations": 1322,
+    "labelled_snapshots": 341,
+    "excluded_on_evidence": 146,
     "excluded_as_unmeasured": 39,
     "safety_checked": 343,
-    "safety_observations": 4659
+    "safety_observations": 4687
   },
   "calibration": {
     "verdict": "not_ready",
@@ -335,14 +335,14 @@
     "threshold": 1.5,
     "base_rate_by_mcap_band": {
       "<500k": {
-        "n": 187,
+        "n": 188,
         "positives": 45,
-        "base_rate": 0.24064171122994651
+        "base_rate": 0.2393617021276596
       },
       "500k-2m": {
-        "n": 113,
+        "n": 114,
         "positives": 24,
-        "base_rate": 0.21238938053097345
+        "base_rate": 0.21052631578947367
       },
       "2m-10m": {
         "n": 23,
@@ -361,34 +361,34 @@
     "is_calibration": false,
     "label": "max_multiple_6h",
     "threshold": 1.5,
-    "rows": 334,
+    "rows": 336,
     "positives": 76,
-    "base_rate": 0.2275449101796407,
-    "verdict": "334 tokens, 76 reached max_multiple_6h >= 1.5x -- a base rate of 22.8% [18.6%, 27.5%]. Phase 0's gate is NOT met (0/300 triggered tokens with a complete social series, 1.5/20 dead per survivor), so nothing below is a calibration and no weight in prompts/score.md may be changed on it. Features that separated out of sample and survived age stratification: top10_ex_lp_pct, holder_count. Treat them as leads to collect against, not as a measured edge.",
+    "base_rate": 0.2261904761904762,
+    "verdict": "336 tokens, 76 reached max_multiple_6h >= 1.5x -- a base rate of 22.6% [18.5%, 27.4%]. Phase 0's gate is NOT met (0/300 triggered tokens with a complete social series, 1.5/20 dead per survivor), so nothing below is a calibration and no weight in prompts/score.md may be changed on it. Features that separated out of sample and survived age stratification: top10_ex_lp_pct, holder_count. Treat them as leads to collect against, not as a measured edge.",
     "leads": [
       {
         "feature": "top10_ex_lp_pct",
-        "n": 315,
+        "n": 317,
         "positives": 73,
-        "auc": 0.39544888486357976,
+        "auc": 0.3968111385582753,
         "auc_ci": [
-          0.3246478240318723,
-          0.4662499456952872
+          0.32600405191310194,
+          0.4676182252034487
         ],
-        "auc_out_of_sample": 0.5205399061032864,
+        "auc_out_of_sample": 0.5133101851851852,
         "auc_out_of_sample_ci": [
-          0.3854837632584984,
-          0.6555960489480743
+          0.3787267951908359,
+          0.6478935751795345
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 1.6703490941228456,
-        "tie_share": 0.0031746031746031746,
+        "top_decile_lift": 1.540874944763588,
+        "tie_share": 0.0031545741324921135,
         "tie_value": 75.76752671499223,
         "auc_by_age_band": {
-          "<1h": 0.400853889943074,
-          "1-6h": 0.3183023872679045,
+          "<1h": 0.40829493087557606,
+          "1-6h": 0.3169761273209549,
           "6-48h": 0.22023809523809523,
-          ">48h": 0.39445628997867804
+          ">48h": 0.39232409381663114
         },
         "separates": true,
         "survives_strata": true,
@@ -397,25 +397,25 @@
       },
       {
         "feature": "holder_count",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.5826193390452876,
+        "auc": 0.5802631578947368,
         "auc_ci": [
-          0.5077369384763137,
-          0.6575017396142615
+          0.505426741953293,
+          0.6550995738361807
         ],
-        "auc_out_of_sample": 0.545995670995671,
+        "auc_out_of_sample": 0.5378787878787878,
         "auc_out_of_sample_ci": [
-          0.41165659052984604,
-          0.680334751461496
+          0.40368541495783566,
+          0.67207216079974
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 1.4649122807017543,
-        "tie_share": 0.07784431137724551,
+        "top_decile_lift": 1.4736842105263157,
+        "tie_share": 0.07738095238095238,
         "tie_value": 0.0,
         "auc_by_age_band": {
-          "<1h": 0.5855263157894737,
-          "1-6h": 0.7068965517241379,
+          "<1h": 0.5773001508295625,
+          "1-6h": 0.7066937119675456,
           "6-48h": 0.7241379310344828,
           ">48h": 0.535181236673774
         },
@@ -428,24 +428,24 @@
     "features": [
       {
         "feature": "age_minutes",
-        "n": 333,
+        "n": 335,
         "positives": 76,
-        "auc": 0.37789268892074546,
+        "auc": 0.3805882950619793,
         "auc_ci": [
-          0.3099033624428428,
-          0.44588201539864813
+          0.3124849127481971,
+          0.44869167737576143
         ],
-        "auc_out_of_sample": 0.6074561403508771,
+        "auc_out_of_sample": 0.6030844155844156,
         "auc_out_of_sample_ci": [
-          0.47332064308523836,
-          0.7415916376165159
+          0.46900675011036225,
+          0.7371620810584689
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 1.4605263157894737,
-        "tie_share": 0.024024024024024024,
+        "top_decile_lift": 1.4692982456140349,
+        "tie_share": 0.023880597014925373,
         "tie_value": 34.0,
         "auc_by_age_band": {
-          "<1h": 0.451625386996904,
+          "<1h": 0.4500377073906486,
           "1-6h": 0.5959432048681541,
           "6-48h": 0.5747126436781609,
           ">48h": 0.3091684434968017
@@ -456,54 +456,25 @@
         "verdict": "control variable -- younger surges more; the strata are cut on it, so it is not checked against itself"
       },
       {
-        "feature": "buy_pressure_24h",
-        "n": 55,
-        "positives": 13,
-        "auc": 0.6098901098901099,
-        "auc_ci": [
-          0.4273721118847475,
-          0.7924081078954723
-        ],
-        "auc_out_of_sample": 0.7142857142857143,
-        "auc_out_of_sample_ci": [
-          0.35641133119288376,
-          1.0
-        ],
-        "holds_out_of_sample": true,
-        "top_decile_lift": 1.6923076923076925,
-        "tie_share": 0.01818181818181818,
-        "tie_value": 0.5576271186440678,
-        "auc_by_age_band": {
-          "<1h": 0.7384615384615385,
-          "1-6h": 0.4930555555555556,
-          "6-48h": null,
-          ">48h": null
-        },
-        "separates": false,
-        "survives_strata": false,
-        "is_control": false,
-        "verdict": "no separation (interval spans 0.5)"
-      },
-      {
         "feature": "buy_pressure_1h",
-        "n": 54,
+        "n": 56,
         "positives": 13,
-        "auc": 0.6078799249530957,
+        "auc": 0.6171735241502684,
         "auc_ci": [
-          0.42483534367688613,
-          0.7909245062293053
+          0.4353933902820982,
+          0.7989536580184385
         ],
-        "auc_out_of_sample": 0.6904761904761905,
+        "auc_out_of_sample": 0.6333333333333333,
         "auc_out_of_sample_ci": [
-          0.3263512060059469,
+          0.18707835337635326,
           1.0
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 0.8307692307692308,
-        "tie_share": 0.018518518518518517,
+        "top_decile_lift": 0.8615384615384616,
+        "tie_share": 0.017857142857142856,
         "tie_value": 0.6372549019607843,
         "auc_by_age_band": {
-          "<1h": 0.7384615384615385,
+          "<1h": 0.7466666666666667,
           "1-6h": 0.5138888888888888,
           "6-48h": null,
           ">48h": null
@@ -514,57 +485,57 @@
         "verdict": "no separation (interval spans 0.5)"
       },
       {
-        "feature": "volume_accel_1h_6h",
-        "n": 55,
+        "feature": "buy_pressure_24h",
+        "n": 57,
         "positives": 13,
-        "auc": 0.6053113553113553,
+        "auc": 0.6171328671328671,
         "auc_ci": [
-          0.4226194890141408,
-          0.7880032216085697
+          0.4357512984811534,
+          0.7985144357845808
         ],
-        "auc_out_of_sample": 0.7023809523809523,
+        "auc_out_of_sample": 0.625,
         "auc_out_of_sample_ci": [
-          0.3412080072818153,
+          0.17987350912816463,
           1.0
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 1.6923076923076925,
-        "tie_share": 0.32727272727272727,
-        "tie_value": 6.0,
+        "top_decile_lift": 1.753846153846154,
+        "tie_share": 0.017543859649122806,
+        "tie_value": 0.5576271186440678,
         "auc_by_age_band": {
-          "<1h": 0.5,
-          "1-6h": 0.5763888888888888,
+          "<1h": 0.7466666666666667,
+          "1-6h": 0.4930555555555556,
           "6-48h": null,
           ">48h": null
         },
         "separates": false,
         "survives_strata": false,
         "is_control": false,
-        "verdict": "artefact: pinned value, and no separation inside an age band"
+        "verdict": "no separation (interval spans 0.5)"
       },
       {
         "feature": "top10_ex_lp_pct",
-        "n": 315,
+        "n": 317,
         "positives": 73,
-        "auc": 0.39544888486357976,
+        "auc": 0.3968111385582753,
         "auc_ci": [
-          0.3246478240318723,
-          0.4662499456952872
+          0.32600405191310194,
+          0.4676182252034487
         ],
-        "auc_out_of_sample": 0.5205399061032864,
+        "auc_out_of_sample": 0.5133101851851852,
         "auc_out_of_sample_ci": [
-          0.3854837632584984,
-          0.6555960489480743
+          0.3787267951908359,
+          0.6478935751795345
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 1.6703490941228456,
-        "tie_share": 0.0031746031746031746,
+        "top_decile_lift": 1.540874944763588,
+        "tie_share": 0.0031545741324921135,
         "tie_value": 75.76752671499223,
         "auc_by_age_band": {
-          "<1h": 0.400853889943074,
-          "1-6h": 0.3183023872679045,
+          "<1h": 0.40829493087557606,
+          "1-6h": 0.3169761273209549,
           "6-48h": 0.22023809523809523,
-          ">48h": 0.39445628997867804
+          ">48h": 0.39232409381663114
         },
         "separates": true,
         "survives_strata": true,
@@ -573,12 +544,12 @@
       },
       {
         "feature": "txn_accel_6h_24h",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.6037076703386373,
+        "auc": 0.6022520242914979,
         "auc_ci": [
-          0.5290122977374866,
-          0.6784030429397879
+          0.5275911057100758,
+          0.67691294287292
         ],
         "auc_out_of_sample": 0.560064935064935,
         "auc_out_of_sample_ci": [
@@ -586,8 +557,8 @@
           0.6945501114994458
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 2.130781499202552,
-        "tie_share": 0.6826347305389222,
+        "top_decile_lift": 2.1435406698564594,
+        "tie_share": 0.6845238095238095,
         "tie_value": 4.0,
         "auc_by_age_band": {
           "<1h": 0.5,
@@ -601,26 +572,55 @@
         "verdict": "artefact: pinned value, and no separation inside an age band"
       },
       {
-        "feature": "holder_count",
-        "n": 334,
-        "positives": 76,
-        "auc": 0.5826193390452876,
+        "feature": "volume_accel_1h_6h",
+        "n": 57,
+        "positives": 13,
+        "auc": 0.5865384615384616,
         "auc_ci": [
-          0.5077369384763137,
-          0.6575017396142615
+          0.4042264451905335,
+          0.7688504778863896
         ],
-        "auc_out_of_sample": 0.545995670995671,
+        "auc_out_of_sample": 0.5625,
         "auc_out_of_sample_ci": [
-          0.41165659052984604,
-          0.680334751461496
+          0.11744914150849933,
+          1.0
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 1.4649122807017543,
-        "tie_share": 0.07784431137724551,
+        "top_decile_lift": 1.753846153846154,
+        "tie_share": 0.3508771929824561,
+        "tie_value": 6.0,
+        "auc_by_age_band": {
+          "<1h": 0.5,
+          "1-6h": 0.5763888888888888,
+          "6-48h": null,
+          ">48h": null
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "holder_count",
+        "n": 336,
+        "positives": 76,
+        "auc": 0.5802631578947368,
+        "auc_ci": [
+          0.505426741953293,
+          0.6550995738361807
+        ],
+        "auc_out_of_sample": 0.5378787878787878,
+        "auc_out_of_sample_ci": [
+          0.40368541495783566,
+          0.67207216079974
+        ],
+        "holds_out_of_sample": true,
+        "top_decile_lift": 1.4736842105263157,
+        "tie_share": 0.07738095238095238,
         "tie_value": 0.0,
         "auc_by_age_band": {
-          "<1h": 0.5855263157894737,
-          "1-6h": 0.7068965517241379,
+          "<1h": 0.5773001508295625,
+          "1-6h": 0.7066937119675456,
           "6-48h": 0.7241379310344828,
           ">48h": 0.535181236673774
         },
@@ -630,83 +630,25 @@
         "verdict": "separates, out of sample, within age bands -- a lead, not a result"
       },
       {
-        "feature": "price_change_6h_pct",
-        "n": 55,
-        "positives": 13,
-        "auc": 0.5714285714285714,
-        "auc_ci": [
-          0.38808282063062044,
-          0.7547743222265224
-        ],
-        "auc_out_of_sample": 0.7142857142857143,
-        "auc_out_of_sample_ci": [
-          0.35641133119288376,
-          1.0
-        ],
-        "holds_out_of_sample": true,
-        "top_decile_lift": 1.6923076923076925,
-        "tie_share": 0.01818181818181818,
-        "tie_value": 6630.0,
-        "auc_by_age_band": {
-          "<1h": 0.27692307692307694,
-          "1-6h": 0.5625,
-          "6-48h": null,
-          ">48h": null
-        },
-        "separates": false,
-        "survives_strata": false,
-        "is_control": false,
-        "verdict": "no separation (interval spans 0.5)"
-      },
-      {
-        "feature": "lp_locked_pct",
-        "n": 331,
-        "positives": 76,
-        "auc": 0.43521671826625385,
-        "auc_ci": [
-          0.3636583602774749,
-          0.5067750762550328
-        ],
-        "auc_out_of_sample": 0.49698464912280704,
-        "auc_out_of_sample_ci": [
-          0.3639838764877608,
-          0.6299854217578533
-        ],
-        "holds_out_of_sample": false,
-        "top_decile_lift": 0.7918660287081339,
-        "tie_share": 0.2990936555891239,
-        "tie_value": 100.0,
-        "auc_by_age_band": {
-          "<1h": 0.442156862745098,
-          "1-6h": 0.3830049261083744,
-          "6-48h": 0.1781609195402299,
-          ">48h": 0.5757575757575758
-        },
-        "separates": false,
-        "survives_strata": false,
-        "is_control": false,
-        "verdict": "no separation (interval spans 0.5)"
-      },
-      {
         "feature": "price_change_5m_pct",
-        "n": 50,
+        "n": 52,
         "positives": 12,
-        "auc": 0.5635964912280702,
+        "auc": 0.575,
         "auc_ci": [
-          0.37220363360204933,
-          0.7549893488540911
+          0.3846862242934468,
+          0.7653137757065531
         ],
-        "auc_out_of_sample": 0.6388888888888888,
+        "auc_out_of_sample": 0.5357142857142857,
         "auc_out_of_sample_ci": [
-          0.2604003937471745,
-          1.0
+          0.08883843166982769,
+          0.9825901397587438
         ],
         "holds_out_of_sample": true,
         "top_decile_lift": 0.0,
-        "tie_share": 0.02,
+        "tie_share": 0.019230769230769232,
         "tie_value": 1.8,
         "auc_by_age_band": {
-          "<1h": 0.46153846153846156,
+          "<1h": 0.5066666666666667,
           "1-6h": 0.5396825396825397,
           "6-48h": null,
           ">48h": null
@@ -717,25 +659,83 @@
         "verdict": "no separation (interval spans 0.5)"
       },
       {
-        "feature": "value_per_trade",
-        "n": 334,
+        "feature": "lp_locked_pct",
+        "n": 333,
         "positives": 76,
-        "auc": 0.5596185230518156,
+        "auc": 0.43643764079459346,
         "auc_ci": [
-          0.48473208245631394,
-          0.6345049636473172
+          0.3648914920670423,
+          0.5079837895221446
         ],
-        "auc_out_of_sample": 0.5032467532467533,
+        "auc_out_of_sample": 0.49314692982456143,
         "auc_out_of_sample_ci": [
-          0.3701733311123085,
-          0.636320175381198
+          0.3603340785225413,
+          0.6259597811265816
+        ],
+        "holds_out_of_sample": false,
+        "top_decile_lift": 0.7966507177033494,
+        "tie_share": 0.2972972972972973,
+        "tie_value": 100.0,
+        "auc_by_age_band": {
+          "<1h": 0.4470970206264324,
+          "1-6h": 0.38382594417077176,
+          "6-48h": 0.1781609195402299,
+          ">48h": 0.5757575757575758
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "price_change_6h_pct",
+        "n": 57,
+        "positives": 13,
+        "auc": 0.5576923076923077,
+        "auc_ci": [
+          0.37532538281835137,
+          0.740059232566264
+        ],
+        "auc_out_of_sample": 0.9375,
+        "auc_out_of_sample_ci": [
+          0.695627130597178,
+          1.0
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 0.9322169059011165,
-        "tie_share": 0.0029940119760479044,
+        "top_decile_lift": 1.753846153846154,
+        "tie_share": 0.017543859649122806,
+        "tie_value": 6630.0,
+        "auc_by_age_band": {
+          "<1h": 0.26666666666666666,
+          "1-6h": 0.5625,
+          "6-48h": null,
+          ">48h": null
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "value_per_trade",
+        "n": 336,
+        "positives": 76,
+        "auc": 0.5571356275303644,
+        "auc_ci": [
+          0.48231981005766683,
+          0.631951445003062
+        ],
+        "auc_out_of_sample": 0.5016233766233766,
+        "auc_out_of_sample_ci": [
+          0.3686220859601905,
+          0.6346246672865627
+        ],
+        "holds_out_of_sample": true,
+        "top_decile_lift": 0.937799043062201,
+        "tie_share": 0.002976190476190476,
         "tie_value": 90.6300222179289,
         "auc_by_age_band": {
-          "<1h": 0.5119969040247678,
+          "<1h": 0.5007541478129713,
           "1-6h": 0.5926977687626774,
           "6-48h": 0.7988505747126436,
           ">48h": 0.6844349680170576
@@ -747,12 +747,12 @@
       },
       {
         "feature": "socials_declared_n",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.4477764177886577,
+        "auc": 0.449164979757085,
         "auc_ci": [
-          0.375721881602866,
-          0.5198309539744493
+          0.3771176454391868,
+          0.5212123140749833
         ],
         "auc_out_of_sample": 0.4596861471861472,
         "auc_out_of_sample_ci": [
@@ -760,11 +760,11 @@
           0.5902217320228053
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 1.9976076555023923,
-        "tie_share": 0.5089820359281437,
+        "top_decile_lift": 2.0095693779904304,
+        "tie_share": 0.5089285714285714,
         "tie_value": 2.0,
         "auc_by_age_band": {
-          "<1h": 0.5106424148606811,
+          "<1h": 0.513763197586727,
           "1-6h": 0.48498985801217037,
           "6-48h": 0.42528735632183906,
           ">48h": 0.2974413646055437
@@ -776,12 +776,12 @@
       },
       {
         "feature": "declared_telegram",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.45333537331701346,
+        "auc": 0.45445344129554655,
         "auc_ci": [
-          0.38103092442836684,
-          0.5256398222056601
+          0.3821702571923967,
+          0.5267366253986964
         ],
         "auc_out_of_sample": 0.49702380952380953,
         "auc_out_of_sample_ci": [
@@ -789,11 +789,11 @@
           0.6298112458876566
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 1.9976076555023923,
-        "tie_share": 0.7305389221556886,
+        "top_decile_lift": 2.0095693779904304,
+        "tie_share": 0.7321428571428571,
         "tie_value": 0.0,
         "auc_by_age_band": {
-          "<1h": 0.5402476780185759,
+          "<1h": 0.5426093514328808,
           "1-6h": 0.48032454361054766,
           "6-48h": 0.3793103448275862,
           ">48h": 0.302771855010661
@@ -804,42 +804,13 @@
         "verdict": "artefact: pinned value, and no separation inside an age band"
       },
       {
-        "feature": "price_change_24h_pct",
-        "n": 55,
-        "positives": 13,
-        "auc": 0.5402930402930403,
-        "auc_ci": [
-          0.3573050957033703,
-          0.7232809848827102
-        ],
-        "auc_out_of_sample": 0.30952380952380953,
-        "auc_out_of_sample_ci": [
-          0.0003585044698605211,
-          0.6186891145777585
-        ],
-        "holds_out_of_sample": false,
-        "top_decile_lift": 1.6923076923076925,
-        "tie_share": 0.01818181818181818,
-        "tie_value": 6630.0,
-        "auc_by_age_band": {
-          "<1h": 0.27692307692307694,
-          "1-6h": 0.5625,
-          "6-48h": null,
-          ">48h": null
-        },
-        "separates": false,
-        "survives_strata": false,
-        "is_control": false,
-        "verdict": "no separation (interval spans 0.5)"
-      },
-      {
         "feature": "pair_count",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.5377651978784169,
+        "auc": 0.5356528340080972,
         "auc_ci": [
-          0.4630640647230596,
-          0.6124663310337742
+          0.4610406060540012,
+          0.6102650619621931
         ],
         "auc_out_of_sample": 0.4726731601731602,
         "auc_out_of_sample_ci": [
@@ -847,11 +818,11 @@
           0.6040958509419496
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 1.331738437001595,
-        "tie_share": 0.5449101796407185,
+        "top_decile_lift": 1.3397129186602872,
+        "tie_share": 0.5416666666666666,
         "tie_value": 1.0,
         "auc_by_age_band": {
-          "<1h": 0.5717879256965944,
+          "<1h": 0.5644796380090498,
           "1-6h": 0.49817444219066936,
           "6-48h": 0.5862068965517241,
           ">48h": 0.5405117270788913
@@ -863,12 +834,12 @@
       },
       {
         "feature": "data_completeness",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.46600877192982454,
+        "auc": 0.46773785425101216,
         "auc_ci": [
-          0.3931768082061118,
-          0.5388407356535373
+          0.3949073081439671,
+          0.5405684003580573
         ],
         "auc_out_of_sample": 0.48593073593073594,
         "auc_out_of_sample_ci": [
@@ -876,11 +847,11 @@
           0.6181448799991534
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 1.7312599681020733,
-        "tie_share": 0.5568862275449101,
+        "top_decile_lift": 1.7416267942583732,
+        "tie_share": 0.5595238095238095,
         "tie_value": 0.3888888888888889,
         "auc_by_age_band": {
-          "<1h": 0.5270897832817337,
+          "<1h": 0.529788838612368,
           "1-6h": 0.4430020283975659,
           "6-48h": 0.5028735632183908,
           ">48h": 0.6865671641791045
@@ -891,13 +862,42 @@
         "verdict": "artefact: pinned value, and no separation inside an age band"
       },
       {
-        "feature": "declared_website",
-        "n": 334,
-        "positives": 76,
-        "auc": 0.4757751937984496,
+        "feature": "price_change_24h_pct",
+        "n": 57,
+        "positives": 13,
+        "auc": 0.527972027972028,
         "auc_ci": [
-          0.40257685363780954,
-          0.5489735339590898
+          0.3463586763754969,
+          0.7095853795685592
+        ],
+        "auc_out_of_sample": 0.0625,
+        "auc_out_of_sample_ci": [
+          0.0,
+          0.1915133487519439
+        ],
+        "holds_out_of_sample": false,
+        "top_decile_lift": 1.753846153846154,
+        "tie_share": 0.017543859649122806,
+        "tie_value": 6630.0,
+        "auc_by_age_band": {
+          "<1h": 0.26666666666666666,
+          "1-6h": 0.5625,
+          "6-48h": null,
+          ">48h": null
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "declared_website",
+        "n": 336,
+        "positives": 76,
+        "auc": 0.47692307692307695,
+        "auc_ci": [
+          0.4037518557759862,
+          0.5500942980701676
         ],
         "auc_out_of_sample": 0.4715909090909091,
         "auc_out_of_sample_ci": [
@@ -905,11 +905,11 @@
           0.6029438953516737
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 1.4649122807017543,
-        "tie_share": 0.7874251497005988,
+        "top_decile_lift": 1.4736842105263157,
+        "tie_share": 0.7857142857142857,
         "tie_value": 1.0,
         "auc_by_age_band": {
-          "<1h": 0.43034055727554177,
+          "<1h": 0.4343891402714932,
           "1-6h": 0.5251521298174442,
           "6-48h": 0.5574712643678161,
           ">48h": 0.42430703624733473
@@ -920,54 +920,25 @@
         "verdict": "artefact: pinned value, and no separation inside an age band"
       },
       {
-        "feature": "volume_24h_usd",
-        "n": 334,
-        "positives": 76,
-        "auc": 0.5199408404732763,
-        "auc_ci": [
-          0.4455250200439577,
-          0.5943566609025949
-        ],
-        "auc_out_of_sample": 0.5135281385281385,
-        "auc_out_of_sample_ci": [
-          0.3800385349653372,
-          0.6470177420909398
-        ],
-        "holds_out_of_sample": true,
-        "top_decile_lift": 0.799043062200957,
-        "tie_share": 0.0029940119760479044,
-        "tie_value": 938201.99,
-        "auc_by_age_band": {
-          "<1h": 0.42879256965944273,
-          "1-6h": 0.4081135902636917,
-          "6-48h": 0.603448275862069,
-          ">48h": 0.7526652452025586
-        },
-        "separates": false,
-        "survives_strata": false,
-        "is_control": false,
-        "verdict": "no separation (interval spans 0.5)"
-      },
-      {
         "feature": "liquidity_usd",
-        "n": 333,
+        "n": 335,
         "positives": 76,
-        "auc": 0.4821318861355724,
+        "auc": 0.48028855923592767,
         "auc_ci": [
-          0.40867986255086153,
-          0.5555839097202833
+          0.40696662318949983,
+          0.5536104952823555
         ],
-        "auc_out_of_sample": 0.5460526315789473,
+        "auc_out_of_sample": 0.5497835497835498,
         "auc_out_of_sample_ci": [
-          0.4115152980570115,
-          0.6805899651008832
+          0.41539181103353207,
+          0.6841752885335676
         ],
         "holds_out_of_sample": true,
-        "top_decile_lift": 1.194976076555024,
-        "tie_share": 0.003003003003003003,
+        "top_decile_lift": 1.2021531100478466,
+        "tie_share": 0.0029850746268656717,
         "tie_value": 81311.31,
         "auc_by_age_band": {
-          "<1h": 0.47213622291021673,
+          "<1h": 0.4645550527903469,
           "1-6h": 0.5249492900608519,
           "6-48h": 0.5287356321839081,
           ">48h": 0.5995670995670995
@@ -978,28 +949,28 @@
         "verdict": "no separation (interval spans 0.5)"
       },
       {
-        "feature": "mcap_usd",
-        "n": 334,
+        "feature": "volume_24h_usd",
+        "n": 336,
         "positives": 76,
-        "auc": 0.48495512035903715,
+        "auc": 0.5162955465587045,
         "auc_ci": [
-          0.4114443481351868,
-          0.5584658925828875
+          0.44201636564397395,
+          0.590574727473435
         ],
-        "auc_out_of_sample": 0.43235930735930733,
+        "auc_out_of_sample": 0.5059523809523809,
         "auc_out_of_sample_ci": [
-          0.30405042353950473,
-          0.5606681911791099
+          0.3727626250012114,
+          0.6391421369035505
         ],
-        "holds_out_of_sample": false,
-        "top_decile_lift": 0.799043062200957,
-        "tie_share": 0.0029940119760479044,
-        "tie_value": 637747.0,
+        "holds_out_of_sample": true,
+        "top_decile_lift": 0.8038277511961722,
+        "tie_share": 0.002976190476190476,
+        "tie_value": 938201.99,
         "auc_by_age_band": {
-          "<1h": 0.4326625386996904,
-          "1-6h": 0.5890466531440163,
-          "6-48h": 0.5287356321839081,
-          ">48h": 0.603411513859275
+          "<1h": 0.41968325791855204,
+          "1-6h": 0.4081135902636917,
+          "6-48h": 0.603448275862069,
+          ">48h": 0.7526652452025586
         },
         "separates": false,
         "survives_strata": false,
@@ -1007,28 +978,28 @@
         "verdict": "no separation (interval spans 0.5)"
       },
       {
-        "feature": "price_change_1h_pct",
-        "n": 54,
-        "positives": 13,
-        "auc": 0.5140712945590994,
+        "feature": "mcap_usd",
+        "n": 336,
+        "positives": 76,
+        "auc": 0.4838562753036437,
         "auc_ci": [
-          0.3315389868096937,
-          0.6966036023085052
+          0.4104484193676394,
+          0.557264131239648
         ],
-        "auc_out_of_sample": 0.5714285714285714,
+        "auc_out_of_sample": 0.4356060606060606,
         "auc_out_of_sample_ci": [
-          0.19495691367607992,
-          0.9479002291810629
+          0.30700710190157987,
+          0.5642050193105413
         ],
-        "holds_out_of_sample": true,
-        "top_decile_lift": 1.6615384615384616,
-        "tie_share": 0.018518518518518517,
-        "tie_value": 1.84,
+        "holds_out_of_sample": false,
+        "top_decile_lift": 0.8038277511961722,
+        "tie_share": 0.002976190476190476,
+        "tie_value": 637747.0,
         "auc_by_age_band": {
-          "<1h": 0.27692307692307694,
-          "1-6h": 0.4930555555555556,
-          "6-48h": null,
-          ">48h": null
+          "<1h": 0.42684766214177977,
+          "1-6h": 0.5890466531440163,
+          "6-48h": 0.5287356321839081,
+          ">48h": 0.603411513859275
         },
         "separates": false,
         "survives_strata": false,
@@ -1065,71 +1036,13 @@
         "verdict": "no separation (interval spans 0.5)"
       },
       {
-        "feature": "liquidity_over_mcap",
-        "n": 333,
-        "positives": 76,
-        "auc": 0.5099836166291214,
-        "auc_ci": [
-          0.43574657025804936,
-          0.5842206630001934
-        ],
-        "auc_out_of_sample": 0.42214912280701755,
-        "auc_out_of_sample_ci": [
-          0.2945584128989785,
-          0.5497398327150567
-        ],
-        "holds_out_of_sample": false,
-        "top_decile_lift": 0.9294258373205743,
-        "tie_share": 0.003003003003003003,
-        "tie_value": 0.12749775381146441,
-        "auc_by_age_band": {
-          "<1h": 0.5936532507739938,
-          "1-6h": 0.40405679513184584,
-          "6-48h": 0.5747126436781609,
-          ">48h": 0.41125541125541126
-        },
-        "separates": false,
-        "survives_strata": false,
-        "is_control": false,
-        "verdict": "no separation (interval spans 0.5)"
-      },
-      {
-        "feature": "fdv_over_mcap",
-        "n": 334,
-        "positives": 76,
-        "auc": 0.5098684210526315,
-        "auc_ci": [
-          0.4356665400564461,
-          0.5840703020488169
-        ],
-        "auc_out_of_sample": 0.4943181818181818,
-        "auc_out_of_sample_ci": [
-          0.3616630811134831,
-          0.6269732825228805
-        ],
-        "holds_out_of_sample": false,
-        "top_decile_lift": 1.331738437001595,
-        "tie_share": 0.9520958083832335,
-        "tie_value": 1.0,
-        "auc_by_age_band": {
-          "<1h": 0.4868421052631579,
-          "1-6h": 0.5227180527383367,
-          "6-48h": 0.5977011494252874,
-          ">48h": 0.4925373134328358
-        },
-        "separates": false,
-        "survives_strata": false,
-        "is_control": false,
-        "verdict": "artefact: pinned value, and no separation inside an age band"
-      },
-      {
         "feature": "declared_x",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.4904120767033864,
+        "auc": 0.48997975708502023,
         "auc_ci": [
-          0.416730288353215,
-          0.5640938650535577
+          0.4163776143254067,
+          0.5635818998446337
         ],
         "auc_out_of_sample": 0.4832251082251082,
         "auc_out_of_sample_ci": [
@@ -1137,11 +1050,11 @@
           0.6152871170107075
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 1.331738437001595,
-        "tie_share": 0.8832335329341318,
+        "top_decile_lift": 1.3397129186602872,
+        "tie_share": 0.8839285714285714,
         "tie_value": 1.0,
         "auc_by_age_band": {
-          "<1h": 0.5348297213622291,
+          "<1h": 0.5328054298642534,
           "1-6h": 0.48397565922920893,
           "6-48h": 0.41954022988505746,
           ">48h": 0.4509594882729211
@@ -1152,25 +1065,83 @@
         "verdict": "artefact: pinned value, and no separation inside an age band"
       },
       {
-        "feature": "mindshare_percentile",
-        "n": 334,
+        "feature": "fdv_over_mcap",
+        "n": 336,
         "positives": 76,
-        "auc": 0.4953845369237046,
+        "auc": 0.5099443319838056,
         "auc_ci": [
-          0.4215564882769307,
-          0.5692125855704785
+          0.43580500248477766,
+          0.5840836614828335
         ],
-        "auc_out_of_sample": 0.46320346320346323,
+        "auc_out_of_sample": 0.4943181818181818,
         "auc_out_of_sample_ci": [
-          0.33241671520501576,
-          0.5939902112019106
+          0.3616630811134831,
+          0.6269732825228805
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 0.3995215311004785,
-        "tie_share": 0.029940119760479042,
+        "top_decile_lift": 1.3397129186602872,
+        "tie_share": 0.9523809523809523,
+        "tie_value": 1.0,
+        "auc_by_age_band": {
+          "<1h": 0.48717948717948717,
+          "1-6h": 0.5227180527383367,
+          "6-48h": 0.5977011494252874,
+          ">48h": 0.4925373134328358
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "artefact: pinned value, and no separation inside an age band"
+      },
+      {
+        "feature": "liquidity_over_mcap",
+        "n": 335,
+        "positives": 76,
+        "auc": 0.5082808372282056,
+        "auc_ci": [
+          0.43414849261571736,
+          0.5824131818406939
+        ],
+        "auc_out_of_sample": 0.4296536796536797,
+        "auc_out_of_sample_ci": [
+          0.301591778300758,
+          0.5577155810066013
+        ],
+        "holds_out_of_sample": false,
+        "top_decile_lift": 0.9350079744816586,
+        "tie_share": 0.0029850746268656717,
+        "tie_value": 0.12749775381146441,
+        "auc_by_age_band": {
+          "<1h": 0.5874811463046757,
+          "1-6h": 0.40405679513184584,
+          "6-48h": 0.5747126436781609,
+          ">48h": 0.41125541125541126
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "mindshare_percentile",
+        "n": 336,
+        "positives": 76,
+        "auc": 0.4921811740890688,
+        "auc_ci": [
+          0.4185125628648714,
+          0.5658497853132662
+        ],
+        "auc_out_of_sample": 0.47835497835497837,
+        "auc_out_of_sample_ci": [
+          0.346578949580301,
+          0.6101310071296557
+        ],
+        "holds_out_of_sample": false,
+        "top_decile_lift": 0.4019138755980861,
+        "tie_share": 0.02976190476190476,
         "tie_value": 100.0,
         "auc_by_age_band": {
-          "<1h": 0.43227554179566563,
+          "<1h": 0.42345399698340874,
           "1-6h": 0.3898580121703854,
           "6-48h": 0.5114942528735632,
           ">48h": 0.7334754797441365
@@ -1182,24 +1153,24 @@
       },
       {
         "feature": "turnover_24h",
-        "n": 334,
+        "n": 336,
         "positives": 76,
-        "auc": 0.4966340269277846,
+        "auc": 0.4929655870445344,
         "auc_ci": [
-          0.42277066288915466,
-          0.5704973909664145
+          0.4192737239291451,
+          0.5666574501599237
         ],
-        "auc_out_of_sample": 0.4659090909090909,
+        "auc_out_of_sample": 0.4843073593073593,
         "auc_out_of_sample_ci": [
-          0.33493465034973724,
-          0.5968835314684445
+          0.3521839181006312,
+          0.6164308005140874
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 0.266347687400319,
-        "tie_share": 0.0029940119760479044,
+        "top_decile_lift": 0.2679425837320574,
+        "tie_share": 0.002976190476190476,
         "tie_value": 1.4711194094209772,
         "auc_by_age_band": {
-          "<1h": 0.43537151702786375,
+          "<1h": 0.4253393665158371,
           "1-6h": 0.3464503042596349,
           "6-48h": 0.5517241379310345,
           ">48h": 0.6353944562899787
@@ -1210,25 +1181,54 @@
         "verdict": "no separation (interval spans 0.5)"
       },
       {
-        "feature": "mindshare_share_pct",
-        "n": 334,
-        "positives": 76,
-        "auc": 0.4985720114239086,
+        "feature": "price_change_1h_pct",
+        "n": 56,
+        "positives": 13,
+        "auc": 0.49552772808586765,
         "auc_ci": [
-          0.4246550157749416,
-          0.5724890070728756
+          0.3151456652743546,
+          0.6759097908973807
         ],
-        "auc_out_of_sample": 0.4832251082251082,
+        "auc_out_of_sample": 0.43333333333333335,
         "auc_out_of_sample_ci": [
-          0.351163099439509,
-          0.6152871170107075
+          0.013920553207738051,
+          0.8527461134589287
         ],
         "holds_out_of_sample": false,
-        "top_decile_lift": 0.3995215311004785,
-        "tie_share": 0.0029940119760479044,
+        "top_decile_lift": 0.8615384615384616,
+        "tie_share": 0.017857142857142856,
+        "tie_value": 1.84,
+        "auc_by_age_band": {
+          "<1h": 0.26666666666666666,
+          "1-6h": 0.4930555555555556,
+          "6-48h": null,
+          ">48h": null
+        },
+        "separates": false,
+        "survives_strata": false,
+        "is_control": false,
+        "verdict": "no separation (interval spans 0.5)"
+      },
+      {
+        "feature": "mindshare_share_pct",
+        "n": 336,
+        "positives": 76,
+        "auc": 0.49554655870445347,
+        "auc_ci": [
+          0.421779793707471,
+          0.569313323701436
+        ],
+        "auc_out_of_sample": 0.4962121212121212,
+        "auc_out_of_sample_ci": [
+          0.36346387734662733,
+          0.6289603650776151
+        ],
+        "holds_out_of_sample": false,
+        "top_decile_lift": 0.4019138755980861,
+        "tie_share": 0.002976190476190476,
         "tie_value": 2.330081035919904,
         "auc_by_age_band": {
-          "<1h": 0.4373065015479876,
+          "<1h": 0.42948717948717946,
           "1-6h": 0.4154158215010142,
           "6-48h": 0.45977011494252873,
           ">48h": 0.7121535181236673
@@ -1579,7 +1579,7 @@
       ],
       "pillar_scores": {
         "attention_velocity": null,
-        "community_depth": 0.01,
+        "community_depth": 0.034999999999999996,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 59.53086900942759,
         "asymmetry_timing": 58.31666666666666,
@@ -2181,28 +2181,32 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396350444,
+        "collected_at_ms": 1790421375096,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 97.94901569063799,
-        "top10_ex_lp_pct": 19.479948809737145,
-        "holder_count": 3331,
+        "lp_locked_pct": 99.99853981945348,
+        "top10_ex_lp_pct": 96.98661074636256,
+        "holder_count": 2379,
         "deployer_address": "735Qyo4ajXd2QgxeG862wT2T8b1nJuScGeXC8TEA8mBg",
         "deployer_prior_rugs": 0,
         "rugged": false,
-        "risk_labels": []
+        "risk_labels": [
+          "Low Liquidity"
+        ]
       },
       "data_completeness": 0.3888888888888889,
       "fields_present": 21,
       "fields_expected": 54,
-      "score": 22.91240619967794,
-      "rank": 9,
-      "excluded": false,
-      "rejected_by": [],
+      "score": null,
+      "rank": null,
+      "excluded": true,
+      "rejected_by": [
+        "concentration"
+      ],
       "indeterminate_on": [],
       "pillar_scores": {
         "attention_velocity": null,
@@ -2519,7 +2523,7 @@
       "fields_present": 21,
       "fields_expected": 54,
       "score": 22.506197874987194,
-      "rank": 11,
+      "rank": 10,
       "excluded": false,
       "rejected_by": [],
       "indeterminate_on": [],
@@ -3557,7 +3561,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396352345,
+        "collected_at_ms": 1790421377069,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -3565,8 +3569,8 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 99.91080504064081,
-        "holder_count": 333,
+        "top10_ex_lp_pct": 100.03693852714156,
+        "holder_count": 312,
         "deployer_address": "3H4VAEQpTpwvttBLTD94eX9DKG86aJNK2vM3uHojDmGU",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -3664,7 +3668,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396351522,
+        "collected_at_ms": 1790421376071,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -3672,8 +3676,8 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 89.35404914538468,
-        "holder_count": 2288,
+        "top10_ex_lp_pct": 98.82812562711783,
+        "holder_count": 2253,
         "deployer_address": "5MCRSdAFMC3CH4yAkQdod2NATMyU7pPUHTEt3st45C9K",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -3777,7 +3781,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1790396339840,
+        "collected_at_ms": 1790421366505,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
@@ -3785,8 +3789,8 @@
         "freeze_active": false,
         "lp_burned": false,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 34.53519711216263,
-        "holder_count": 1173,
+        "top10_ex_lp_pct": 36.759807997436134,
+        "holder_count": 1162,
         "deployer_address": "0xde1fd89d3706db72dc5fd640a307a8de90ee2fa6",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -3801,7 +3805,8 @@
       "rank": null,
       "excluded": true,
       "rejected_by": [
-        "liquidity_lock"
+        "liquidity_lock",
+        "concentration"
       ],
       "indeterminate_on": [
         "sellability"
@@ -3991,16 +3996,16 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1790396341834,
+        "collected_at_ms": 1790421364506,
         "honeypot": false,
-        "buy_tax_pct": 4.99,
-        "sell_tax_pct": 7.140000000000001,
+        "buy_tax_pct": 5.0,
+        "sell_tax_pct": 7.13,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": true,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 90.86302227618974,
-        "holder_count": 362,
+        "top10_ex_lp_pct": 86.91541120916042,
+        "holder_count": 389,
         "deployer_address": "0x8206ff7bef0745169e8978d8853ede9888b4257f",
         "deployer_prior_rugs": 0,
         "rugged": null,
@@ -5741,10 +5746,10 @@
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 1.1693244068793698,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 0.24712333037516754,
+      "survived_24h": true,
       "survived_7d": null
     },
     {
@@ -5835,7 +5840,7 @@
       ],
       "pillar_scores": {
         "attention_velocity": null,
-        "community_depth": 44.69444444444444,
+        "community_depth": 44.801944444444445,
         "lineage_meta_fit": 90.0,
         "onchain_structure": 46.63747382332882,
         "asymmetry_timing": 28.333333333333332,
@@ -5846,10 +5851,10 @@
       "thesis": null,
       "bear_case": null,
       "falsifier": null,
-      "max_multiple_24h": null,
+      "max_multiple_24h": 1.0089010873433528,
       "max_multiple_7d": null,
-      "max_drawdown_before_peak_24h": null,
-      "survived_24h": null,
+      "max_drawdown_before_peak_24h": 0.009408620232095433,
+      "survived_24h": true,
       "survived_7d": null
     },
     {
@@ -6566,7 +6571,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396354460,
+        "collected_at_ms": 1790421379679,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -6574,8 +6579,8 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 99.87981348662895,
-        "holder_count": 149,
+        "top10_ex_lp_pct": 99.91017297606064,
+        "holder_count": 146,
         "deployer_address": "33L9ZH3S9A6uCs94ugeJRGaRr1B5CEPVdmzpC1sufWn1",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -6673,16 +6678,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396353429,
+        "collected_at_ms": 1790421378113,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 96.19949562542043,
-        "top10_ex_lp_pct": 38.07660025783157,
-        "holder_count": 7518,
+        "lp_locked_pct": 97.01116110399408,
+        "top10_ex_lp_pct": 38.22190081633018,
+        "holder_count": 7449,
         "deployer_address": "2QnnJUwaHUWigWwSn6qs6S6E3KiuKhHzXi2WdWVRe9wo",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -8074,7 +8079,7 @@
       "fields_present": 23,
       "fields_expected": 54,
       "score": 18.037629277216947,
-      "rank": 16,
+      "rank": 15,
       "excluded": false,
       "rejected_by": [],
       "indeterminate_on": [],
@@ -12490,7 +12495,7 @@
       "fields_present": 24,
       "fields_expected": 54,
       "score": 22.798632272332014,
-      "rank": 10,
+      "rank": 9,
       "excluded": false,
       "rejected_by": [],
       "indeterminate_on": [],
@@ -12835,10 +12840,10 @@
       "bear_case": null,
       "falsifier": null,
       "max_multiple_24h": 1.073850617913326,
-      "max_multiple_7d": null,
+      "max_multiple_7d": 1.073850617913326,
       "max_drawdown_before_peak_24h": 0.03317843582529556,
       "survived_24h": true,
-      "survived_7d": null
+      "survived_7d": true
     },
     {
       "snapshot_id": "4f14148c-220a-4b3e-9ac7-c430ac32b319",
@@ -12944,10 +12949,10 @@
       "bear_case": null,
       "falsifier": null,
       "max_multiple_24h": 1.0039392385937458,
-      "max_multiple_7d": null,
+      "max_multiple_7d": 1.0039392385937458,
       "max_drawdown_before_peak_24h": 0.0,
       "survived_24h": true,
-      "survived_7d": null
+      "survived_7d": true
     },
     {
       "snapshot_id": "f9651fc8-d08a-4e9b-a7f4-72340e64e539",
@@ -14325,7 +14330,7 @@
       "fields_present": 24,
       "fields_expected": 54,
       "score": 18.257505164038637,
-      "rank": 15,
+      "rank": 14,
       "excluded": false,
       "rejected_by": [],
       "indeterminate_on": [],
@@ -14627,7 +14632,7 @@
       },
       "safety": {
         "source": "goplus",
-        "collected_at_ms": 1790396343822,
+        "collected_at_ms": 1790421368519,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -14649,7 +14654,7 @@
       "fields_present": 24,
       "fields_expected": 54,
       "score": 20.178503656197726,
-      "rank": 12,
+      "rank": 11,
       "excluded": false,
       "rejected_by": [],
       "indeterminate_on": [],
@@ -17305,7 +17310,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790393077785,
+        "collected_at_ms": 1790421380244,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -17313,13 +17318,12 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 0.0,
-        "top10_ex_lp_pct": 51.20771883579173,
-        "holder_count": 272,
+        "top10_ex_lp_pct": 59.86348371895653,
+        "holder_count": 293,
         "deployer_address": "46om7uiWJeSR6Kj6qmdSWs2n1h69kiUfa4VkXHT8AHqk",
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "Copycat token",
           "High holder concentration",
           "Large Amount of LP Unlocked",
           "Low Liquidity",
@@ -17417,16 +17421,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790393078962,
+        "collected_at_ms": 1790421381262,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 97.84921738124055,
-        "top10_ex_lp_pct": 54.686427890919006,
-        "holder_count": 95,
+        "lp_locked_pct": 97.87277463148403,
+        "top10_ex_lp_pct": 55.363702367895705,
+        "holder_count": 89,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -17527,16 +17531,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790393079772,
+        "collected_at_ms": 1790421382224,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 93.65210130961852,
-        "top10_ex_lp_pct": 63.43655457136665,
-        "holder_count": 69,
+        "lp_locked_pct": 93.64806588623028,
+        "top10_ex_lp_pct": 64.21293121926809,
+        "holder_count": 73,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -17638,7 +17642,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396355646,
+        "collected_at_ms": 1790421386266,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -17646,7 +17650,7 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 97.62960223254284,
+        "top10_ex_lp_pct": 97.84367443584178,
         "holder_count": 149,
         "deployer_address": "AB2fMXokqNXpgzZfD6R78GucRm4nPHzZBzV6pKDHyWsN",
         "deployer_prior_rugs": 0,
@@ -17745,16 +17749,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396356795,
+        "collected_at_ms": 1790421385238,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 97.99127674855124,
-        "top10_ex_lp_pct": 66.83040919548115,
-        "holder_count": 151,
+        "lp_locked_pct": 98.07520418986122,
+        "top10_ex_lp_pct": 66.669336984045,
+        "holder_count": 160,
         "deployer_address": "2RRmV3jGpM6zBQxyhPyjarHadWNepbmoNDiMPWaVe5Sv",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -17850,14 +17854,14 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396357525,
+        "collected_at_ms": 1790421384177,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 39.68821580902253,
+        "lp_locked_pct": 39.69397229804111,
         "top10_ex_lp_pct": 0.030905164633069786,
         "holder_count": 5,
         "deployer_address": "DjcLGynTRDDZYsKzCztjkTkksgefx43y5RtVSnLZfZJP",
@@ -17960,16 +17964,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396358428,
+        "collected_at_ms": 1790421383243,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 92.55664294378606,
-        "top10_ex_lp_pct": 16.415446864502478,
-        "holder_count": 3337,
+        "lp_locked_pct": 92.49956222464209,
+        "top10_ex_lp_pct": 16.168833966072125,
+        "holder_count": 3367,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -18066,16 +18070,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396359506,
+        "collected_at_ms": 1790421387356,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 95.68426050004905,
-        "top10_ex_lp_pct": 43.69381319866431,
-        "holder_count": 590,
+        "lp_locked_pct": 95.9374568777342,
+        "top10_ex_lp_pct": 44.42400837055322,
+        "holder_count": 607,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -18173,16 +18177,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396361354,
+        "collected_at_ms": 1790421388088,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.91278492929985,
-        "top10_ex_lp_pct": 65.8035114466906,
-        "holder_count": 118,
+        "lp_locked_pct": 99.91701029670199,
+        "top10_ex_lp_pct": 66.06629838447975,
+        "holder_count": 128,
         "deployer_address": "29RzNtRxJDUxX2tGJcNzFkDknGAMnM5aa2RhYeZwmBB3",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -18280,16 +18284,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396360507,
+        "collected_at_ms": 1790421389350,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 80.73739365337411,
-        "top10_ex_lp_pct": 44.171366977601394,
-        "holder_count": 87,
+        "lp_locked_pct": 80.82372386612111,
+        "top10_ex_lp_pct": 44.19880465266793,
+        "holder_count": 86,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -18388,7 +18392,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396363192,
+        "collected_at_ms": 1790421390160,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -18496,16 +18500,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396366452,
+        "collected_at_ms": 1790421392217,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 96.1877701274763,
-        "top10_ex_lp_pct": 44.46122853150733,
-        "holder_count": 438,
+        "lp_locked_pct": 96.26029204898069,
+        "top10_ex_lp_pct": 46.93248636885059,
+        "holder_count": 446,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -18606,16 +18610,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396365462,
+        "collected_at_ms": 1790421391226,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 83.83086111924443,
-        "top10_ex_lp_pct": 26.180723239165342,
-        "holder_count": 1304,
+        "lp_locked_pct": 93.37107179640944,
+        "top10_ex_lp_pct": 26.840864707086574,
+        "holder_count": 1331,
         "deployer_address": null,
         "deployer_prior_rugs": null,
         "rugged": false,
@@ -18715,7 +18719,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396370235,
+        "collected_at_ms": 1790421393380,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -18723,8 +18727,8 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 77.93038747830882,
-        "holder_count": 19,
+        "top10_ex_lp_pct": 78.03583706993395,
+        "holder_count": 20,
         "deployer_address": "iyzPGQEJ2riWkbT7UjrKPMUbxH7zrtCSUppgVzPPrAB",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -18822,7 +18826,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396365096,
+        "collected_at_ms": 1790421394187,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -18929,7 +18933,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396372190,
+        "collected_at_ms": 1790421396263,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -18937,8 +18941,8 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 98.9135565307208,
-        "holder_count": 38,
+        "top10_ex_lp_pct": 98.9693939835944,
+        "holder_count": 39,
         "deployer_address": "GZThHdsL9nLQ3uyoUMWTbyL2DHqbNC6y93Z8xtKtiuNb",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -19036,21 +19040,20 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396371293,
+        "collected_at_ms": 1790421395314,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 20.745515026869647,
-        "top10_ex_lp_pct": 6.996249855002554,
-        "holder_count": 304,
+        "lp_locked_pct": 20.74150522494762,
+        "top10_ex_lp_pct": 7.07142020408703,
+        "holder_count": 323,
         "deployer_address": "Fbre8xmUmL5KFo3Xdrj4pJdM78uGS9e9rCFPVeXrnLwT",
         "deployer_prior_rugs": 0,
         "rugged": false,
         "risk_labels": [
-          "High market cap per holder",
           "Mutable metadata",
           "metadata_mutable"
         ]
@@ -19145,16 +19148,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396373637,
+        "collected_at_ms": 1790421398220,
         "honeypot": false,
         "buy_tax_pct": null,
         "sell_tax_pct": null,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 99.82156008321908,
-        "top10_ex_lp_pct": 39.85,
-        "holder_count": 4667,
+        "lp_locked_pct": 99.8199948095345,
+        "top10_ex_lp_pct": 41.16,
+        "holder_count": 4655,
         "deployer_address": "4t45tpPT8aygULZhhyMyW1j8CLWzzRJKH4mrBc5akgQi",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -19252,16 +19255,16 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396372638,
+        "collected_at_ms": 1790421397233,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
         "mint_revoked": true,
         "freeze_active": false,
         "lp_burned": null,
-        "lp_locked_pct": 91.13851337058104,
-        "top10_ex_lp_pct": 1.674091350333933,
-        "holder_count": 76,
+        "lp_locked_pct": 91.09512554100796,
+        "top10_ex_lp_pct": 1.6405850828161417,
+        "holder_count": 80,
         "deployer_address": "7qejNth9NQUEVqdt21yNPqFUPDcKSWo1aCfFokob6gK3",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -19595,7 +19598,7 @@
       "fields_present": 24,
       "fields_expected": 54,
       "score": 18.32940881392623,
-      "rank": 14,
+      "rank": 13,
       "excluded": false,
       "rejected_by": [],
       "indeterminate_on": [],
@@ -19679,7 +19682,7 @@
       },
       "safety": {
         "source": "goplus+rugcheck",
-        "collected_at_ms": 1790396375801,
+        "collected_at_ms": 1790421399296,
         "honeypot": false,
         "buy_tax_pct": 0.0,
         "sell_tax_pct": 0.0,
@@ -19687,8 +19690,8 @@
         "freeze_active": false,
         "lp_burned": null,
         "lp_locked_pct": 100.0,
-        "top10_ex_lp_pct": 97.35798062435093,
-        "holder_count": 157,
+        "top10_ex_lp_pct": 97.50190187293734,
+        "holder_count": 155,
         "deployer_address": "4i7va2YMFUEHBcZx6ksGWYdxiDne8Xyq8Gc8qZeMmW1f",
         "deployer_prior_rugs": 0,
         "rugged": false,
@@ -21731,7 +21734,7 @@
       "fields_present": 24,
       "fields_expected": 54,
       "score": 19.053489578165234,
-      "rank": 13,
+      "rank": 12,
       "excluded": false,
       "rejected_by": [],
       "indeterminate_on": [],
