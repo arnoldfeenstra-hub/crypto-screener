@@ -247,6 +247,17 @@ class TestTheCommitStep:
 
 
 class TestTheWorkflowAroundIt:
+    def test_the_schedule_stays_off_the_busy_minutes(self):
+        """GitHub delays and drops scheduled runs when busy, and the top of the
+        hour is the busiest. Scheduled at minute 0, only three runs fired in the
+        22 hours after 20:15 UTC on 2026-09-27; each missed hour can miss a token
+        that rose and died inside it."""
+        workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+        triggers = workflow.get("on", workflow.get(True))  # YAML reads `on` as True
+        (schedule,) = triggers["schedule"]
+        minutes = [int(m) for m in schedule["cron"].split()[0].split(",")]
+        assert minutes and all(m % 15 for m in minutes), schedule["cron"]
+
     def test_a_queued_run_starts_from_the_branch_tip(self):
         """Without `ref`, checkout takes the commit the event carried -- for a run
         queued behind another, a journal missing everything that run pushed."""
