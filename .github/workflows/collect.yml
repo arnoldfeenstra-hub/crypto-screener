@@ -24,7 +24,7 @@
 #   * This workflow runs HOURLY, which at roughly two minutes a run is ~1,450
 #     minutes a month -- inside a private repository's 2,000 free minutes.
 #   * A public repository has unlimited Actions minutes, so there every 30 minutes
-#     ("*/30 * * * *") is both affordable and better: see the note on the cron.
+#     ("23,53 * * * *") is both affordable and better: see the note on the cron.
 #   * GitHub throttles scheduled workflows under load and drops them entirely on
 #     repositories with no activity for 60 days. For a collector whose whole value
 #     is not missing hours, a small always-on host is the better home; this
@@ -54,9 +54,15 @@ on:
     # smaller, not biased, when in fact it is slightly biased toward tokens that
     # lived long enough to be seen.
     #
-    # Every 30 minutes ("*/30 * * * *") halves that and costs ~2,900 minutes a
+    # At minute 23, not 0. GitHub delays scheduled runs when it is busy and can
+    # drop them altogether, and its docs name the start of every hour as the
+    # busiest time. At minute 0, after 20:15 UTC on 2026-09-27 only three runs
+    # fired in the next 22 hours. Keep it off :00, :15, :30 and :45;
+    # tests/test_collect_workflow.py checks.
+    #
+    # Every 30 minutes ("23,53 * * * *") halves that and costs ~2,900 minutes a
     # month; on a public repository, where minutes are unlimited, prefer it.
-    - cron: "0 * * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       chains:

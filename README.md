@@ -54,7 +54,11 @@ Hourly rather than half-hourly to fit a private repository's 2,000 free Actions 
 month (~1,450 against ~2,900). That is a real trade-off and worth knowing: tokens cross
 $250k and die inside an hour, so an hourly poll misses some of them, and a token never
 observed is not in the graveyard. On a public repository, where minutes are unlimited,
-change the cron to `*/30 * * * *`.
+change the cron to `23,53 * * * *`.
+
+It runs at minute 23, not on the hour. GitHub delays and drops scheduled runs when it is
+busy, and the top of the hour is its busiest time. On 2026-09-27/28, scheduled at minute 0,
+only three runs fired in 22 hours.
 
 ⚠️ **GitHub runs `schedule` triggers only from the default branch.** While the workflow
 sits on a feature branch the cron never fires, the collector does nothing, and there is no
