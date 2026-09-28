@@ -250,6 +250,9 @@ def run_cycle(
             # verdict an earlier run established, which is why a steady-state cycle
             # costs a handful of requests rather than a sweep of the whole table.
             "safety_fetched": len(runner.last_safety_fetched),
+            # Past their 7-day outcome window: ranked on their last verdict, never
+            # looked up again.
+            "past_outcome_window": runner.last_finished,
             **scored.exclusion_summary(),
         }
 

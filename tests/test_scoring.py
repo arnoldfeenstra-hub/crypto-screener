@@ -449,6 +449,59 @@ class TestAgainstTheStore:
             ranked = store.latest_scores(limit=10)
             assert [r["snapshot_id"] for r in ranked] == [bumped.rows[0]["snapshot_id"]]
 
+    def test_a_token_past_its_outcome_window_is_not_rechecked(self, monkeypatch):
+        """Seven days after its trigger every label has resolved. Its safety is
+        not looked up again: the last verdict stands, and its score stops moving."""
+        from collectors.outcomes import OUTCOME_WINDOW_MINUTES
+        from collectors.safety import SafetyReport
+
+        now = 1_800_000_000_000
+        day = 24 * 3_600_000
+        with Store() as store:
+            finished = Snapshot(
+                chain="solana", contract="Old", trigger="mcap_250k", source="test",
+                ts=now - OUTCOME_WINDOW_MINUTES * 60_000 - 60_000,
+                market=Market(mcap_usd=400_000.0),
+            )
+            still_open = Snapshot(
+                chain="solana", contract="New", trigger="mcap_250k", source="test",
+                ts=now - day, market=Market(mcap_usd=400_000.0),
+            )
+            for snap in (finished, still_open):
+                store.append_snapshot(snap)
+            # Both verdicts are a day old, far past the six-hour refresh.
+            store.append_safety_observations(
+                [
+                    SafetyReport(chain="solana", contract=snap.contract, source="goplus",
+                                 collected_at_ms=now - day, honeypot=False)
+                    for snap in (finished, still_open)
+                ],
+                {("solana", snap.contract): snap.snapshot_id for snap in (finished, still_open)},
+            )
+
+            asked: list[list[tuple[str, str]]] = []
+
+            class Source:
+                def fetch(self, tokens):
+                    asked.append(sorted(tokens))
+                    return {
+                        key: SafetyReport(chain=key[0], contract=key[1], source="goplus",
+                                          collected_at_ms=now, honeypot=False)
+                        for key in tokens
+                    }
+
+            monkeypatch.setattr("scoring.runner.now_ms", lambda: now)
+            runner = ScoringRunner(store, safety_source=Source())
+            batch = runner.run(limit=10)
+
+            assert asked == [[("solana", "New")]]
+            assert runner.last_finished == 1
+            assert store.safety_observation_count() == 3
+            # Still scored and ranked, on the verdict it already had.
+            assert {row["snapshot_id"] for row in batch.rows} == {
+                finished.snapshot_id, still_open.snapshot_id
+            }
+
     def test_the_comparison_ignores_what_every_rescore_changes(self):
         row = ScoringRunner().score_one(candidate(), safety=SAFE)
         twin = {

@@ -48,11 +48,12 @@ import contextlib
 import json
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from collectors.config import load_config
+from collectors.outcomes import outcome_window_closed
 from collectors.safety import SafetyReport, SafetySource
 from collectors.safety import from_row as safety_from_row
 from collectors.schema import SCORE_COLUMNS, now_ms
@@ -81,7 +82,11 @@ NO_EDGE_THRESHOLD = 55.0
 #
 # Six hours keeps the answers fresh enough to catch a rug that happened since, and
 # turns a per-cycle sweep into a per-token one. Every refresh still appends a new
-# row, so the history of what changed and when is kept in full.
+# row, so the history of what changed and when is kept in full -- until the
+# token's outcome window closes (collectors/outcomes.py). After that its last
+# verdict stands: nothing observed later reaches a label, and on 2026-09-28 these
+# re-checks, with the score rows they changed, were 40% of what the collector
+# still stored.
 SAFETY_MAX_AGE_MS = 6 * 60 * 60 * 1000
 
 # How many of the most recently triggered tokens each collector cycle re-scores,
@@ -349,6 +354,9 @@ class ScoringRunner:
         # gets appended. Writing back a reused verdict every cycle would grow the
         # table without recording anything new.
         self.last_safety_fetched: dict[tuple[str, str], SafetyReport] = {}
+        # Tokens in the last run() whose outcome window had closed: scored, not
+        # re-checked.
+        self.last_finished = 0
         self.prompt_version = prompt_version()
 
     def score_one(
@@ -423,6 +431,7 @@ class ScoringRunner:
         known: dict[tuple[str, str], SafetyReport] | None = None,
         *,
         as_of_ms: int | None = None,
+        finished: Collection[tuple[str, str]] = (),
     ) -> dict[tuple[str, str], SafetyReport]:
         """Safety for the batch: what is already known, plus what needs asking.
 
@@ -430,6 +439,9 @@ class ScoringRunner:
         verdict younger than :data:`SAFETY_MAX_AGE_MS` is reused; anything older or
         missing is looked up again. ``self.last_safety_fetched`` holds only the
         fresh ones, so a reused verdict is not written to the table a second time.
+
+        ``finished`` names tokens whose outcome window has closed. They are never
+        looked up: their last verdict, however old, is the one that stands.
 
         A failure here is not fatal and must not be: unknown excludes, so a
         degraded safety fetch makes the screener more conservative, never less.
@@ -443,7 +455,7 @@ class ScoringRunner:
         stale: list[tuple[str, str]] = []
         for candidate in candidates:
             key = (candidate.get("chain"), candidate.get("contract"))
-            if not key[0] or not key[1]:
+            if not key[0] or not key[1] or key in finished:
                 continue
             existing = known.get(key)
             if existing is None or now - existing.collected_at_ms >= self.safety_max_age_ms:
@@ -468,11 +480,12 @@ class ScoringRunner:
         regime: str | None = None,
         safety: dict[str, Any] | None = None,
         known_safety: dict[tuple[str, str], SafetyReport] | None = None,
+        finished: Collection[tuple[str, str]] = (),
     ) -> ScoredBatch:
         # One id for the whole batch: a ranking is read from a run, and two runs can
         # land in the same millisecond.
         run_id = str(uuid.uuid4())
-        reports = self.fetch_safety(candidates, known_safety)
+        reports = self.fetch_safety(candidates, known_safety, finished=finished)
         self.last_safety_reports = reports
         rows = []
         for candidate in candidates:
@@ -533,7 +546,17 @@ class ScoringRunner:
             key: safety_from_row(row)
             for key, row in self.store.latest_safety_by_token().items()
         }
-        batch = self.score_batch(candidates, regime=regime, known_safety=known_safety)
+        # Still scored and still ranked, but no longer re-checked.
+        now = now_ms()
+        finished = {
+            (row["chain"], row["contract"])
+            for row in rows
+            if outcome_window_closed(row["ts"], now)
+        }
+        self.last_finished = len(finished)
+        batch = self.score_batch(
+            candidates, regime=regime, known_safety=known_safety, finished=finished
+        )
         # A re-score identical to its token's newest stored row is not stored again.
         # That row already records this score with the inputs that produced it
         # (hard rule 6), and it stays the token's current score until one differs.
