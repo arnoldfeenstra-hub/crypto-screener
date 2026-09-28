@@ -68,6 +68,11 @@ HORIZONS_MINUTES: dict[str, int] = {
     "7d": 10080,
 }
 
+# A token's outcome window. When it closes, its last label has resolved and nothing
+# observed afterwards reaches any label, so re-pricing stops there, and so do the
+# safety re-checks (scoring/runner.py).
+OUTCOME_WINDOW_MINUTES = max(HORIZONS_MINUTES.values())
+
 # "Survived" means still above 20% of the mcap recorded at snapshot time
 # (BUILD_BRIEF.md section 2).
 SURVIVAL_FLOOR_RATIO = 0.20
@@ -241,9 +246,14 @@ def compute_labels(
     return Labels(snapshot_id=snapshot_id, filled_at_ms=as_of, source=source, **values)
 
 
+def outcome_window_closed(snapshot_ts: int, as_of_ms: int) -> bool:
+    """Whether every label of a token triggered at ``snapshot_ts`` has resolved."""
+    return as_of_ms - snapshot_ts > OUTCOME_WINDOW_MINUTES * 60_000
+
+
 def due_for_repricing(minutes_since_snapshot: int, minutes_since_last: int | None) -> bool:
     """Whether a token is due a re-price, given its age and time since last look."""
-    if minutes_since_snapshot > max(HORIZONS_MINUTES.values()):
+    if minutes_since_snapshot > OUTCOME_WINDOW_MINUTES:
         return False  # past 7d, every label has resolved
     if minutes_since_last is None:
         return True

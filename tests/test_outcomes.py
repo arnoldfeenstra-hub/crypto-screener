@@ -16,12 +16,14 @@ import pytest
 
 from collectors.outcomes import (
     HORIZONS_MINUTES,
+    OUTCOME_WINDOW_MINUTES,
     SURVIVAL_FLOOR_RATIO,
     Labels,
     OutcomeTracker,
     PriceObservation,
     compute_labels,
     due_for_repricing,
+    outcome_window_closed,
 )
 from collectors.schema import Market, Snapshot
 from collectors.store import AppendOnlyViolation, Store
@@ -190,6 +192,17 @@ class TestRepricingSchedule:
 
     def test_nothing_is_due_after_the_widest_horizon(self):
         assert due_for_repricing(10_081, None) is False
+
+    def test_the_outcome_window_closes_with_the_widest_horizon(self):
+        """The one definition of "finished" that re-pricing and the safety
+        re-checks (scoring/runner.py) both stop at."""
+        ts = 1_800_000_000_000
+        window_ms = OUTCOME_WINDOW_MINUTES * 60_000
+        assert HORIZONS_MINUTES["7d"] == OUTCOME_WINDOW_MINUTES
+        assert outcome_window_closed(ts, ts + window_ms) is False
+        assert outcome_window_closed(ts, ts + window_ms + 1) is True
+        assert due_for_repricing(OUTCOME_WINDOW_MINUTES, None) is True
+        assert due_for_repricing(OUTCOME_WINDOW_MINUTES + 1, None) is False
 
 
 class TestTrackerAgainstTheStore:

@@ -64,7 +64,9 @@ error anywhere to notice. Merge to `main`, or drive it by hand from the Actions 
 A steady-state cycle is cheap: safety verdicts are read back from the store and reused for
 six hours, so a run asks GoPlus about new tokens and stale ones only, not about all two
 hundred rows it re-scores. Every refresh still appends a new row — the change over time is
-itself the observation. A re-score is stored only when it differs from the token's newest
+itself the observation — until the token's 7-day outcome window closes. Its labels are
+final then, re-pricing stops, and so do its safety checks: it stays ranked on its last
+verdict. A re-score is stored only when it differs from the token's newest
 score row. A new safety reading, a Telegram count, a regime or a prompt version makes it
 differ; an hour passing does not.
 
@@ -103,8 +105,9 @@ Database → Neon**), then copy its `DATABASE_URL` into the repository's Actions
 under the same name. Measured on the 2026-09-25 dataset: 138 MB in Postgres. It grew about
 19 MB a day while every hourly re-score was stored, enough to fill Neon's free 0.5 GB in
 three weeks. 85% of those rows repeated the token's previous row exactly, and they are no
-longer stored. The estimate is now about 5–6 MB a day, roughly two months of headroom,
-and most of it is the six-hourly safety re-checks.
+longer stored. By 2026-09-28 it was 150 MB, growing about 4 MB a day. 40% of the safety
+re-checks and score rows it still stored were for tokens past their 7-day window, and
+those checks have stopped too.
 
 **Without the secret**, `state/` is the dataset: an append-only JSONL journal, committed
 to the repo. It is rebuilt into DuckDB at the start of each run and appended to at the
