@@ -16,6 +16,13 @@
       "includeFiles": "rotation/**"
     }
   },
+  "rewrites": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "the-carpet(-[a-z0-9-]+)?\\.vercel\\.app" }],
+      "destination": "/carpet.html"
+    }
+  ],
   "headers": [
     {
       "source": "/screener-data.json",

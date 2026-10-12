@@ -428,6 +428,30 @@ class TestEndpoint:
         config = json.loads((REPO_ROOT / "vercel.json").read_text())
         assert "rotation" in config["functions"]["api/carpet.py"]["includeFiles"]
 
+    def test_the_carpet_project_alone_serves_the_carpet_at_its_root(self):
+        """Two Vercel projects build this repo from one vercel.json, so the root
+        rewrite keys on the host: the-carpet gets the Carpet at /, while
+        crypto-screener keeps the memecoin screener there."""
+        import re
+
+        config = json.loads((REPO_ROOT / "vercel.json").read_text())
+        [rule] = [r for r in config["rewrites"] if r["source"] == "/"]
+        assert rule["destination"] == "/carpet.html"
+        [host] = [h["value"] for h in rule["has"] if h["type"] == "host"]
+        for carpet_host in (
+            "the-carpet.vercel.app",
+            "the-carpet-fean.vercel.app",
+            "the-carpet-git-claude-screener-tool-reverse-en-8e99b7-fean.vercel.app",
+            "the-carpet-a1b2c3d4e-fean.vercel.app",
+        ):
+            assert re.fullmatch(host, carpet_host), carpet_host
+        for screener_host in (
+            "crypto-screener-fean.vercel.app",
+            "crypto-screener-git-claude-screener-tool-reverse-en-8e99b7-fean.vercel.app",
+            "the-carpet.vercel.app.evil.com",
+        ):
+            assert not re.fullmatch(host, screener_host), screener_host
+
 
 class TestPageAndDemo:
     def page(self):

@@ -155,3 +155,12 @@ GET-only; the reason is in the docstring of `rotation/hyperliquid.py`.
 `web/carpet-demo.json` is a **synthetic** market from `rotation/synthetic.py`. The page
 falls back to it, under a red SYNTHETIC banner, when `/api/carpet` is not deployed.
 Regenerate it with `python -m rotation.synthetic`; a test fails when it is stale.
+
+## Deploy
+
+Two Vercel projects build this one repo from one `vercel.json`: `crypto-screener`, the
+memecoin screener, and `the-carpet`. A host-conditional rewrite in `vercel.json` serves
+`carpet.html` at `/` only on `the-carpet`'s `*.vercel.app` hosts. Everywhere else the
+root is still the memecoin screener, and on both projects the page is also at
+`/carpet.html`. If `the-carpet` gets a custom domain, add that host to the rule.
+`tests/test_rotation.py` pins which hosts match.
