@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>The Carpet</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07070b;
+    --panel: #0f0f16;
+    --panel-2: #161622;
+    --ink: #ecebf2;
+    --muted: #8d8b9c;
+    --dim: #5d5b6c;
+    --line: #262636;
+    --accent: #b07cff;
+    --gold: #f2c94c;
+    --leading: #1f9d57;
+    --weakening: #b49512;
+    --lagging: #9d1a33;
+    --improving: #1d6f86;
+    --unread: #34343f;
+    --rich: #e0565b;
+    --cheap: #4fa3e0;
+    --hot: #ff9a3c;
+    --thin: #6f7bb0;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; min-height: 100vh;
+  }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .brand { font-weight: 800; letter-spacing: .06em; font-size: 15px; white-space: nowrap; }
+  .brand b { color: var(--accent); }
+  .ctl { display: flex; align-items: center; gap: 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); font-weight: 700; }
+  select, button {
+    font: 700 11px/1 var(--mono); color: var(--ink); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.on { color: #1b1300; background: var(--gold); border-color: var(--gold); }
+  .meta { padding: 6px 16px; color: var(--muted); font: 11px var(--mono); display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+  .meta a { color: var(--muted); }
+  .notice { margin: 0 16px 6px; padding: 6px 10px; border: 1px solid #4a3a12; background: #1d170a; color: #e6cf8f; border-radius: 4px; font-size: 11.5px; }
+  .notice.synthetic { border-color: #7a2230; background: #23090f; color: #ffb3bf; font-weight: 700; }
+  .cross { padding: 4px 16px 8px; }
+  .cross .sum { font: 700 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid #4a3a12; background: #15120a; border-radius: 3px; padding: 3px 7px; font: 600 11px var(--mono); color: #d8cfae; cursor: pointer; }
+  .chip b { color: var(--gold); margin-right: 4px; }
+  .chip .g { color: var(--accent); }
+  #carpet { position: relative; flex: 1; min-height: 420px; margin: 0 16px 16px; }
+  .region-label { position: absolute; font: 800 10px var(--mono); letter-spacing: .1em; color: var(--ink); text-transform: uppercase; padding: 0 4px; pointer-events: none; z-index: 2; }
+  .region-label span { color: var(--muted); font-weight: 600; letter-spacing: .02em; text-transform: none; margin-left: 6px; }
+  .tile { position: absolute; border: 1px solid rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; transition: filter .12s; }
+  .tile:hover { filter: brightness(1.18); z-index: 1; }
+  .tile .t { font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); letter-spacing: .02em; text-align: center; line-height: 1.1; }
+  .tile .s { display: block; font: 600 .45em var(--mono); opacity: .85; margin-top: .25em; }
+  .tip { position: fixed; z-index: 20; width: 330px; max-width: calc(100vw - 32px); background: #0b0b12; border: 1px solid #33334a; border-radius: 4px; padding: 10px 12px; box-shadow: 0 8px 30px rgba(0,0,0,.6); pointer-events: none; font: 11px var(--mono); display: none; }
+  .tip .hd { font-weight: 800; font-size: 13px; margin-bottom: 6px; }
+  .tip .hd span { color: var(--muted); font-weight: 600; font-size: 11px; margin-left: 8px; }
+  .tip .row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+  .tip .row .k { color: var(--muted); text-transform: uppercase; }
+  .tip .rd { margin-top: 8px; color: var(--gold); font-weight: 700; line-height: 1.45; }
+  .tip .why { margin-top: 6px; color: var(--dim); font-size: 10.5px; }
+  .pos { color: #4ad18a; } .neg { color: #ff6b7d; } .muted { color: var(--muted); }
+  .q-LEADING { color: #4ad18a; } .q-WEAKENING { color: var(--gold); } .q-LAGGING { color: #ff6b7d; } .q-IMPROVING { color: #4fc3df; }
+  .l-rich { color: var(--rich); } .l-cheap { color: var(--cheap); } .l-HOT { color: var(--hot); } .l-thin { color: var(--thin); }
+  .strip { position: absolute; left: 0; right: 0; font: 11px var(--mono); color: var(--muted); }
+  /* chart + key overlays */
+  .overlay { position: fixed; inset: 0; background: rgba(3,3,6,.86); z-index: 30; display: none; padding: 16px; }
+  .overlay.open { display: flex; flex-direction: column; }
+  .sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .sheet-hd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); font: 700 11.5px var(--mono); }
+  .sheet-hd .title { color: var(--ink); }
+  .sheet-hd .px { color: #4ad18a; font-size: 14px; }
+  .sheet-hd .tfs { display: flex; gap: 3px; flex-wrap: wrap; }
+  .sheet-hd .tfs button { padding: 4px 6px; font-size: 10px; }
+  .sheet-hd .tfs button.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .sheet-hd .x { margin-left: auto; }
+  .chart-wrap { position: relative; flex: 1; min-height: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .chart-legend { padding: 6px 12px; border-top: 1px solid var(--line); font: 10.5px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .sw { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+  .key { max-width: 860px; margin: 0 auto; overflow: auto; padding: 16px 20px; line-height: 1.55; font-size: 13px; }
+  .key h2 { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: 18px 0 6px; }
+  .key p { margin: 0 0 8px; color: #d4d2de; }
+  .key code { font: 11.5px var(--mono); color: var(--gold); }
+  .present .bar, .present .meta, .present .notice:not(.synthetic) { display: none; }
+  @media (max-width: 640px) {
+    .bar { gap: 6px 8px; }
+    .ctl > span { display: none; }
+    #carpet { min-height: 70vh; }
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div class="brand"><b>THE CARPET</b> · rotation screener</div>
+    <label class="ctl"><span>Source</span><select id="group"></select></label>
+    <label class="ctl"><span>Colour</span>
+      <select id="colour">
+        <option value="rotation">The rotation · the quadrant</option>
+        <option value="session">The session · % change</option>
+        <option value="web">The web · rich / cheap</option>
+        <option value="strings">The strings · pair stretch</option>
+        <option value="liquidity">The liquidity · hot / thin</option>
+      </select></label>
+    <label class="ctl"><span>Read on</span>
+      <select id="readon">
+        <option value="15m">15M · one session</option>
+        <option value="1h" selected>1H · two sessions</option>
+        <option value="4h">4H · a week</option>
+        <option value="1d">1D · a month</option>
+      </select></label>
+    <label class="ctl"><span>Layout</span>
+      <select id="layout">
+        <option value="quadrants">Rotation · the quadrants</option>
+        <option value="flat">One carpet</option>
+      </select></label>
+    <label class="ctl"><span>Size</span>
+      <select id="size">
+        <option value="money">The money traded</option>
+        <option value="oi">Open interest</option>
+        <option value="equal">Equal</option>
+      </select></label>
+    <button id="refresh" type="button">Refresh</button>
+    <button id="present" type="button">Present · off</button>
+    <button id="keybtn" type="button">The key</button>
+  </div>
+  <div class="meta"><span id="status">loading…</span><a href="index.html">← memecoin screener</a></div>
+  <div class="notice" id="notice">Descriptive, not predictive.</div>
+  <div class="cross"><div class="sum" id="cross-sum"></div><div class="chips" id="chips"></div></div>
+  <div id="carpet" role="list" aria-label="Carpet of names"></div>
+  <div class="tip" id="tip" role="tooltip"></div>
+
+  <div class="overlay" id="chart-ov" role="dialog" aria-modal="true" aria-label="Chart">
+    <div class="sheet">
+      <div class="sheet-hd">
+        <span class="title" id="ch-head"></span><span class="px" id="ch-px"></span>
+        <div class="tfs" id="ch-tfs"></div>
+        <button class="x" type="button" id="ch-close">Close · esc</button>
+      </div>
+      <div class="chart-wrap"><canvas id="cv"></canvas></div>
+      <div class="chart-legend" id="ch-legend">
+        <span><i class="sw" style="background:#f2f2f2"></i>EMA 9</span>
+        <span><i class="sw" style="background:#d63be0"></i>session VWAP</span>
+        <span><i class="sw" style="background:#3cc8e6"></i>up-rung EMA 20</span>
+        <span><i class="sw" style="background:#2ecc71;height:8px;opacity:.5"></i>BOX · BUY (support zone)</span>
+        <span><i class="sw" style="background:#e0365b;height:8px;opacity:.5"></i>BOX · SELL (supply zone)</span>
+        <span><i class="sw" style="background:#666;height:8px;opacity:.5"></i>BROKEN</span>
+        <span><b style="color:#ff5fd2">TPR</b> probe past the last swing, close back inside</span>
+        <span>heat strip: volume ≥ 2× median, <b style="color:#e0365b">down</b> / <b style="color:#ffb347">up</b></span>
+        <span id="ch-note"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="key-ov" role="dialog" aria-modal="true" aria-label="The key">
+    <div class="sheet"><div class="sheet-hd"><span class="title">THE KEY · how each reading is made</span><button class="x" type="button" id="key-close">Close · esc</button></div>
+      <div class="key" id="key-body"></div></div>
+  </div>
+
+<script>
+'use strict';
+const GROUPS = [['hl-crypto', 'HL Crypto'], ['hl-majors', 'HL Majors'], ['hl-top20', 'HL Top 20']];
+const QCOL = { LEADING: [31,157,87], WEAKENING: [180,149,18], LAGGING: [157,26,51], IMPROVING: [29,111,134] };
+const state = { data: null, demo: null, mode: 'live', present: false };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const params = new URLSearchParams(location.search);
+const pct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`;
+const usd = v => v == null ? '—' : v >= 1e9 ? `$${(v/1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : `$${(v/1e3).toFixed(0)}k`;
+const px = v => v == null ? '—' : v >= 1000 ? v.toLocaleString('en-US', {maximumFractionDigits: 2}) : v >= 1 ? v.toFixed(3) : v.toPrecision(4);
+const rgb = a => `rgb(${a.map(x => Math.round(Math.max(0, Math.min(255, x)))).join(',')})`;
+const mix = (a, b, t) => a.map((x, i) => x + (b[i] - x) * t);
+
+for (const [id, label] of GROUPS) $('group').insertAdjacentHTML('beforeend', `<option value="${id}">${label}</option>`);
+for (const k of ['group', 'colour', 'readon', 'layout', 'size']) {
+  try { const v = localStorage.getItem('carpet.' + k); if (v && [...$(k).options].some(o => o.value === v)) $(k).value = v; } catch (e) {}
+}
+if (params.get('group')) $('group').value = params.get('group');
+if (params.get('read_on')) $('readon').value = params.get('read_on');
+
+// ---------- data ----------
+async function loadDemo() {
+  if (!state.demo) state.demo = await fetch('carpet-demo.json', { cache: 'no-store' }).then(r => r.json());
+  return state.demo;
+}
+async function load() {
+  $('status').textContent = 'reading the tape…';
+  const q = `group=${encodeURIComponent($('group').value)}&read_on=${encodeURIComponent($('readon').value)}`;
+  if (params.get('demo') !== '1') {
+    try {
+      const r = await fetch(`/api/carpet?${q}`, { cache: 'no-store' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      state.data = d; state.mode = 'live'; render(); return;
+    } catch (e) { state.liveError = String(e.message || e); }
+  }
+  try {
+    const demo = await loadDemo();
+    state.data = demo.carpet; state.mode = 'demo'; render();
+  } catch (e) {
+    $('status').textContent = `nothing to show: ${state.liveError || e}`;
+  }
+}
+
+// ---------- colour ----------
+function tileColour(n) {
+  const c = $('colour').value;
+  const grey = [52, 52, 63];
+  if (c === 'rotation') {
+    if (!n.rotation) return rgb(grey);
+    const r = n.rotation, d = Math.min(1, Math.hypot(r.ratio - 100, r.momentum - 100) / 3);
+    return rgb(mix(QCOL[r.quadrant].map(x => x * 0.72), QCOL[r.quadrant].map(x => x * 1.12), d));
+  }
+  const diverge = (v, full, lo, hi) => {
+    if (v == null) return rgb(grey);
+    const t = Math.min(1, Math.abs(v) / full);
+    return rgb(mix([40, 40, 52], v >= 0 ? hi : lo, 0.25 + 0.75 * t));
+  };
+  if (c === 'session') return diverge(n.session_pct, 0.04, [190, 30, 55], [25, 160, 85]);
+  if (c === 'web') return diverge(n.web && n.web.z, 3, [40, 120, 200], [205, 70, 75]);
+  if (c === 'strings') return diverge(n.strings && n.strings.score, 2.5, [40, 120, 200], [205, 70, 75]);
+  if (c === 'liquidity') {
+    if (!n.liquidity) return rgb(grey);
+    const r = Math.log2(Math.max(0.05, n.liquidity.rel));
+    return diverge(r, 1.5, [70, 80, 150], [235, 130, 40]);
+  }
+  return rgb(grey);
+}
+
+// ---------- treemap ----------
+function squarify(items, rect) {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const out = [];
+  if (total <= 0 || rect.w <= 0 || rect.h <= 0) return out;
+  const scale = rect.w * rect.h / total;
+  const nodes = items.map(i => ({ item: i, area: i.value * scale })).sort((a, b) => b.area - a.area);
+  const worst = (row, side) => {
+    const s = row.reduce((t, n) => t + n.area, 0), mx = Math.max(...row.map(n => n.area)), mn = Math.min(...row.map(n => n.area));
+    return Math.max(side * side * mx / (s * s), (s * s) / (side * side * mn));
+  };
+  const place = (row, r) => {
+    const s = row.reduce((t, n) => t + n.area, 0);
+    if (r.w >= r.h) {
+      const cw = s / r.h; let y = r.y;
+      for (const n of row) { const h = n.area / cw; out.push({ ...n.item, x: r.x, y, w: cw, h }); y += h; }
+      return { x: r.x + cw, y: r.y, w: r.w - cw, h: r.h };
+    }
+    const rh = s / r.w; let x = r.x;
+    for (const n of row) { const w = n.area / rh; out.push({ ...n.item, x, y: r.y, w, h: rh }); x += w; }
+    return { x: r.x, y: r.y + rh, w: r.w, h: r.h - rh };
+  };
+  let r = { ...rect }, row = [], i = 0;
+  while (i < nodes.length) {
+    const side = Math.min(r.w, r.h);
+    if (!row.length || worst(row.concat(nodes[i]), side) <= worst(row, side)) { row.push(nodes[i]); i++; }
+    else { r = place(row, r); row = []; }
+  }
+  if (row.length) place(row, r);
+  return out;
+}
+
+function sizeOf(n) {
+  const s = $('size').value;
+  if (s === 'equal') return 1;
+  const v = s === 'oi' ? n.oi_usd : n.money_usd;
+  return v != null && v > 0 ? v : null;  // unknown size is not guessed
+}
+
+function render() {
+  const d = state.data;
+  if (!d) return;
+  const synthetic = state.mode === 'demo';
+  const note = $('notice');
+  note.className = 'notice' + (synthetic ? ' synthetic' : '');
+  note.textContent = synthetic
+    ? `SYNTHETIC DEMO — not market data. The live endpoint did not answer${state.liveError ? ` (${state.liveError})` : ''}, so this is rotation/synthetic.py's fake market. ${d.notice}`
+    : d.notice;
+  const t = new Date(d.generated_at_ms);
+  const et = t.toLocaleTimeString('en-US', { timeZone: 'America/New_York' });
+  const sized = d.names.filter(n => sizeOf(n) != null);
+  $('status').textContent = `${d.names.length} names · 1 group · the engines on ${d.read_on.interval.toUpperCase()} · ${d.read_on.label} · ${d.elapsed_s}s · ${et} ET${synthetic ? ' · SYNTHETIC' : ' · Hyperliquid'}${d.missing.length ? ` · ${d.missing.length} not read: ${d.missing.map(m => m.coin).join(', ')}` : ''}`;
+  $('cross-sum').textContent = d.cross.summary || 'THE CROSS · no sized names placed';
+  $('chips').innerHTML = d.cross.chips.map(c => `<span class="chip" data-coin="${esc(c.coin)}"><b>${esc(c.coin)}</b>${esc(c.text).replace(esc(d.group.label), `<span class="g">${esc(d.group.label)}</span>`)}</span>`).join('') || '<span class="muted" style="font:11px var(--mono)">nothing crossing with a rich or cheap web behind it</span>';
+
+  const box = $('carpet');
+  box.innerHTML = '';
+  const W = box.clientWidth, H = box.clientHeight;
+  const unsized = d.names.filter(n => sizeOf(n) == null);
+  const stripH = unsized.length ? 20 : 0;
+  const area = { x: 0, y: 0, w: W, h: H - stripH };
+  const items = sized.map(n => ({ n, value: sizeOf(n) }));
+  let tiles = [];
+
+  if ($('layout').value === 'quadrants') {
+    const by = q => items.filter(i => (i.n.rotation ? i.n.rotation.quadrant : 'UNREAD') === q);
+    const sum = arr => arr.reduce((s, i) => s + i.value, 0);
+    const total = sum(items) || 1;
+    const unread = by('UNREAD');
+    const unreadH = unread.length ? Math.max(28, area.h * sum(unread) / total) : 0;
+    const plane = { x: 0, y: 0, w: W, h: area.h - unreadH };
+    const left = [by('IMPROVING'), by('LAGGING')], right = [by('LEADING'), by('WEAKENING')];
+    const leftV = sum(left[0]) + sum(left[1]), rightV = sum(right[0]) + sum(right[1]);
+    const gap = 4, lw = leftV + rightV ? (plane.w - (leftV && rightV ? gap : 0)) * leftV / (leftV + rightV) : 0;
+    const cols = [
+      { x: 0, w: lw, parts: [['IMPROVING', left[0]], ['LAGGING', left[1]]], v: leftV },
+      { x: lw + (leftV && rightV ? gap : 0), w: plane.w - lw - (leftV && rightV ? gap : 0), parts: [['LEADING', right[0]], ['WEAKENING', right[1]]], v: rightV },
+    ];
+    const labelH = 14;
+    for (const col of cols) {
+      if (!col.v) continue;
+      let y = 0;
+      const live = col.parts.filter(p => sum(p[1]) > 0);
+      const usable = plane.h - gap * (live.length - 1);
+      for (const [q, arr] of live) {
+        const h = usable * sum(arr) / col.v;
+        const share = sum(arr) / total;
+        box.insertAdjacentHTML('beforeend', `<div class="region-label q-${q}" style="left:${col.x}px;top:${y}px">${q}<span>${Math.round(share * 100)}% of the money · ${arr.length} name${arr.length === 1 ? '' : 's'}</span></div>`);
+        tiles.push(...squarify(arr, { x: col.x, y: y + labelH, w: col.w, h: Math.max(0, h - labelH) }));
+        y += h + gap;
+      }
+    }
+    if (unread.length) {
+      box.insertAdjacentHTML('beforeend', `<div class="region-label" style="left:0;top:${plane.h + 2}px">UNREAD<span>not enough bars to place</span></div>`);
+      tiles.push(...squarify(unread, { x: 0, y: plane.h + 16, w: W, h: unreadH - 16 }));
+    }
+  } else {
+    tiles = squarify(items, area);
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const t of tiles) {
+    const n = t.n, el = document.createElement('div');
+    el.className = 'tile'; el.setAttribute('role', 'listitem'); el.tabIndex = 0;
+    el.style.cssText = `left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;background:${tileColour(n)}`;
+    const fs = Math.max(9, Math.min(30, Math.sqrt(t.w * t.h) / 6.5));
+    const showSub = t.h > 70 && t.w > 70;
+    if (t.w > 26 && t.h > 16) el.innerHTML = `<div class="t" style="font-size:${fs}px">${esc(n.coin)}${showSub ? `<span class="s">${pct(n.session_pct)}</span>` : ''}</div>`;
+    el.dataset.coin = n.coin;
+    el.setAttribute('aria-label', `${n.coin}: ${n.reading || n.unread_reason}`);
+    frag.appendChild(el);
+  }
+  box.appendChild(frag);
+  if (unsized.length) box.insertAdjacentHTML('beforeend', `<div class="strip" style="top:${H - stripH + 4}px">unsized (no ${$('size').value === 'oi' ? 'open interest' : 'money'} reported, not guessed): ${unsized.map(n => esc(n.coin)).join(' · ')}</div>`);
+}
+
+// ---------- tooltip ----------
+function tipHtml(n, d) {
+  const lab = (v, cls) => `<span class="${cls}">${esc(v)}</span>`;
+  const rot = n.rotation, web = n.web, st = n.strings, lq = n.liquidity;
+  const rows = [
+    ['the session', n.session_pct == null ? '—' : lab(pct(n.session_pct), n.session_pct >= 0 ? 'pos' : 'neg')],
+    ['the web', web ? `${lab(web.label, 'l-' + web.label)} <span class="muted">z ${web.z.toFixed(2)} · β ${web.beta.toFixed(2)}</span>` : '—'],
+    ['the strings', st ? `${lab(st.label, st.score > 0 ? 'l-rich' : st.score < 0 ? 'l-cheap' : '')} <span class="muted">${st.strung} strung · tautest ${esc(st.tautest.coin)} ${st.tautest.z.toFixed(1)}σ</span>` : '<span class="muted">unstrung</span>'],
+    ['the liquidity', lq ? `${lab(lq.label, 'l-' + lq.label)} <span class="muted">${lq.rel.toFixed(2)}× typical</span>` : '—'],
+    ['the rotation', rot ? `${lab(rot.quadrant, 'q-' + rot.quadrant)} <span class="muted">${rot.ratio.toFixed(1)} / ${rot.momentum.toFixed(1)}</span>` : '<span class="muted">unread</span>'],
+    ['money · OI', `${usd(n.money_usd)} · ${usd(n.oi_usd)}`],
+  ];
+  if (n.impact_bps != null) rows.push(['impact spread', `${n.impact_bps.toFixed(1)} bps`]);
+  return `<div class="hd">${esc(n.coin)}-USD<span>${esc(d.group.label)} · ${px(n.price)}</span></div>` +
+    rows.map(([k, v]) => `<div class="row"><span class="k">${k}</span><span>${v}</span></div>`).join('') +
+    `<div class="rd">${esc(n.reading || n.unread_reason || '')}</div>` +
+    (st && st.agreement ? `<div class="why">the strings ${st.agreement} with the web (tautest vs ${esc(st.tautest.coin)})</div>` : '') +
+    `<div class="why">click for the chart</div>`;
+}
+const tip = $('tip');
+$('carpet').addEventListener('mousemove', e => {
+  const el = e.target.closest('.tile');
+  if (!el || !state.data) { tip.style.display = 'none'; return; }
+  const n = state.data.names.find(x => x.coin === el.dataset.coin);
+  tip.innerHTML = tipHtml(n, state.data); tip.style.display = 'block';
+  const r = tip.getBoundingClientRect();
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + r.width > innerWidth - 8) x = e.clientX - r.width - 14;
+  if (y + r.height > innerHeight - 8) y = innerHeight - r.height - 8;
+  tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+});
+$('carpet').addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+$('carpet').addEventListener('click', e => { const el = e.target.closest('.tile'); if (el) openChart(el.dataset.coin); });
+$('carpet').addEventListener('keydown', e => { const el = e.target.closest('.tile'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openChart(el.dataset.coin); } });
+$('chips').addEventListener('click', e => { const el = e.target.closest('.chip'); if (el) openChart(el.dataset.coin); });
+
+// ---------- chart ----------
+const TFS = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
+const chart = { coin: null, tf: '5m', data: null, view: 240 };
+async function openChart(coin) {
+  tip.style.display = 'none';
+  chart.coin = coin;
+  $('chart-ov').classList.add('open');
+  await loadChart();
+}
+async function loadChart() {
+  const demo = state.mode === 'demo';
+  $('ch-tfs').innerHTML = TFS.map(t => `<button type="button" data-tf="${t}" class="${t === chart.tf ? 'sel' : ''}" ${demo && t !== '5m' ? 'disabled' : ''}>${t}</button>`).join('');
+  $('ch-head').textContent = `${chart.coin} · loading…`;
+  $('ch-px').textContent = '';
+  try {
+    if (demo) { chart.tf = '5m'; chart.data = (await loadDemo()).charts[chart.coin]; }
+    else {
+      const r = await fetch(`/api/carpet?chart=${encodeURIComponent(chart.coin)}&interval=${chart.tf}&bars=800`, { cache: 'no-store' });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      chart.data = d;
+    }
+  } catch (e) { $('ch-head').textContent = `${chart.coin} · chart unavailable: ${e.message || e}`; return; }
+  const d = chart.data;
+  chart.view = Math.min(d.candles.length, chart.view || 240);
+  $('ch-head').textContent = d.headline + (demo ? ' · SYNTHETIC' : '');
+  const last = d.candles[d.candles.length - 1];
+  $('ch-px').textContent = last ? px(last[4]) : '';
+  $('ch-note').textContent = `${d.boxes.length} boxes · ${d.tpr.length} TPR · ${d.heat.length} heat bars · wheel to zoom`;
+  drawChart();
+}
+$('ch-tfs').addEventListener('click', e => { const b = e.target.closest('button[data-tf]'); if (b && !b.disabled) { chart.tf = b.dataset.tf; loadChart(); } });
+$('cv').addEventListener('wheel', e => {
+  if (!chart.data) return; e.preventDefault();
+  chart.view = Math.max(60, Math.min(chart.data.candles.length, Math.round(chart.view * (e.deltaY > 0 ? 1.15 : 0.87))));
+  drawChart();
+}, { passive: false });
+
+function drawChart() {
+  const d = chart.data, cv = $('cv');
+  if (!d) return;
+  const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+  const n = d.candles.length, from = Math.max(0, n - chart.view);
+  const axisW = 74, heatH = 18, timeH = 18, pad = 8;
+  const pw = W - axisW, ph = H - heatH - timeH - pad * 2;
+  const vis = d.candles.slice(from);
+  let lo = Infinity, hi = -Infinity;
+  for (const c of vis) { if (c[3] != null) lo = Math.min(lo, c[3]); if (c[2] != null) hi = Math.max(hi, c[2]); }
+  if (!isFinite(lo)) return;
+  const span = hi - lo || hi * 0.01; lo -= span * 0.06; hi += span * 0.06;
+  const bw = pw / vis.length;
+  const X = i => (i - from + 0.5) * bw, Y = p => pad + (hi - p) / (hi - lo) * ph;
+  // grid + axis
+  g.font = '10px ui-monospace, Menlo, monospace'; g.textAlign = 'left';
+  for (let k = 0; k <= 8; k++) {
+    const p = lo + (hi - lo) * k / 8, y = Y(p);
+    g.strokeStyle = '#141420'; g.beginPath(); g.moveTo(0, y); g.lineTo(pw, y); g.stroke();
+    g.fillStyle = '#8d8b9c'; g.fillText(px(p), pw + 6, y + 3);
+  }
+  // boxes
+  for (const b of d.boxes) {
+    if (b.end < from) continue;
+    const x0 = X(Math.max(b.start, from)) - bw / 2, x1 = X(b.end) + bw / 2;
+    const broken = b.broken_at != null, buy = b.side === 'BUY';
+    g.fillStyle = broken ? 'rgba(110,110,130,.13)' : buy ? 'rgba(46,204,113,.16)' : 'rgba(224,54,91,.18)';
+    g.strokeStyle = broken ? 'rgba(140,140,160,.35)' : buy ? 'rgba(46,204,113,.7)' : 'rgba(224,54,91,.7)';
+    const y0 = Y(b.top), y1 = Y(b.bottom);
+    g.fillRect(x0, y0, x1 - x0, Math.max(2, y1 - y0)); g.strokeRect(x0, y0, x1 - x0, Math.max(2, y1 - y0));
+    g.fillStyle = broken ? '#77778a' : buy ? '#2ecc71' : '#ff5f7e';
+    g.font = '700 9px ui-monospace, Menlo, monospace'; g.fillText(b.label, x0 + 3, y0 + 10);
+  }
+  // candles
+  vis.forEach((c, k) => {
+    const [, o, h, l, cl] = c; if (o == null || cl == null) return;
+    const i = from + k, x = X(i), up = cl >= o;
+    g.strokeStyle = g.fillStyle = up ? '#39ff6a' : '#ff2e4d';
+    g.beginPath(); g.moveTo(x, Y(h)); g.lineTo(x, Y(l)); g.stroke();
+    const top = Y(Math.max(o, cl)), bot = Y(Math.min(o, cl));
+    g.fillRect(x - Math.max(1, bw * 0.35), top, Math.max(1, bw * 0.7), Math.max(1, bot - top));
+  });
+  // lines
+  // Lines are clipped to the plot: an up-rung average far from price runs off it.
+  // VWAP restarts each UTC day, so its line breaks there instead of jumping.
+  const day = i => Math.floor(d.candles[i][0] / 86400000);
+  const line = (arr, col, w, breakDaily) => {
+    g.strokeStyle = col; g.lineWidth = w; g.beginPath(); let on = false;
+    for (let i = from; i < n; i++) {
+      const v = arr[i];
+      if (v == null || (breakDaily && i > from && day(i) !== day(i - 1))) on = false;
+      if (v == null) continue;
+      const x = X(i), y = Y(v); on ? g.lineTo(x, y) : g.moveTo(x, y); on = true;
+    }
+    g.stroke(); g.lineWidth = 1;
+  };
+  g.save(); g.beginPath(); g.rect(0, pad, pw, ph); g.clip();
+  line(d.lines.rung_ema, '#3cc8e6', 1.6); line(d.lines.vwap, '#d63be0', 1.6, true); line(d.lines.fast_ema, '#f2f2f2', 1);
+  g.restore();
+  // markers
+  g.font = '700 9px ui-monospace, Menlo, monospace'; g.textAlign = 'center';
+  for (const t of d.touches) {
+    if (t.i < from) continue; const x = X(t.i), buy = t.side === 'BUY';
+    const y = Y(t.price) + (buy ? 9 : -9);
+    g.fillStyle = buy ? '#2ecc71' : '#ff5f7e'; g.fillRect(x - 3, y - 3, 6, 6);
+    g.fillText('BOX', x, buy ? y + 13 : y - 6);
+  }
+  for (const t of d.tpr) {
+    if (t.i < from) continue; const x = X(t.i), high = t.side === 'high';
+    const y = Y(t.price) + (high ? -8 : 8);
+    g.fillStyle = high ? '#ff5fd2' : '#f2c94c'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill();
+    g.fillText('TPR', x, high ? y - 6 : y + 13);
+  }
+  // last price
+  const last = d.candles[n - 1];
+  if (last && last[4] != null) {
+    const y = Y(last[4]); g.strokeStyle = 'rgba(57,255,106,.35)'; g.setLineDash([3, 3]); g.beginPath(); g.moveTo(0, y); g.lineTo(pw, y); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#39ff6a'; g.fillRect(pw + 1, y - 8, axisW - 2, 16); g.fillStyle = '#000'; g.textAlign = 'left'; g.font = '700 10px ui-monospace, Menlo, monospace'; g.fillText(px(last[4]), pw + 6, y + 4);
+  }
+  // heat strip
+  const hy = pad + ph + 4;
+  g.fillStyle = '#0a0a10'; g.fillRect(0, hy, pw, heatH - 4);
+  for (const h of d.heat) {
+    if (h.i < from) continue; const a = Math.min(1, 0.35 + h.rel / 6);
+    g.fillStyle = h.side === 'down' ? `rgba(224,54,91,${a})` : `rgba(255,179,71,${a})`;
+    g.fillRect(X(h.i) - bw / 2, hy, Math.max(1, bw), heatH - 4);
+  }
+  // time axis (ET, like the screenshot)
+  g.fillStyle = '#8d8b9c'; g.textAlign = 'center'; g.font = '10px ui-monospace, Menlo, monospace';
+  const every = Math.max(1, Math.round(vis.length / 7));
+  for (let k = 0; k < vis.length; k += every) {
+    const t = new Date(vis[k][0]);
+    const lab = ['1d', '4h'].includes(d.interval) ? t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York' });
+    g.fillText(lab, X(from + k), H - 5);
+  }
+}
+function closeAll() { $('chart-ov').classList.remove('open'); $('key-ov').classList.remove('open'); }
+$('ch-close').onclick = closeAll; $('key-close').onclick = closeAll;
+addEventListener('keydown', e => { if (e.key === 'Escape') closeAll(); });
+
+// ---------- the key ----------
+function renderKey() {
+  const t = (state.data && state.data.thresholds) || {};
+  const w = state.data ? state.data.read_on : { interval: '1h', window: 48, label: 'two sessions' };
+  $('key-body').innerHTML = `
+  <p><b>Descriptive, not predictive.</b> Each reading says where a name stands against its group right now. None has been tested for what comes next. The screenshot this is modelled on ends some readings with a backtest claim (“the fade the study paid”). No such study exists here, so this page makes no such claim.</p>
+  <h2>The window</h2><p>Read on <code>${esc(w.interval)}</code> bars, <code>${w.window}</code> of them (${esc(w.label)}). Each engine works on log returns on one shared bar grid. If a coin is missing a bar, that bar adds nothing. If a coin is missing more than ${Math.round((1 - (t.min_coverage || .9)) * 100)}% of its window, it gets no reading at all; gaps are never filled in.</p>
+  <h2>The rotation</h2><p>A relative rotation graph against an equal-weight benchmark of the group. <b>RS-Ratio</b> = 100 + where the name's relative log price sits in its own window (in σ). <b>RS-Momentum</b> = 100 + where the ${t.momentum_lag_bars || 8}-bar change in RS-Ratio sits in its window. Above 100 on both is <span class="q-LEADING">LEADING</span>; ratio above and momentum below is <span class="q-WEAKENING">WEAKENING</span>; both below is <span class="q-LAGGING">LAGGING</span>; ratio below and momentum above is <span class="q-IMPROVING">IMPROVING</span>. Names rotate clockwise through those four. The quadrant layout <i>is</i> that plane: the left column is ratio below 100, the right column is ratio above 100, and the top row is momentum rising.</p>
+  <h2>The web</h2><p>How rich or cheap a name is against the group <i>after its beta</i>. The name's returns are regressed on the benchmark's over the window, and the residuals are summed and expressed in standard errors. A z of ±${t.web_rich_cheap_z ?? 1} or more is <span class="l-rich">rich</span> / <span class="l-cheap">cheap</span>; anything smaller is fair.</p>
+  <h2>The strings</h2><p>One string to every other name in the group whose return correlation is at least ${t.string_min_corr ?? .5}. Each string is a beta-hedged pair spread, z-scored within its window. The strings' verdict is the correlation-weighted mean of those z-scores: ${t.strings_lean_z ?? 1}σ leans rich or cheap, and ${t.strings_stretched_z ?? 2}σ is <i>stretched</i>. The <b>tautest</b> string is the single most stretched pair. The strings <b>agree</b> when they lean the same way as the web.</p>
+  <h2>The liquidity</h2><p>Money traded per bar over the last ${t.liquidity_recent_bars || 6} bars, divided by the window's median bar. <span class="l-HOT">HOT</span> is ≥ ${t.liquidity_hot ?? 1.5}×; <span class="l-thin">thin</span> is ≤ ${t.liquidity_thin ?? .67}×. The tooltip also shows Hyperliquid's impact spread: what it costs to cross the book.</p>
+  <h2>The session</h2><p>The last close against the open of the first bar of the current UTC day.</p>
+  <h2>The cross</h2><p>The share of the money on the right half of the plane (LEADING + WEAKENING). The chips list names that are mid-turn (IMPROVING or WEAKENING) <i>and</i> that the web calls rich or cheap.</p>
+  <h2>The money</h2><p>Tile size is Hyperliquid's 24-hour notional volume, or open interest, or equal. A name with no reported size is listed under the carpet rather than drawn at a guessed size.</p>
+  <h2>The chart</h2><p>EMA 9, session VWAP, and a 20-bar EMA on the next bar size up (the “up-rung”). A <b>BOX</b> is a zone that swing pivots keep returning to: three or more touches inside it, labelled ×N. It is <b>BROKEN</b> once a bar closes through its far side. <b>TPR</b> marks a swing that probed past the previous swing on its side and closed back inside it. The heat strip shows bars that traded at least twice the median volume. Hyperliquid serves nothing finer than 1-minute bars, so there is no 5s or 30s chart. The screenshot's order ticket is not reproduced: this repo places no orders.</p>`;
+}
+$('keybtn').onclick = () => { renderKey(); $('key-ov').classList.add('open'); };
+
+// ---------- controls ----------
+for (const k of ['group', 'colour', 'readon', 'layout', 'size']) {
+  $(k).addEventListener('change', () => {
+    try { localStorage.setItem('carpet.' + k, $(k).value); } catch (e) {}
+    if (k === 'group' || k === 'readon') load(); else render();
+  });
+}
+$('refresh').onclick = load;
+$('present').onclick = () => {
+  state.present = !state.present;
+  document.body.classList.toggle('present', state.present);
+  $('present').textContent = `Present · ${state.present ? 'on' : 'off'}`;
+  $('present').classList.toggle('on', state.present);
+  render();
+};
+addEventListener('keydown', e => { if (e.key === 'p' && state.present && !$('chart-ov').classList.contains('open')) $('present').click(); });
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { render(); if ($('chart-ov').classList.contains('open')) drawChart(); }, 120); });
+load();
+</script>
+</body>
+</html>
