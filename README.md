@@ -37,24 +37,6 @@ tokens whether or not a collector has ever run.
 
 718 tests, no network, ~14s. `ruff` clean, and the suite is *enforced* offline: `tests/conftest.py` blocks real requests, so a test that reaches the internet fails loudly instead of passing on someone else's uptime.
 
-## The Carpet (a separate tool)
-
-`web/carpet.html` is a rotation screener for Hyperliquid perps, rebuilt from two
-screenshots. It shows a treemap of a group of names, split into the four relative-rotation
-quadrants and sized by money traded. Each tile reads five things: the session, the web
-(rich or cheap to the group after beta), the strings (pair-spread stretch, including which
-pair is tautest), the liquidity (hot or thin), and the rotation. Clicking a tile opens a
-chart with boxes, TPR turns, an up-rung EMA, VWAP and a volume heat strip. It is fed live
-by `api/carpet.py` from Hyperliquid's public read-only endpoint. Without that endpoint, the
-page falls back to a clearly marked synthetic demo.
-
-```bash
-python -m rotation.carpet --group hl-crypto --read-on 1h   # the same readings, as a table
-```
-
-Every reading is descriptive. None has been tested for what comes next. How each one was
-reverse-engineered, and how sure each inference is, is in [docs/carpet.md](docs/carpet.md).
-
 ## Run it against real data
 
 No API key, no signup. DexScreener, GoPlus and RugCheck are all keyless. One command does

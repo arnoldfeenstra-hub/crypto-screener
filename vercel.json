@@ -9,20 +9,8 @@
       "memory": 512,
       "maxDuration": 60,
       "includeFiles": "{collectors,filters,scoring,prompts}/**"
-    },
-    "api/carpet.py": {
-      "memory": 512,
-      "maxDuration": 30,
-      "includeFiles": "rotation/**"
     }
   },
-  "rewrites": [
-    {
-      "source": "/",
-      "has": [{ "type": "host", "value": "the-carpet(-[a-z0-9-]+)?\\.vercel\\.app" }],
-      "destination": "/carpet.html"
-    }
-  ],
   "headers": [
     {
       "source": "/screener-data.json",
@@ -34,12 +22,6 @@
       "source": "/api/screener",
       "headers": [
         { "key": "Cache-Control", "value": "public, s-maxage=45, stale-while-revalidate=300" }
-      ]
-    },
-    {
-      "source": "/api/carpet",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, s-maxage=30, stale-while-revalidate=120" }
       ]
     }
   ]

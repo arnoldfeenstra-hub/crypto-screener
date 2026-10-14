@@ -50,10 +50,6 @@ The screener's job is to beat a ~2% base rate, not to find winners.
   hot and which narrative is running," then feed that into the regime multiplier.
 - **Per-token social must be collected first-party and forward.** There is no usable retroactive
   source for X/Telegram metrics on micro-cap launches. See `BUILD_BRIEF.md` §3.
-- `rotation/` (THE CARPET, `web/carpet.html`, `api/carpet.py`) is a separate tool: a
-  descriptive rotation screener for Hyperliquid perps, reverse-engineered from screenshots
-  (`docs/carpet.md`). Same hard rules — read-only `/info` queries only, no order path, no
-  imputation — and none of its readings may be described as predictive.
 - On-chain history *is* backfillable (Bitquery, Dune, Helius). Social history is not. This
   asymmetry drives the whole phase plan.
 
