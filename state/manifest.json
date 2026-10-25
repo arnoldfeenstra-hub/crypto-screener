@@ -1,21 +1,23 @@
 {
   "schema_version": 8,
-  "updated_at": "2026-10-25T09:57:29+00:00",
+  "updated_at": "2026-10-25T14:29:20+00:00",
   "store": "neon",
   "dataset_id": "112834e3-3293-4094-ab31-23efd70b68a0",
   "rows": {
-    "snapshots": 790,
-    "trigger_events": 790,
-    "labels": 31821,
-    "outcome_observations": 16912,
-    "scores": 36272,
-    "social_observations": 3137,
-    "safety_observations": 9178
+    "snapshots": 791,
+    "trigger_events": 791,
+    "labels": 31833,
+    "outcome_observations": 16970,
+    "scores": 36298,
+    "social_observations": 3145,
+    "safety_observations": 9205
   },
   "appended_last_run": {
-    "labels": 10,
-    "outcome_observations": 45,
-    "scores": 27,
+    "snapshots": 1,
+    "trigger_events": 1,
+    "labels": 12,
+    "outcome_observations": 58,
+    "scores": 26,
     "social_observations": 8,
     "safety_observations": 27
   },
