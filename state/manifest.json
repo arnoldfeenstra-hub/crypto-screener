@@ -1,24 +1,24 @@
 {
   "schema_version": 8,
-  "updated_at": "2026-11-16T22:22:40+00:00",
+  "updated_at": "2026-11-17T04:41:47+00:00",
   "store": "neon",
   "dataset_id": "112834e3-3293-4094-ab31-23efd70b68a0",
   "rows": {
-    "snapshots": 1010,
-    "trigger_events": 1010,
-    "labels": 32877,
-    "outcome_observations": 20743,
-    "scores": 38560,
-    "social_observations": 4013,
-    "safety_observations": 11576
+    "snapshots": 1015,
+    "trigger_events": 1015,
+    "labels": 32893,
+    "outcome_observations": 20790,
+    "scores": 38587,
+    "social_observations": 4037,
+    "safety_observations": 11603
   },
   "appended_last_run": {
-    "snapshots": 7,
-    "trigger_events": 7,
-    "labels": 7,
-    "outcome_observations": 43,
+    "snapshots": 5,
+    "trigger_events": 5,
+    "labels": 16,
+    "outcome_observations": 47,
     "scores": 27,
-    "social_observations": 12,
+    "social_observations": 24,
     "safety_observations": 27
   },
   "note": "The dataset lives in Neon, in append-only journal_* tables. The .jsonl files beside this manifest are the git journal as it stood when the dataset moved there; they are kept exactly as they were and never written again. This file is the collector's heartbeat."
