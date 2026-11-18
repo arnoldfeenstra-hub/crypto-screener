@@ -339,3 +339,74 @@ class TestTheBacktestGate:
         with store_with("dexscreener") as store:
             payload = build_payload(store)
         assert seen["complete_social"] == payload["progress"]["complete_social_series"]
+
+
+class TestFinishedTokensAreNotRanked:
+    """A token past its 7-day outcome window is history, not a candidate.
+
+    The page ranked the 200 newest tokens. At ~60 triggers a day that was three
+    days; by 2026-11-17, at ~9 a day, it was three weeks, and 9 of the 10 tokens
+    the page ranked already had a known 7-day outcome -- one of them dead.
+    """
+
+    DAY = 86_400_000
+    AS_OF = T0 + 30 * 86_400_000
+
+    def scored_store(self) -> tuple[Store, Snapshot, Snapshot]:
+        from scoring.runner import ScoringRunner
+
+        store = Store()
+        finished = Snapshot(chain="solana", contract="Old", trigger="mcap_250k",
+                            source="dexscreener", ts=self.AS_OF - 8 * self.DAY,
+                            market=Market(mcap_usd=300_000.0))
+        still_open = Snapshot(chain="solana", contract="New", trigger="mcap_250k",
+                              source="dexscreener", ts=self.AS_OF - self.DAY,
+                              market=Market(mcap_usd=300_000.0))
+        # The finished token scores higher, so ranking it would put it first.
+        for snap, score in ((finished, 90.0), (still_open, 40.0)):
+            store.append_snapshot(snap)
+            row = ScoringRunner().score_one(
+                {"snapshot_id": snap.snapshot_id, "chain": "solana", "contract": snap.contract}
+            )
+            store.append_scores([{**row, "excluded": False, "score": score, "raw_score": score}])
+        return store, finished, still_open
+
+    def test_the_store_ranks_only_tokens_triggered_since_the_cutoff(self):
+        store, finished, still_open = self.scored_store()
+        with store:
+            everything = {r["snapshot_id"]: r["rank"] for r in store.latest_scores(10)}
+            open_only = {
+                r["snapshot_id"]: (r["rank"], r["score"])
+                for r in store.latest_scores(10, rank_since_ms=self.AS_OF - 7 * self.DAY)
+            }
+        assert everything == {finished.snapshot_id: 1, still_open.snapshot_id: 2}
+        # Still scored, no longer ranked.
+        assert open_only == {finished.snapshot_id: (None, 90.0), still_open.snapshot_id: (1, 40.0)}
+
+    def test_the_page_ranks_open_tokens_and_marks_finished_ones(self):
+        store, finished, still_open = self.scored_store()
+        with store:
+            payload = build_payload(store, as_of_ms=self.AS_OF)
+        tokens = {t["snapshot_id"]: t for t in payload["tokens"]}
+        assert tokens[finished.snapshot_id]["outcome_window_closed"] is True
+        assert tokens[finished.snapshot_id]["rank"] is None
+        assert tokens[finished.snapshot_id]["score"] == 90.0
+        assert tokens[still_open.snapshot_id]["outcome_window_closed"] is False
+        assert tokens[still_open.snapshot_id]["rank"] == 1
+
+    def test_the_page_shows_a_finished_tokens_outcome_instead_of_a_rank(self):
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        assert "t.outcome_window_closed" in page
+        assert "function finishedOutcome(t)" in page
+
+    def test_no_name_is_declared_twice_at_the_top_of_the_page_script(self):
+        """A second `function x` beside a `const x` is a SyntaxError that stops
+        the whole script, and the page renders nothing."""
+        import collections
+        import re
+
+        page = (REPO_ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        declaration = r"^(?:async\s+)?function\s+(\w+)\s*\(|^(?:const|let|var)\s+(\w+)\s*="
+        names = re.findall(declaration, page, re.M)
+        counts = collections.Counter(a or b for a, b in names)
+        assert not [name for name, n in counts.items() if n > 1], counts.most_common(3)
