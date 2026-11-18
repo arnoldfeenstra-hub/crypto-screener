@@ -577,7 +577,9 @@ class Store:
         newest = (dict(zip(columns, row, strict=True)) for row in rows)
         return {row["snapshot_id"]: row for row in newest}
 
-    def latest_scores(self, limit: int = 100) -> list[dict[str, Any]]:
+    def latest_scores(
+        self, limit: int = 100, *, rank_since_ms: int | None = None
+    ) -> list[dict[str, Any]]:
         """The current score of each of the ``limit`` most recently triggered
         tokens, best first.
 
@@ -588,11 +590,22 @@ class Store:
         ScoringRunner.score_batch ranks a batch: a stored rank is the one the row
         had in the run that wrote it.
 
+        ``rank_since_ms`` limits the ranking to tokens triggered at or after it.
+        The rest keep their score but get no rank. The web export passes the start
+        of the open outcome window: by 2026-11-17 the 200 newest tokens reached back
+        three weeks, and 9 of the 10 the page ranked had a known 7-day outcome.
+
         Rows scored under an older prompt or weights version than the newest row
         are left out, because a ranking must not mix versions. A version change
         makes every re-score differ, so the next cycle rewrites them all.
         """
-        recent = [row["snapshot_id"] for row in self.recent_snapshots(limit)]
+        snapshots = self.recent_snapshots(limit)
+        recent = [row["snapshot_id"] for row in snapshots]
+        rankable = {
+            row["snapshot_id"]
+            for row in snapshots
+            if rank_since_ms is None or row["ts"] >= rank_since_ms
+        }
         newest = self.newest_scores(recent)
         rows = [newest[snapshot_id] for snapshot_id in recent if snapshot_id in newest]
         if not rows:
@@ -604,7 +617,10 @@ class Store:
         def best_first(row: dict[str, Any]) -> tuple[bool, float]:
             return (row["score"] is None, -(row["score"] or 0.0))
 
-        survivors = sorted((r for r in rows if not r["excluded"]), key=best_first)
+        survivors = sorted(
+            (r for r in rows if not r["excluded"] and r["snapshot_id"] in rankable),
+            key=best_first,
+        )
         ranks = {r["score_id"]: position for position, r in enumerate(survivors, start=1)}
         return sorted(
             ({**r, "rank": ranks.get(r["score_id"])} for r in rows), key=best_first

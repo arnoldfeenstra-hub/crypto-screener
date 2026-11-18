@@ -472,7 +472,20 @@ function safetyPills(safety) {
   return `${pills} ${deployer}`;
 }
 
+// A token past its 7-day outcome window is history: its outcome is known, so it
+// gets no rank and the cell says what happened instead.
+function finishedOutcome(t) {
+  const peak = t.max_multiple_7d == null ? 'peak unknown' : `peaked ${t.max_multiple_7d.toFixed(2)}x`;
+  const fate = t.survived_7d == null ? 'survival unknown'
+    : (t.survived_7d ? 'survived 7d' : 'dead by 7d');
+  return `${peak}, ${fate}`;
+}
+
 function statusCell(t) {
+  if (!t.excluded && t.score != null && t.outcome_window_closed) {
+    return `<span class="pill unk" title="Past its 7-day outcome window, so it is not ranked">finished</span>`
+      + `<div class="note" style="font-size:11px">${esc(finishedOutcome(t))}</div>`;
+  }
   if (!t.excluded && t.score != null) return '<span class="pill">scored</span>';
   if (t.rejected_by && t.rejected_by.length) {
     return t.rejected_by.map(r => `<span class="pill bad">${esc(r)}</span>`).join(' ');

@@ -36,6 +36,8 @@ from collectors import chains as chain_registry
 from collectors.config import load_config
 from collectors.mindshare import COMPONENT_WEIGHTS as MINDSHARE_COMPONENT_WEIGHTS
 from collectors.mindshare import METHOD_VERSION as MINDSHARE_METHOD_VERSION
+from collectors.outcomes import OUTCOME_WINDOW_MINUTES
+from collectors.schema import now_ms
 from collectors.store import Store
 from scoring.pillars import WEIGHTS, composite
 from scoring.prompt_meta import weights_caveat, weights_record
@@ -80,13 +82,24 @@ def _json_field(value: Any, fallback: Any) -> Any:
 
 
 def build_payload(
-    store: Store, *, limit: int = 500, score_window: int = SCORE_WINDOW
+    store: Store,
+    *,
+    limit: int = 500,
+    score_window: int = SCORE_WINDOW,
+    as_of_ms: int | None = None,
 ) -> dict[str, Any]:
     snapshots = store.recent_snapshots(limit)
-    # Scored and ranked: the tokens the collector re-scores each cycle. An older
-    # token keeps its last score in the table but is shown unscored, not ranked on
-    # a score nobody recomputed.
-    scores = {row["snapshot_id"]: row for row in store.latest_scores(score_window)}
+    # Scored: the tokens the collector re-scores each cycle. An older token keeps
+    # its last score in the table but is shown unscored, not on a score nobody
+    # recomputed. Ranked: only those whose outcome window is still open. A token
+    # whose 7-day outcome is already known is history, not a candidate.
+    window_start = (
+        as_of_ms if as_of_ms is not None else now_ms()
+    ) - OUTCOME_WINDOW_MINUTES * 60_000
+    scores = {
+        row["snapshot_id"]: row
+        for row in store.latest_scores(score_window, rank_since_ms=window_start)
+    }
 
     survivors, dead = store.survivor_counts("7d")
     complete_social = store.snapshots_with_complete_social()
@@ -105,6 +118,9 @@ def build_payload(
                 "chain": snap["chain"],
                 "contract": snap["contract"],
                 "ts": snap["ts"],
+                # Past its 7-day outcome window: its labels are final, so the page
+                # shows the outcome rather than a rank.
+                "outcome_window_closed": snap["ts"] < window_start,
                 "snapshot_date": str(snap["snapshot_date"]),
                 "trigger": snap["trigger_kind"],
                 "trigger_mcap_crossed": snap["trigger_mcap_crossed"],
